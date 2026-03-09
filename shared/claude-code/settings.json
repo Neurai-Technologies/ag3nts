@@ -1,0 +1,8 @@
+{
+  "statusLine": {
+    "type": "command",
+    "command": "echo hello"
+  },
+  "autoUpdatesChannel": "latest",
+  "effortLevel": "high"
+}

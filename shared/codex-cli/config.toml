@@ -1,0 +1,10 @@
+model = "gpt-5.3-codex"
+model_reasoning_effort = "xhigh"
+[projects.'C:\Windows\System32']
+trust_level = "trusted"
+
+[projects.'D:\Finance']
+trust_level = "trusted"
+
+[windows]
+sandbox = "elevated"

@@ -1,0 +1,33 @@
+{
+  "general": {
+    "sessionRetention": {
+      "enabled": true,
+      "maxAge": "30d",
+      "warningAcknowledged": true
+    }
+  },
+  "security": {
+    "auth": {
+      "selectedType": "oauth-personal"
+    }
+  },
+  "ui": {
+    "showMemoryUsage": true,
+    "showStatusInTitle": true,
+    "dynamicWindowTitle": true,
+    "showModelInfoInChat": true,
+    "footer": {
+      "hideModelInfo": false,
+      "hideContextPercentage": false
+    },
+    "inlineThinkingMode": "full",
+    "hideContextSummary": true,
+    "hideWindowTitle": true
+  },
+  "model": {
+    "name": "gemini-3.1-pro-preview"
+  },
+  "ide": {
+    "enabled": true
+  }
+}
