@@ -6,6 +6,9 @@
 # --- Tool binaries ---
 *.exe
 *.exe.old.*
+macos/claude-code/bin/claude
+macos/codex-cli/bin/codex
+windows/claude-code/bin/
 
 # --- Portable Node.js ---
 windows/node/
