@@ -87,7 +87,7 @@ Edit `shared/ag3nts.md` once → all three agents pick up the changes on next la
 
 The `bin/*.cmd` launchers do three things every time you run a tool:
 
-1. **Scan all drives** for the `Terminal-AI/` folder (auto-detects drive letter)
+1. **Scan all drives** for the `ag3nts/` folder (auto-detects drive letter)
 2. **Sync** `ag3nts.md` and the tool's stub file from `shared/` to the platform config
 3. **Launch** the tool
 
@@ -121,32 +121,28 @@ The setup scripts create these automatically.
    ```powershell
    git clone https://github.com/rohanrgit/ag3nts.git D:\ag3nts
    ```
-   Or rename the folder to `Terminal-AI` if you prefer:
-   ```powershell
-   git clone https://github.com/rohanrgit/ag3nts.git D:\Terminal-AI
-   ```
 
 2. Install the tool binaries (one-time per platform):
    ```powershell
    # Claude Code — native installer, then move binary
    irm https://claude.ai/install.ps1 | iex
-   Move-Item "$env:USERPROFILE\.local\bin\claude.exe" "D:\Terminal-AI\windows\claude-code\bin\"
+   Move-Item "$env:USERPROFILE\.local\bin\claude.exe" "D:\ag3nts\windows\claude-code\bin\"
 
    # Portable Node.js — download zip, extract
    Invoke-WebRequest -Uri "https://nodejs.org/dist/v22.x.x/node-v22.x.x-win-x64.zip" -OutFile node.zip
-   Expand-Archive node.zip -DestinationPath "D:\Terminal-AI\windows\node\"
+   Expand-Archive node.zip -DestinationPath "D:\ag3nts\windows\node\"
    Remove-Item node.zip
 
    # Gemini CLI — install via portable npm
-   & "D:\Terminal-AI\windows\node\node-v22.x.x-win-x64\npm.cmd" install -g @google/gemini-cli --prefix "D:\Terminal-AI\windows\gemini-cli"
+   & "D:\ag3nts\windows\node\node-v22.x.x-win-x64\npm.cmd" install -g @google/gemini-cli --prefix "D:\ag3nts\windows\gemini-cli"
 
    # Codex CLI — install via portable npm
-   & "D:\Terminal-AI\windows\node\node-v22.x.x-win-x64\npm.cmd" install -g @openai/codex --prefix "D:\Terminal-AI\windows\codex-cli"
+   & "D:\ag3nts\windows\node\node-v22.x.x-win-x64\npm.cmd" install -g @openai/codex --prefix "D:\ag3nts\windows\codex-cli"
    ```
 
 3. Run the setup script (PowerShell as Administrator):
    ```powershell
-   & "D:\Terminal-AI\windows\setup.ps1"
+   & "D:\ag3nts\windows\setup.ps1"
    ```
 
 4. Open a new terminal and start using:
@@ -160,30 +156,30 @@ The setup scripts create these automatically.
 
 1. Clone this repo to your SSD (mounted at `/Volumes/<SSD_NAME>/`):
    ```bash
-   git clone https://github.com/rohanrgit/ag3nts.git /Volumes/<SSD_NAME>/Terminal-AI
+   git clone https://github.com/rohanrgit/ag3nts.git /Volumes/<SSD_NAME>/ag3nts
    ```
 
 2. Install tool binaries and portable Node (arm64 for Apple Silicon):
    ```bash
    # Claude Code
    curl -fsSL https://claude.ai/install.sh | bash
-   mv ~/.local/bin/claude /Volumes/<SSD_NAME>/Terminal-AI/macos/claude-code/bin/
+   mv ~/.local/bin/claude /Volumes/<SSD_NAME>/ag3nts/macos/claude-code/bin/
 
    # Portable Node.js (arm64)
    curl -o node.tar.gz https://nodejs.org/dist/v22.x.x/node-v22.x.x-darwin-arm64.tar.gz
-   tar -xzf node.tar.gz -C /Volumes/<SSD_NAME>/Terminal-AI/macos/node/
+   tar -xzf node.tar.gz -C /Volumes/<SSD_NAME>/ag3nts/macos/node/
    rm node.tar.gz
 
    # Gemini CLI
-   /Volumes/<SSD_NAME>/Terminal-AI/macos/node/node-v22.x.x-darwin-arm64/bin/npm install -g @google/gemini-cli --prefix /Volumes/<SSD_NAME>/Terminal-AI/macos/gemini-cli
+   /Volumes/<SSD_NAME>/ag3nts/macos/node/node-v22.x.x-darwin-arm64/bin/npm install -g @google/gemini-cli --prefix /Volumes/<SSD_NAME>/ag3nts/macos/gemini-cli
 
    # Codex CLI
-   /Volumes/<SSD_NAME>/Terminal-AI/macos/node/node-v22.x.x-darwin-arm64/bin/npm install -g @openai/codex --prefix /Volumes/<SSD_NAME>/Terminal-AI/macos/codex-cli
+   /Volumes/<SSD_NAME>/ag3nts/macos/node/node-v22.x.x-darwin-arm64/bin/npm install -g @openai/codex --prefix /Volumes/<SSD_NAME>/ag3nts/macos/codex-cli
    ```
 
 3. Run the setup script:
    ```bash
-   bash /Volumes/<SSD_NAME>/Terminal-AI/macos/setup.sh
+   bash /Volumes/<SSD_NAME>/ag3nts/macos/setup.sh
    ```
 
 4. Restart terminal and authenticate each tool.

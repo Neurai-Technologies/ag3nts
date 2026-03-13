@@ -1,8 +1,8 @@
 #!/bin/bash
 # =============================================================================
-# Terminal-AI Setup Script (macOS)
+# ag3nts Setup Script (macOS)
 # Auto-detects SSD mount point, creates symlinks, syncs shared configs.
-# Run with: bash /Volumes/<SSD_NAME>/Terminal-AI/setup.sh
+# Run with: bash /Volumes/<SSD_NAME>/ag3nts/setup.sh
 # =============================================================================
 
 set -e
@@ -15,34 +15,24 @@ fail()  { echo -e "   \033[31mFAIL: $1\033[0m"; }
 
 # --- Pre-flight ---
 echo "============================================="
-echo "  Terminal-AI Setup Script (macOS)"
+echo "  ag3nts Setup Script (macOS)"
 echo "============================================="
 
 # --- Auto-detect SSD ---
-step "Scanning for Terminal-AI folder..."
-BASE_PATH=""
+step "Scanning for ag3nts folder (up to 5 levels deep)..."
 
-# Check /Volumes/ (external drives on macOS)
-for vol in /Volumes/*/; do
-    if [ -d "${vol}Terminal-AI" ]; then
-        BASE_PATH="${vol}Terminal-AI"
-        ok "Found Terminal-AI at $BASE_PATH"
-        break
-    fi
-done
-
-# Fallback: check home directory
+# Search /Volumes (external drives) and $HOME for ag3nts project
+BASE_PATH=$(find /Volumes -maxdepth 5 -type d -name "ag3nts" -exec test -f "{}/shared/ag3nts.md" \; -print -quit 2>/dev/null)
 if [ -z "$BASE_PATH" ]; then
-    if [ -d "$HOME/Terminal-AI" ]; then
-        BASE_PATH="$HOME/Terminal-AI"
-        ok "Found Terminal-AI at $BASE_PATH"
-    fi
+    BASE_PATH=$(find "$HOME" -maxdepth 4 -type d -name "ag3nts" -exec test -f "{}/shared/ag3nts.md" \; -print -quit 2>/dev/null)
 fi
 
-if [ -z "$BASE_PATH" ]; then
-    fail "Terminal-AI folder not found."
-    echo "   Checked /Volumes/*/ and $HOME/"
-    echo "   Make sure your SSD is connected and contains a 'Terminal-AI' folder."
+if [ -n "$BASE_PATH" ]; then
+    ok "Found ag3nts at $BASE_PATH"
+else
+    fail "ag3nts folder not found."
+    echo "   Searched /Volumes/ and $HOME/ (up to 5 levels deep)"
+    echo "   Make sure your SSD is connected and contains the ag3nts folder."
     exit 1
 fi
 
@@ -61,7 +51,7 @@ GEMINI_CONFIG_LOCAL="$HOME/.gemini"
 CODEX_CONFIG_LOCAL="$HOME/.codex"
 
 # --- Validate SSD Contents ---
-step "Validating Terminal-AI folder structure..."
+step "Validating ag3nts folder structure..."
 MISSING=()
 [ ! -d "$CLAUDE_BIN_SSD" ] && MISSING+=("macos/claude-code/bin")
 [ ! -d "$CLAUDE_CONFIG_SSD" ] && MISSING+=("macos/claude-code/config")
@@ -138,7 +128,7 @@ else
         skip "PATH entry already in $SHELL_RC (restart terminal to apply)"
     else
         echo "" >> "$SHELL_RC"
-        echo "# Terminal-AI: Claude Code" >> "$SHELL_RC"
+        echo "# ag3nts: Claude Code" >> "$SHELL_RC"
         echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$SHELL_RC"
         ok "Added $CLAUDE_PATH to $SHELL_RC"
     fi

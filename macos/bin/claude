@@ -1,0 +1,22 @@
+#!/bin/bash
+# Auto-detect SSD, sync shared configs, launch Claude Code.
+
+# Search /Volumes and $HOME up to 5 levels deep for the ag3nts project
+BASE_PATH=$(find /Volumes -maxdepth 5 -type d -name "ag3nts" -exec test -f "{}/shared/ag3nts.md" \; -print -quit 2>/dev/null)
+if [ -z "$BASE_PATH" ]; then
+    BASE_PATH=$(find "$HOME" -maxdepth 4 -type d -name "ag3nts" -exec test -f "{}/shared/ag3nts.md" \; -print -quit 2>/dev/null)
+fi
+if [ -z "$BASE_PATH" ]; then
+    echo "Claude Code not found. Is the SSD connected?"
+    exit 1
+fi
+
+# Sync shared configs
+SHARED="$BASE_PATH/shared"
+CONFIG="$BASE_PATH/macos/claude-code/config"
+
+cmp -s "$SHARED/ag3nts.md" "$CONFIG/ag3nts.md" || cp "$SHARED/ag3nts.md" "$CONFIG/ag3nts.md"
+cmp -s "$SHARED/claude-code/CLAUDE.md" "$CONFIG/CLAUDE.md" || cp "$SHARED/claude-code/CLAUDE.md" "$CONFIG/CLAUDE.md"
+
+# Launch
+exec "$BASE_PATH/macos/claude-code/bin/claude" "$@"

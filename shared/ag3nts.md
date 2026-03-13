@@ -1,7 +1,7 @@
 ﻿# ag3nts.md â€” Shared Agent Instructions
 
 ## Context
-Developer: Rohan. Works across Windows + macOS. All AI tools on portable SSD at `Terminal-AI/` with symlinks to `~/.claude`, `~/.gemini`, `~/.codex`. Setup scripts: `windows/setup.ps1`, `macos/setup.sh`.
+Developer: Rohan. Works across Windows + macOS. All AI tools on portable SSD at `ag3nts/` with symlinks to `~/.claude`, `~/.gemini`, `~/.codex`. Setup scripts: `windows/setup.ps1`, `macos/setup.sh`.
 
 ## Tech Stack
 - **Languages:** Python (primary), TypeScript

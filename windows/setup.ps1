@@ -1,5 +1,5 @@
 # =============================================================================
-# Terminal-AI Setup Script (Windows)
+# ag3nts Setup Script (Windows)
 # Auto-detects SSD, creates symlinks, syncs shared configs.
 # Run in PowerShell as Administrator.
 # =============================================================================
@@ -14,7 +14,7 @@ function Write-Fail($msg) { Write-Host "   FAIL: $msg" -ForegroundColor Red }
 
 # --- Pre-flight Checks ---
 Write-Host "=============================================" -ForegroundColor Cyan
-Write-Host "  Terminal-AI Setup Script (Windows)" -ForegroundColor Cyan
+Write-Host "  ag3nts Setup Script (Windows)" -ForegroundColor Cyan
 Write-Host "=============================================" -ForegroundColor Cyan
 
 Write-Step "Checking administrator privileges..."
@@ -27,33 +27,27 @@ if (-not $isAdmin) {
 Write-Ok "Running as Administrator."
 
 # --- Auto-detect SSD Drive Letter ---
-Write-Step "Scanning for Terminal-AI folder across all drives..."
+Write-Step "Scanning for ag3nts folder across all drives (up to 3 levels deep)..."
 $BASE_PATH = $null
 $drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -ne "C:\" }
+$allRoots = @($drives | ForEach-Object { $_.Root }) + @("C:\")
 
-foreach ($drive in $drives) {
-    $candidate = Join-Path $drive.Root "Terminal-AI"
-    if (Test-Path $candidate) {
-        $BASE_PATH = $candidate
-        Write-Ok "Found Terminal-AI at $BASE_PATH (Drive: $($drive.Root))"
+foreach ($root in $allRoots) {
+    $found = Get-ChildItem -Path $root -Directory -Recurse -Depth 3 -Filter "ag3nts" -ErrorAction SilentlyContinue |
+        Where-Object { Test-Path (Join-Path $_.FullName "shared\ag3nts.md") } |
+        Select-Object -First 1
+    if ($found) {
+        $BASE_PATH = $found.FullName
+        Write-Ok "Found ag3nts at $BASE_PATH (Drive: $root)"
         break
     }
 }
 
-# Fallback: check C:\
 if (-not $BASE_PATH) {
-    $candidate = "C:\Terminal-AI"
-    if (Test-Path $candidate) {
-        $BASE_PATH = $candidate
-        Write-Ok "Found Terminal-AI at $BASE_PATH (Drive: C:\)"
-    }
-}
-
-if (-not $BASE_PATH) {
-    Write-Fail "Terminal-AI folder not found on any drive."
-    Write-Host "   Drives scanned:" -ForegroundColor Red
-    Get-PSDrive -PSProvider FileSystem | ForEach-Object { Write-Host "   - $($_.Root)" -ForegroundColor Red }
-    Write-Host "   Make sure your SSD is connected and contains a 'Terminal-AI' folder at its root." -ForegroundColor Red
+    Write-Fail "ag3nts folder not found on any drive."
+    Write-Host "   Drives scanned (up to 3 levels deep):" -ForegroundColor Red
+    $allRoots | ForEach-Object { Write-Host "   - $_" -ForegroundColor Red }
+    Write-Host "   Make sure your SSD is connected and contains the ag3nts folder." -ForegroundColor Red
     exit 1
 }
 
@@ -72,7 +66,7 @@ $GEMINI_CONFIG_LOCAL = "$env:USERPROFILE\.gemini"
 $CODEX_CONFIG_LOCAL = "$env:USERPROFILE\.codex"
 
 # --- Validate SSD Contents ---
-Write-Step "Validating Terminal-AI folder structure..."
+Write-Step "Validating ag3nts folder structure..."
 $missing = @()
 if (-not (Test-Path $CENTRAL_BIN_SSD)) { $missing += "windows\bin" }
 if (-not (Test-Path $CLAUDE_CONFIG_SSD)) { $missing += "windows\claude-code\config" }
@@ -123,7 +117,7 @@ New-SymlinkSafe $GEMINI_CONFIG_LOCAL $GEMINI_CONFIG_SSD "Gemini CLI config"
 New-SymlinkSafe $CODEX_CONFIG_LOCAL $CODEX_CONFIG_SSD "Codex CLI config"
 
 # --- PATH: Add central bin location ---
-Write-Step "Checking PATH for Terminal-AI bin..."
+Write-Step "Checking PATH for ag3nts bin..."
 $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
 $binPath = "$env:USERPROFILE\.local\bin"
 
