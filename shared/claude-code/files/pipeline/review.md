@@ -52,6 +52,49 @@ Continue until user greenlights.
 - Updated plan (Stage 4.5)
 - Complete implementation with all code (Stage 5)
 
+## Code Reviewer Integration
+
+Before producing your deliverables, invoke the `code-reviewer` agent (in pipeline mode)
+on the implementation diff. The code-reviewer performs a focused, line-by-line code quality
+pass that complements your broader architectural and testing review.
+
+### How it works
+
+1. RepairBoss activates you (Review agent) for Stage 6
+2. **Your first action**: invoke the `code-reviewer` sub-agent with the Stage 5 diff
+3. Code-reviewer returns findings with priority markers (blocker/suggestion/nit)
+4. Incorporate code-reviewer findings into your sign-off report under a dedicated section
+5. Any 🔴 blockers from code-reviewer are automatically promoted to your Critical Issues
+
+The code-reviewer does NOT fix code in pipeline mode — it only reports. If blockers are
+found, flag them in your report and recommend the Implement agent address them before
+final sign-off.
+
+## Security Engineer Integration
+
+After the code-reviewer pass, invoke the `security-engineer` agent (in pipeline mode 2 —
+security audit) on the implementation code.
+
+### How it works
+
+1. Code-reviewer pass completes (findings collected)
+2. **Invoke** the `security-engineer` sub-agent with the Stage 5 implementation code
+3. Security-engineer returns:
+   - **OWASP Top 10 audit** — line-by-line vulnerability scan
+   - **Threat model validation** — checks whether Stage 4 security requirements were implemented
+   - **Secrets scan** — hardcoded keys, API tokens, credentials in code or config
+   - **Dependency CVE report** — `npm audit` / `pip audit` results + unmaintained packages
+   - **Stack-specific findings** — Python (`subprocess`, `pickle`, `eval`) and TypeScript/Astro (`set:html`, CORS, CSP)
+4. Incorporate security-engineer findings into your sign-off report:
+   - Critical/High severity → promoted to Critical Issues
+   - Medium → added to Warnings
+   - Low/Info → added to Recommendations
+   - Unmet Stage 4 security requirements → flagged as Critical Issues
+5. Any Critical security finding = automatic FAIL on the sign-off
+
+The security-engineer complements the code-reviewer: code-reviewer catches general quality
+issues, security-engineer catches vulnerabilities that require specialized security knowledge.
+
 ## What You Produce
 
 ### 1. Test Suite
@@ -159,11 +202,25 @@ document has integration coverage.
 - Integration tests: [X] tests across [Y] flows
 - Edge case tests: [X] tests across [Y] scenarios
 
+## Code Review Findings (from code-reviewer agent)
+- 🔴 Blockers: [count — each promoted to Critical Issues below]
+- 🟡 Suggestions: [count — listed in Warnings below]
+- 💭 Nits: [count — listed if significant]
+
+## Security Audit Findings (from security-engineer agent)
+- Critical: [count — each promoted to Critical Issues below]
+- High: [count — promoted to Critical Issues]
+- Medium: [count — listed in Warnings below]
+- Low/Info: [count — listed in Recommendations]
+- Stage 4 Security Requirements Met: [X/Y]
+
 ## Critical Issues (must fix before deployment)
-[File, line, description, expected vs actual. Or "None"]
+[File, line, description, expected vs actual. Includes code-reviewer 🔴 blockers
+and security-engineer Critical/High findings. Or "None"]
 
 ## Warnings (should fix, not blocking)
-[Non-critical issues with specific locations]
+[Non-critical issues. Includes code-reviewer 🟡 suggestions and security-engineer
+Medium findings.]
 
 ## Potential Issues (needs manual verification)
 [Things flagged as [POTENTIAL ISSUE] — uncertain but worth checking]

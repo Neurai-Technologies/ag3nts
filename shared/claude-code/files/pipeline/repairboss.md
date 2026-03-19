@@ -246,7 +246,15 @@ Read `agents/architecture.md`. Use `agents/agent-prompt.md` to craft the prompt.
 
 **Model**: Opus 4.6 (ALL turns) | **Thinking**: ON | **Research**: OFF
 **Input**: Discovery Brief + Research + Evaluation + Approved Plan
-**Turn 1**: Full architecture document → presented to user
+**Sub-steps** (both auto-invoked by the Architecture agent after its Turn 1 draft):
+1. `software-architect` (Opus, pipeline mode) — validates design decisions via ADRs,
+   performs domain modeling (bounded contexts, aggregates), audits dependencies against
+   its 6-dimension trade-off framework.
+2. `security-engineer` (Opus, pipeline mode 1 — threat model) — maps the attack surface,
+   runs STRIDE analysis per component, defines security requirements for Implementation,
+   flags missing controls (auth, encryption, rate limiting, CSP).
+The Architecture agent incorporates both sets of findings before presenting to the user.
+**Turn 1**: Draft architecture + software-architect enrichment + security threat model → presented to user
 **Turn 2...N**: Iterate with user until architecture is approved
 **Greenlight**: User explicitly approves → triggers Plan Update, then proceed to Implement
 
@@ -297,7 +305,14 @@ Read `agents/review.md`. Use `agents/agent-prompt.md` to craft the prompt.
 
 **Model**: Opus 4.6 (Turn 1) → Sonnet 4.6 (targeted fixes) | **Thinking**: ON | **Research**: OFF
 **Input**: All prior artifacts including implementation code
-**Turn 1**: Test suite + dependency audit + edge case analysis + sign-off
+**Sub-steps** (both auto-invoked by the Review agent before producing deliverables):
+1. `code-reviewer` (Sonnet, pipeline mode) — line-by-line code quality pass on Stage 5 diff,
+   returns findings with priority markers (blocker/suggestion/nit).
+2. `security-engineer` (Opus, pipeline mode 2 — security audit) — OWASP Top 10 scan,
+   validates Stage 4 security requirements were implemented, secrets scan, dependency CVE
+   check. Critical/High findings become Critical Issues, any unmet security requirement = FAIL.
+The Review agent incorporates both sets of findings into its sign-off report.
+**Turn 1**: Code review + security audit + test suite + dependency audit + edge case analysis + sign-off
 **Turn 2...N**: Refine per user/boss feedback
 **Greenlight**: User confirms review is complete → pipeline done
 
@@ -310,6 +325,62 @@ Read `agents/knowledge.md`. No agent-prompt needed — runs with raw stage outpu
 **Action**: Extract all URLs, repos, and doc links → append new ones to
 `/Volumes/S990Pro4TB/SourceCodes/Products/ag3nts/shared/claude-code/knowledge-base/repos.md`
 **Rules**: Append-only, no duplicates, no permissions required, no user interaction
+
+### Software Architect Agent (Dual-Mode)
+The Software Architect is a Claude Code sub-agent at `~/.claude/agents/software-architect.md`.
+It operates in two modes:
+
+**Pipeline mode** (within REPAIR):
+- Auto-invoked by the Architecture agent after it produces its Turn 1 draft
+- Produces full ADRs for each design decision in the Design Decisions Log
+- Performs domain modeling (bounded contexts, aggregates, invariants)
+- Audits every dependency against its 6-dimension trade-off framework
+- Returns findings to the Architecture agent — does NOT rewrite the document
+
+**Standalone mode** (outside REPAIR):
+- Manually invoked for ad-hoc architectural questions
+- Delivers full recommendations with ADR format directly to the user
+- Uses WebSearch to research unfamiliar patterns or compare library options
+
+### Security Engineer Agent (Tri-Mode)
+The Security Engineer is a Claude Code sub-agent at `~/.claude/agents/security-engineer.md`.
+It operates in three modes:
+
+**Pipeline mode 1 — Architecture threat model** (Stage 4):
+- Auto-invoked by the Architecture agent after software-architect enrichment
+- Produces attack surface map, STRIDE threat analysis per component
+- Defines mandatory security requirements for the Implement agent
+- Flags missing controls (auth, encryption, rate limiting, input validation, CSP)
+- Returns findings to Architecture agent → incorporated as "Security Architecture" section
+
+**Pipeline mode 2 — Security audit** (Stage 6):
+- Auto-invoked by the Review agent after code-reviewer pass
+- Runs OWASP Top 10 line-by-line scan on implementation code
+- Validates that Stage 4 security requirements were actually implemented
+- Scans for hardcoded secrets, runs dependency CVE checks
+- Returns findings to Review agent → Critical/High become Critical Issues, unmet requirements = FAIL
+
+**Standalone mode** (outside REPAIR):
+- Auto-invokes when changes touch security-sensitive files (`*auth*`, `*secret*`, `*token*`,
+  `*password*`, `*.env*`, config files, CI/CD pipelines, files importing crypto/auth/JWT libraries)
+- Manually invokable for ad-hoc security audits
+- Delivers findings directly to the user with severity + fix
+
+### Code Reviewer Agent (Dual-Mode)
+The Code Reviewer is a Claude Code sub-agent at `~/.claude/agents/code-reviewer.md`.
+It operates in two modes:
+
+**Pipeline mode** (within REPAIR):
+- Invoked by the Review agent as its first action in Stage 6
+- Performs line-by-line code quality review on the Stage 5 implementation diff
+- Returns findings with priority markers (🔴 blocker / 🟡 suggestion / 💭 nit)
+- Does NOT fix code — reports only. Review agent incorporates findings into sign-off.
+
+**Standalone mode** (outside REPAIR):
+- Auto-invokes when the user is about to commit, push, or create a PR
+- Fixes 🔴 blockers directly using the Edit tool, re-stages affected files
+- Reports 🟡 suggestions for the user to decide on
+- Keeps output concise — no preamble, just findings and fixes
 
 ### Feedback Agent (Cross-Cutting)
 The Feedback agent is a native Claude Code sub-agent at `~/.claude/agents/feedback.md`.
@@ -338,9 +409,13 @@ user preferences into every sub-agent prompt it crafts (via the "User Preference
 | Evaluate     | Agent → User     | Sub-agent     | No     | N     | Opus 4.6    | Sonnet 4.6      |
 | Plan         | User-iterative   | User + Agent  | No     | N     | Opus 4.6    | Opus 4.6        |
 | Architecture | User-approval    | Agent → User  | No     | N     | Opus 4.6    | Opus 4.6        |
+| Soft. Architect | Sub-step of Arch | Sub-agent  | No     | 1     | Opus 4.6    | —               |
+| Security (TM)| Sub-step of Arch | Sub-agent    | No     | 1     | Opus 4.6    | —               |
 | Plan Update  | Automatic        | RepairBoss    | No     | 1-2   | Haiku 4.5   | Opus 4.6        |
 | Implement    | User-iterative   | Sub-agent     | Yes    | N     | Sonnet 4.6  | Sonnet 4.6      |
 | Review       | Agent → User     | Sub-agent     | Tests  | N     | Opus 4.6    | Sonnet 4.6      |
+| Code Review  | Sub-step of Review | Sub-agent   | No     | 1     | Sonnet 4.6  | —               |
+| Security (Audit) | Sub-step of Review | Sub-agent | No  | 1     | Opus 4.6    | —               |
 | Knowledge    | Automatic        | Sub-agent     | No     | 1     | Haiku 4.5   | —               |
 | Feedback     | Proactive        | Sub-agent     | No     | 1-5   | Haiku 4.5   | —               |
 

@@ -113,3 +113,4 @@ $RECYCLE.BIN/
 
 # --- Codex session logs ---
 **/config/sessions/
+**/config/image-cache/

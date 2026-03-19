@@ -33,6 +33,36 @@ Python: `pytest`, files named `test_<module>.py`, mock external services. TypeSc
 | Lint Python | `ruff check .` |
 | Format Python | `ruff format .` |
 
+## Agents
+
+Sub-agents installed in `~/.claude/agents/`. Activate by name in any conversation.
+
+| Agent | Model | Web | Purpose |
+|---|---|---|---|
+| `feedback` | Haiku | - | Captures user feedback and preferences across sessions |
+| `code-reviewer` | Sonnet | - | Dual-mode: REPAIR Stage 6 sub-step + auto-invokes before commit/push/PR |
+| `accessibility-auditor` | Sonnet | WCAG refs | WCAG 2.2 AA audits, screen reader testing, POUR checklist |
+| `software-architect` | Opus | Patterns | Dual-mode: REPAIR Stage 4 sub-step (ADRs, domain modeling) + standalone |
+| `reality-checker` | Sonnet | - | Production readiness gate, defaults to NEEDS WORK |
+| `security-engineer` | Opus | CVEs | Tri-mode: Stage 4 threat model + Stage 6 OWASP audit + auto-invoke on auth/secrets |
+| `ux-architect` | Sonnet | Tailwind | Design tokens, theme scaffolding, layout systems |
+| `version` | Haiku | - | Agent inventory audit, consistency checks, drift detection |
+
+Source: adapted from [agency-agents](https://github.com/msitarzewski/agency-agents) (engineering, design, testing divisions), trimmed and customized for this stack.
+
+## Auto-Invoke Rules
+
+**Before any `git commit` or `git push`**: Always invoke the `code-reviewer` agent first.
+It reviews staged changes, fixes blockers automatically, and reports suggestions. Do not
+commit or push until the code-reviewer pass completes. If blockers were fixed, re-stage
+the affected files before proceeding with the commit.
+
+**Before creating a PR**: Invoke `code-reviewer` on the full branch diff (`git diff main...HEAD`).
+
+**When touching security-sensitive files**: Invoke `security-engineer` when changes touch
+files matching `*auth*`, `*login*`, `*session*`, `*token*`, `*secret*`, `*password*`,
+`*.env*`, config files, CI/CD pipelines, or files importing crypto/auth/JWT libraries.
+
 ## Interaction Rules
 - Be concise. No over-explaining.
 - Show diffs/snippets, not full files.

@@ -53,6 +53,53 @@ proceeds to Implement.
 - Evaluation report (Stage 2)
 - Approved project plan with Days → Phases → Steps (Stage 3)
 
+## Software Architect Integration
+
+After producing your Turn 1 draft architecture document, invoke the `software-architect`
+agent (in pipeline mode) to validate and deepen your design.
+
+### How it works
+
+1. You produce the full architecture document (Turn 1)
+2. **Immediately invoke** the `software-architect` sub-agent with your draft
+3. Software-architect returns:
+   - **ADRs** — a full Architecture Decision Record for each entry in your Design Decisions Log
+   - **Domain model** — bounded contexts, aggregates, invariants for your component design
+   - **Dependency audit** — trade-off analysis for each dependency against its 6-dimension framework
+4. Incorporate its findings into your architecture document:
+   - Replace the Design Decisions Log table with the full ADRs
+   - Add a Domain Model section based on its bounded context analysis
+   - Annotate the Dependency Map with its trade-off assessments
+5. Present the enriched document to the user for approval
+
+The software-architect does NOT rewrite your document — it provides structured input
+that you weave into the architecture. You own the final document.
+
+## Security Engineer Integration
+
+After incorporating the software-architect's findings, invoke the `security-engineer`
+agent (in pipeline mode 1 — architecture threat model) to validate security posture.
+
+### How it works
+
+1. You incorporate the software-architect's ADRs and domain model into your draft
+2. **Invoke** the `security-engineer` sub-agent with the enriched architecture document
+3. Security-engineer returns:
+   - **Attack surface map** — all entry points, trust boundaries, data flows crossing boundaries
+   - **STRIDE analysis** — threats per component (Spoofing, Tampering, Repudiation, Info Disclosure, DoS, Elevation)
+   - **Security requirements** — concrete requirements the Implement agent must follow
+   - **Missing controls** — gaps in auth, encryption, rate limiting, input validation, CSP
+4. Incorporate its findings into your architecture document:
+   - Replace the "Security Considerations" bullet in Cross-Cutting Concerns with a full "Security Architecture" section
+   - Add the security requirements to a new "Security Requirements" section — these become mandatory for Stage 5
+   - Annotate components with their trust boundary and data sensitivity from the attack surface map
+5. Present the fully enriched document to the user for approval
+
+The security-engineer focuses on design-level threats, not code. It does NOT run OWASP
+line scans — that happens in Stage 6. Here it catches auth design flaws, unencrypted
+data flows, missing access control boundaries, and insecure API contracts before any
+code is written.
+
 ## What You Produce
 
 A comprehensive architecture document that answers: "If a competent developer read only
@@ -111,8 +158,17 @@ this document, could they build the system?" The answer should be yes.
 ## Cross-Cutting Concerns
 - Error Handling Strategy
 - Logging & Observability
-- Security Considerations
 - Performance Considerations
+
+## Security Architecture (from security-engineer)
+### Attack Surface
+| Entry Point | Trust Boundary | Data Sensitivity | Exposure |
+### STRIDE Threat Analysis
+| Component | Threat | Category | Likelihood | Impact | Mitigation |
+### Security Requirements (mandatory for Implementation)
+1. [Requirement with acceptance criteria]
+### Missing Controls
+- [Control]: [Recommendation]
 
 ## Design Decisions Log
 

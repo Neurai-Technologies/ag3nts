@@ -157,6 +157,37 @@ foreach ($pair in $syncPairs) {
         }
     }
 }
+
+# Sync shared subdirectories (agents and pipeline files)
+$subdirPairs = @(
+    @{ Shared = "$SHARED\claude-code\files\agents"; Platform = "$CLAUDE_CONFIG_SSD\agents"; Label = "agent" },
+    @{ Shared = "$SHARED\claude-code\files\pipeline"; Platform = "$CLAUDE_CONFIG_SSD\files"; Label = "pipeline" }
+)
+
+foreach ($pair in $subdirPairs) {
+    if (Test-Path $pair.Shared) {
+        if (-not (Test-Path $pair.Platform)) {
+            New-Item -ItemType Directory -Path $pair.Platform -Force | Out-Null
+        }
+        $files = Get-ChildItem $pair.Shared -File -ErrorAction SilentlyContinue
+        foreach ($file in $files) {
+            $dest = Join-Path $pair.Platform $file.Name
+            $destExists = Test-Path $dest
+            if ($destExists) {
+                $srcHash = (Get-FileHash $file.FullName).Hash
+                $dstHash = (Get-FileHash $dest).Hash
+                if ($srcHash -ne $dstHash) {
+                    Copy-Item $file.FullName $dest -Force
+                    Write-Ok "Updated $($pair.Label): $($file.Name)"
+                }
+            } else {
+                Copy-Item $file.FullName $dest -Force
+                Write-Ok "Copied $($pair.Label): $($file.Name)"
+            }
+        }
+    }
+}
+
 Write-Ok "Shared config sync complete."
 
 # --- Verification ---
