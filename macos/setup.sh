@@ -146,6 +146,8 @@ sync_shared() {
             [ -f "$file" ] || continue
             filename=$(basename "$file")
             dest="$platform_dir/$filename"
+            # Skip files that are already symlinked
+            [ -L "$dest" ] && continue
             if [ -f "$dest" ]; then
                 if ! cmp -s "$file" "$dest"; then
                     cp "$file" "$dest"
@@ -159,40 +161,37 @@ sync_shared() {
     fi
 }
 
-# Sync a shared subdirectory into a platform subdirectory (e.g., agents/)
-sync_shared_subdir() {
-    local shared_dir="$1"
-    local platform_dir="$2"
+# Symlink shared Claude Code files (single source of truth, no copies)
+symlink_shared() {
+    local target="$1"
+    local link="$2"
     local label="$3"
 
-    if [ -d "$shared_dir" ]; then
-        mkdir -p "$platform_dir"
-        for file in "$shared_dir"/*; do
-            [ -f "$file" ] || continue
-            filename=$(basename "$file")
-            dest="$platform_dir/$filename"
-            if [ -f "$dest" ]; then
-                if ! cmp -s "$file" "$dest"; then
-                    cp "$file" "$dest"
-                    ok "Updated $label: $filename"
-                fi
-            else
-                cp "$file" "$dest"
-                ok "Copied $label: $filename"
-            fi
-        done
+    if [ -L "$link" ]; then
+        current=$(readlink "$link")
+        if [ "$current" = "$target" ]; then
+            skip "Symlink already correct: $label"
+        else
+            rm "$link"
+            ln -s "$target" "$link"
+            ok "Updated symlink: $label"
+        fi
+    elif [ -e "$link" ]; then
+        rm -rf "$link"
+        ln -s "$target" "$link"
+        ok "Replaced copy with symlink: $label"
+    else
+        ln -s "$target" "$link"
+        ok "Created symlink: $label"
     fi
 }
 
-# Sync ag3nts.md from shared root (sentinel file, canonical source)
-if ! cmp -s "$SHARED/ag3nts.md" "$CLAUDE_CONFIG_SSD/ag3nts.md"; then
-    cp "$SHARED/ag3nts.md" "$CLAUDE_CONFIG_SSD/ag3nts.md"
-    ok "Updated: ag3nts.md (from shared root)"
-fi
+symlink_shared "../../../shared/ag3nts.md" "$CLAUDE_CONFIG_SSD/ag3nts.md" "ag3nts.md"
+symlink_shared "../../../shared/claude-code/CLAUDE.md" "$CLAUDE_CONFIG_SSD/CLAUDE.md" "CLAUDE.md"
+symlink_shared "../../../shared/claude-code/statusline.sh" "$CLAUDE_CONFIG_SSD/statusline.sh" "statusline.sh"
+symlink_shared "../../../shared/claude-code/files/agents" "$CLAUDE_CONFIG_SSD/agents" "agents/"
 
 sync_shared "$SHARED/claude-code" "$CLAUDE_CONFIG_SSD"
-sync_shared_subdir "$SHARED/claude-code/files/agents" "$CLAUDE_CONFIG_SSD/agents" "agent"
-sync_shared_subdir "$SHARED/claude-code/files/pipeline" "$CLAUDE_CONFIG_SSD/files" "pipeline"
 sync_shared "$SHARED/gemini-cli" "$GEMINI_CONFIG_SSD"
 sync_shared "$SHARED/codex-cli" "$CODEX_CONFIG_SSD"
 ok "Shared config sync complete."

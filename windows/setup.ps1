@@ -131,6 +131,32 @@ if ($userPath -split ";" | Where-Object { $_ -eq $binPath }) {
 
 # --- Sync Shared Configs ---
 Write-Step "Syncing shared configs to Windows platform..."
+# Symlink shared Claude Code files (single source of truth, no copies)
+function New-SharedSymlink($target, $link, $label) {
+    if (Test-Path $link) {
+        $item = Get-Item $link -Force
+        if ($item.Attributes -match "ReparsePoint") {
+            $currentTarget = $item.Target
+            if ($currentTarget -eq $target) {
+                Write-Skip "Symlink already correct: $label"
+                return
+            }
+            Remove-Item $link -Force
+        } else {
+            Remove-Item $link -Recurse -Force
+            Write-Ok "Replaced copy with symlink: $label"
+        }
+    }
+    New-Item -ItemType SymbolicLink -Path $link -Target $target | Out-Null
+    Write-Ok "Created symlink: $label"
+}
+
+New-SharedSymlink "$SHARED\ag3nts.md" "$CLAUDE_CONFIG_SSD\ag3nts.md" "ag3nts.md"
+New-SharedSymlink "$SHARED\claude-code\CLAUDE.md" "$CLAUDE_CONFIG_SSD\CLAUDE.md" "CLAUDE.md"
+New-SharedSymlink "$SHARED\claude-code\statusline.sh" "$CLAUDE_CONFIG_SSD\statusline.sh" "statusline.sh"
+New-SharedSymlink "$SHARED\claude-code\files\agents" "$CLAUDE_CONFIG_SSD\agents" "agents/"
+
+# Sync remaining shared configs (gemini, codex — still copy-based)
 $syncPairs = @(
     @{ Shared = "$SHARED\claude-code"; Platform = $CLAUDE_CONFIG_SSD },
     @{ Shared = "$SHARED\gemini-cli"; Platform = $GEMINI_CONFIG_SSD },
@@ -141,7 +167,11 @@ foreach ($pair in $syncPairs) {
     if (Test-Path $pair.Shared) {
         $files = Get-ChildItem $pair.Shared -File -ErrorAction SilentlyContinue
         foreach ($file in $files) {
+            # Skip files that are now symlinked
             $dest = Join-Path $pair.Platform $file.Name
+            if ((Test-Path $dest) -and ((Get-Item $dest -Force).Attributes -match "ReparsePoint")) {
+                continue
+            }
             $destExists = Test-Path $dest
             if ($destExists) {
                 $srcHash = (Get-FileHash $file.FullName).Hash
@@ -153,36 +183,6 @@ foreach ($pair in $syncPairs) {
             } else {
                 Copy-Item $file.FullName $dest -Force
                 Write-Ok "Copied: $($file.Name) -> $($pair.Platform | Split-Path -Leaf)"
-            }
-        }
-    }
-}
-
-# Sync shared subdirectories (agents and pipeline files)
-$subdirPairs = @(
-    @{ Shared = "$SHARED\claude-code\files\agents"; Platform = "$CLAUDE_CONFIG_SSD\agents"; Label = "agent" },
-    @{ Shared = "$SHARED\claude-code\files\pipeline"; Platform = "$CLAUDE_CONFIG_SSD\files"; Label = "pipeline" }
-)
-
-foreach ($pair in $subdirPairs) {
-    if (Test-Path $pair.Shared) {
-        if (-not (Test-Path $pair.Platform)) {
-            New-Item -ItemType Directory -Path $pair.Platform -Force | Out-Null
-        }
-        $files = Get-ChildItem $pair.Shared -File -ErrorAction SilentlyContinue
-        foreach ($file in $files) {
-            $dest = Join-Path $pair.Platform $file.Name
-            $destExists = Test-Path $dest
-            if ($destExists) {
-                $srcHash = (Get-FileHash $file.FullName).Hash
-                $dstHash = (Get-FileHash $dest).Hash
-                if ($srcHash -ne $dstHash) {
-                    Copy-Item $file.FullName $dest -Force
-                    Write-Ok "Updated $($pair.Label): $($file.Name)"
-                }
-            } else {
-                Copy-Item $file.FullName $dest -Force
-                Write-Ok "Copied $($pair.Label): $($file.Name)"
             }
         }
     }
