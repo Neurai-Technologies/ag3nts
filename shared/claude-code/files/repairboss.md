@@ -144,7 +144,7 @@ and synthesis. Opus handles deep reasoning and critical decisions.
 | Implement    | Sonnet 4.6      | Sonnet 4.6       | ON       | ON (active) | High      |
 | Review       | Opus 4.6        | Sonnet 4.6*      | ON       | OFF         | Maximum   |
 | Knowledge    | Haiku 4.5       | —                | OFF      | OFF         | Low       |
-| Feedback     | Haiku 4.5       | —                | OFF      | OFF         | Standard  |
+| Feedback     | Haiku 4.5       | —                | ON (max) | OFF         | Maximum   |
 
 **Refinement model escalation rule** (marked with *): When the user's feedback involves
 substantive changes (new sections, rethinking an approach, significant restructuring),
@@ -315,8 +315,8 @@ Read `agents/knowledge.md`. No agent-prompt needed — runs with raw stage outpu
 The Feedback agent is a native Claude Code sub-agent at `~/.claude/agents/feedback.md`.
 It runs outside the REPAIR pipeline but integrates with it.
 
-**Model**: Haiku 4.5 | **Thinking**: OFF | **Memory**: User-level persistent
-**Trigger**: Proactively, whenever the user gives corrective feedback, expresses a preference,
+**Model**: Haiku 4.5 | **Thinking**: ON (max) | **Memory**: User-level persistent | **Auto-invoke**: ON
+**Trigger**: Automatically, whenever the user gives corrective feedback, expresses a preference,
 or says something like "don't do X", "always do Y", "I prefer Z", or "remember this".
 **Action**: Extracts, categorizes, and persists feedback to `~/.claude/agent-memory/feedback/`.
 **Integration**: The `agent-prompt` skill reads from feedback memory and injects relevant
