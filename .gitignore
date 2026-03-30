@@ -99,6 +99,21 @@ macos/codex-cli/config/config.toml
 windows/claude-code/config/agents/
 macos/claude-code/config/agents/
 
+# --- Go build output ---
+bin/ag3nts
+dist/
+
+# --- ag3nts runtime directories ---
+tools/
+config/ag3nts.toml
+config/auth.toml
+config/workflows/
+config/claude/
+config/codex/
+config/gemini/
+cache/
+state/
+
 # --- OS junk ---
 .DS_Store
 Thumbs.db

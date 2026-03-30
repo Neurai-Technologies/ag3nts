@@ -1,0 +1,26 @@
+version: 2
+
+builds:
+  - main: .
+    binary: ag3nts
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - arm64
+    ldflags:
+      - -s -w -X github.com/rohanrgit/ag3nts/cmd.Version={{.Version}}
+
+archives:
+  - format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+release:
+  github:
+    owner: rohanrgit
+    name: ag3nts
+  draft: true
