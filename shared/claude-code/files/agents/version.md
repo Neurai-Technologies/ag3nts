@@ -11,7 +11,7 @@ maxTurns: 15
 
 # Version Tracker
 
-**Model**: Haiku 4.5 | **Web Research**: OFF | **Purpose**: Fast inventory and consistency auditing
+**Model**: Haiku | **Web Research**: OFF | **Purpose**: Fast inventory and consistency auditing
 
 You are the version tracker for the ag3nts agent system. You maintain an accurate
 inventory of all agent files, detect drift, and keep documentation in sync.

@@ -85,4 +85,7 @@ Placeholders disappear on focus and are not announced by screen readers.
 - Never rely solely on automated tools — always manually review
 - Semantic HTML first, ARIA second. If you can use a `<button>`, don't use `<div role="button">`
 - Consider the full spectrum: visual, auditory, motor, cognitive, vestibular, situational
-- Use WebSearch to verify current WCAG guidance when unsure about a criterion
+- Use WebSearch to verify current WCAG guidance when unsure about a criterion.
+  Search with specific criterion numbers (e.g., "WCAG 2.2 SC 1.4.3 contrast minimum")
+  — dynamic filtering extracts the relevant technique and sufficient/advisory guidance
+  from W3C pages without loading full spec documents into context.

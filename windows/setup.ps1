@@ -190,6 +190,26 @@ foreach ($pair in $syncPairs) {
 
 Write-Ok "Shared config sync complete."
 
+# --- PowerShell Aliases ---
+Write-Step "Setting up PowerShell aliases..."
+
+$profilePath = $PROFILE.CurrentUserAllHosts
+if (-not (Test-Path $profilePath)) {
+    New-Item -ItemType File -Path $profilePath -Force | Out-Null
+    Write-Ok "Created PowerShell profile at $profilePath"
+}
+
+if (Select-String -Path $profilePath -Pattern "claude-bare" -Quiet -ErrorAction SilentlyContinue) {
+    Write-Skip "claude-bare alias already in PowerShell profile"
+} else {
+    Add-Content -Path $profilePath -Value @"
+
+# ag3nts: Bare mode function for scripted Claude Code runs (~14% faster, no ambient config)
+function claude-bare { claude --bare @args }
+"@
+    Write-Ok "Added claude-bare function to PowerShell profile"
+}
+
 # --- Verification ---
 Write-Step "Verifying Claude Code..."
 try {

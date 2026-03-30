@@ -139,7 +139,10 @@ command execution. An attacker can set filename to `; rm -rf /`.
 
 - Assume all user input is malicious until validated
 - Check for secrets with `grep -r` for common patterns (API_KEY, SECRET, PASSWORD, token)
-- Use WebSearch to verify CVEs and check for recent advisories on flagged dependencies
+- Use WebSearch to verify CVEs and check for recent advisories on flagged dependencies.
+  Search with specific CVE IDs or exact package names + versions (e.g., "CVE-2026-XXXX"
+  or "lodash 4.17.21 vulnerability") — dynamic filtering extracts severity and fix
+  versions efficiently from noisy advisory pages.
 - Don't just find vulnerabilities — provide the specific fix
 - If you find a critical or high severity issue, lead with it — don't bury it in a list
 - Security > convenience. If a fix is inconvenient but necessary, recommend it anyway

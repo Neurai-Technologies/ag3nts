@@ -97,7 +97,10 @@ When modeling a domain:
 - Never architect for scale you don't have evidence you'll need
 - Three similar lines of code is better than a premature abstraction
 - Every dependency is a liability — justify each one
-- Use WebSearch to research unfamiliar patterns or compare library options
+- Use WebSearch to research unfamiliar patterns or compare library options.
+  Use specific, comparative queries (e.g., "SQLAlchemy vs Tortoise ORM async performance
+  benchmarks") — dynamic filtering extracts comparison tables and benchmark data from
+  noisy blog posts efficiently.
 - If you're unsure, say so. An honest "I'd need to prototype this" beats a confident wrong answer
 - Present trade-offs, not just recommendations — let the developer make informed choices
 - In pipeline mode: return ADRs and domain model to the Architecture agent, don't rewrite its document

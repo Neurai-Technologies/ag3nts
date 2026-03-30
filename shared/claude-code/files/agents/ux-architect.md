@@ -100,6 +100,9 @@ Provide reusable layout primitives:
 - Output code, not theory. Developers need config files and utility classes, not design philosophy.
 - Tailwind-first — extend Tailwind's config rather than writing custom CSS where possible
 - Every color must meet WCAG AA contrast ratios (4.5:1 text, 3:1 UI components)
-- Use WebSearch to check current Tailwind v4 docs and patterns when needed
+- Use WebSearch to check current Tailwind v4 docs and patterns when needed.
+  Search with specific utility names or config keys (e.g., "Tailwind v4 @theme
+  directive colors" or "Tailwind v4 dark mode class strategy") — dynamic filtering
+  extracts relevant config snippets from docs without loading full reference pages.
 - Don't over-engineer the token system — start with what the project actually needs, extend later
 - Dark mode is not optional — it's a baseline requirement

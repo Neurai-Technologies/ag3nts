@@ -40,15 +40,37 @@ Sub-agents installed in `~/.claude/agents/`. Activate by name in any conversatio
 | Agent | Model | Web | Purpose |
 |---|---|---|---|
 | `feedback` | Haiku | - | Captures user feedback and preferences across sessions |
-| `code-reviewer` | Sonnet | - | Dual-mode: REPAIR Stage 6 sub-step + auto-invokes before commit/push/PR |
+| `code-reviewer` | Sonnet | - | Multi-agent dispatcher: 4 parallel specialists (correctness, security, convention, history) with confidence scoring. Dual-mode: REPAIR Stage 6 + auto-invoke before commit/push/PR |
 | `accessibility-auditor` | Sonnet | WCAG refs | WCAG 2.2 AA audits, screen reader testing, POUR checklist |
 | `software-architect` | Opus | Patterns | Dual-mode: REPAIR Stage 4 sub-step (ADRs, domain modeling) + standalone |
 | `reality-checker` | Sonnet | - | Production readiness gate, defaults to NEEDS WORK |
 | `security-engineer` | Opus | CVEs | Tri-mode: Stage 4 threat model + Stage 6 OWASP audit + auto-invoke on auth/secrets |
 | `ux-architect` | Sonnet | Tailwind | Design tokens, theme scaffolding, layout systems |
 | `version` | Haiku | - | Agent inventory audit, consistency checks, drift detection |
+| `anthropic` | Sonnet | Heavy | Scans Anthropic research/news/docs daily, proposes ag3nts integrations |
 
 Source: adapted from [agency-agents](https://github.com/msitarzewski/agency-agents) (engineering, design, testing divisions), trimmed and customized for this stack.
+
+## Permission Mode
+
+Auto mode is the default permission mode (`permissions.defaultMode: "auto"` in settings.json).
+An AI classifier (Sonnet, two-stage pipeline) reviews each tool call in real-time:
+
+- **Read-only actions + in-project file edits** → auto-approved (no classifier call)
+- **Shell commands, web fetches, external operations** → classifier-reviewed
+- **Destructive/dangerous actions** → blocked (force push, exfiltration, `curl | bash`, etc.)
+
+This eliminates approval fatigue during auto-invoke flows (code-reviewer dispatches 4
+parallel sub-agents, security-engineer runs audits — dozens of tool calls per commit).
+You only see a prompt when the classifier is genuinely uncertain or blocks a dangerous action.
+
+**Fallback**: 3 consecutive denials or 20 total denials → falls back to manual prompting.
+Approve one action to resume auto mode.
+
+**Override**: Cycle modes with `Shift+Tab`: `default → acceptEdits → plan → auto`.
+
+**Environment context** is configured in platform settings.json under `autoMode.environment`
+— tells the classifier which repos and infrastructure are trusted.
 
 ## Auto-Invoke Rules
 
@@ -70,6 +92,31 @@ Medium/Low findings are reported as warnings but do not block the push.
 **When touching security-sensitive files**: Invoke `security-engineer` when changes touch
 files matching `*auth*`, `*login*`, `*session*`, `*token*`, `*secret*`, `*password*`,
 `*.env*`, config files, CI/CD pipelines, or files importing crypto/auth/JWT libraries.
+
+## Scripted / Automated Runs
+
+When running Claude Code non-interactively (scripts, CI/CD, cron, automation), always use
+`--bare -p` for clean, isolated execution:
+
+```bash
+claude --bare -p "your prompt here"
+```
+
+**What `--bare` does**: Skips hooks, LSP, plugin sync, skill walks, MCP auto-discovery,
+CLAUDE.md loading, and auto-memory. Only built-in tools (Bash, Read, Write, Edit, Glob,
+Grep) are available by default. ~14% faster startup.
+
+**Auth**: Requires `ANTHROPIC_API_KEY` env var (OAuth/keychain is skipped in bare mode).
+
+**To add context explicitly** (since CLAUDE.md is skipped):
+```bash
+claude --bare -p "prompt" --append-system-prompt-file ./review-rules.txt
+claude --bare -p "prompt" --mcp-config ./mcp-servers.json
+claude --bare -p "prompt" --allowedTools "Bash,Read,WebSearch"
+```
+
+**When NOT to use `--bare`**: Interactive sessions, tasks needing hooks or auto-invoke
+rules, tasks depending on CLAUDE.md instructions or MCP servers from `.mcp.json`.
 
 ## Interaction Rules
 - Be concise. No over-explaining.

@@ -196,6 +196,30 @@ sync_shared "$SHARED/gemini-cli" "$GEMINI_CONFIG_SSD"
 sync_shared "$SHARED/codex-cli" "$CODEX_CONFIG_SSD"
 ok "Shared config sync complete."
 
+# --- Shell Aliases ---
+step "Setting up shell aliases..."
+
+# Detect shell config file
+if [ -f "$HOME/.zshrc" ]; then
+    SHELL_RC="$HOME/.zshrc"
+elif [ -f "$HOME/.bashrc" ]; then
+    SHELL_RC="$HOME/.bashrc"
+else
+    SHELL_RC="$HOME/.zshrc"
+fi
+
+# Add claude-bare alias for scripted/automated runs
+if grep -q "claude-bare" "$SHELL_RC" 2>/dev/null; then
+    skip "claude-bare alias already in $SHELL_RC"
+else
+    cat >> "$SHELL_RC" << 'ALIASES'
+
+# ag3nts: Bare mode alias for scripted Claude Code runs (~14% faster, no ambient config)
+alias claude-bare='claude --bare'
+ALIASES
+    ok "Added claude-bare alias to $SHELL_RC"
+fi
+
 # --- Verification ---
 step "Verifying Claude Code..."
 if [ -f "$CLAUDE_BIN_SSD/claude" ]; then

@@ -20,12 +20,12 @@ description: >
 
 | File                        | Role                               | Model         |
 |----------------------------|-------------------------------------|---------------|
-| `repairboss.md`            | Main orchestrator (YOU)             | Opus 4.6      |
-| `agents/agent-prompt.md`   | Prompt crafting (before every turn) | Haiku 4.5     |
-| `agents/research.md`       | Stage 1: Research                   | Sonnet 4.6    |
-| `agents/evaluate.md`       | Stage 2: Evaluate                   | Opus 4.6      |
-| `agents/plan.md`           | Stage 3: Plan                       | Opus 4.6      |
-| `agents/architecture.md`   | Stage 4: Architecture               | Opus 4.6      |
-| `agents/implement.md`      | Stage 5: Implement                  | Sonnet 4.6    |
-| `agents/review.md`         | Stage 6: Review                     | Opus 4.6      |
-| `~/.claude/agents/feedback.md` | Feedback capture (cross-cutting) | Haiku 4.5     |
+| `repairboss.md`            | Main orchestrator (YOU)             | Opus      |
+| `agents/agent-prompt.md`   | Prompt crafting (before every turn) | Haiku     |
+| `agents/research.md`       | Stage 1: Research                   | Sonnet    |
+| `agents/evaluate.md`       | Stage 2: Evaluate                   | Opus      |
+| `agents/plan.md`           | Stage 3: Plan                       | Opus      |
+| `agents/architecture.md`   | Stage 4: Architecture               | Opus      |
+| `agents/implement.md`      | Stage 5: Implement                  | Sonnet    |
+| `agents/review.md`         | Stage 6: Review                     | Opus      |
+| `~/.claude/agents/feedback.md` | Feedback capture (cross-cutting) | Haiku     |

@@ -16,7 +16,7 @@ autoInvoke: true
 
 # Feedback Sub-Agent
 
-**Model**: Haiku 4.5 | **Thinking**: ON (max) | **Reasoning**: Maximum
+**Model**: Haiku | **Thinking**: ON (max) | **Reasoning**: Maximum
 
 You are the Feedback agent. Your job is to observe, extract, categorize, and persist user
 feedback so that it influences all future interactions across every sub-agent and the main
