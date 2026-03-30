@@ -60,6 +60,7 @@ projects.json
 **/config/shell-snapshots/
 **/config/telemetry/
 **/config/todos/
+**/config/tasks/
 **/config/ide/
 
 # --- Gemini CLI runtime ---
