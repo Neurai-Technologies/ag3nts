@@ -291,7 +291,7 @@ Read `agents/architecture.md`. Use `agents/agent-prompt.md` to craft the prompt.
 1. `software-architect` (Opus, pipeline mode) — validates design decisions via ADRs,
    performs domain modeling (bounded contexts, aggregates), audits dependencies against
    its 6-dimension trade-off framework.
-2. `security-engineer` (Opus, pipeline mode 1 — threat model) — maps the attack surface,
+2. `security-engineer` (Sonnet default, **Opus override for Stage 4** — threat model) — maps the attack surface,
    runs STRIDE analysis per component, defines security requirements for Implementation,
    flags missing controls (auth, encryption, rate limiting, CSP).
 The Architecture agent incorporates both sets of findings before presenting to the user.
@@ -476,7 +476,7 @@ Read `agents/review.md`. Use `agents/agent-prompt.md` to craft the prompt.
 1. `code-reviewer` (dispatcher, pipeline mode) — dispatches 4 parallel specialist agents
    (correctness, security, convention, history), merges findings with confidence scoring
    and deduplication, returns unified report with priority markers.
-2. `security-engineer` (Opus, pipeline mode 2 — security audit) — OWASP Top 10 scan,
+2. `security-engineer` (Sonnet, pipeline mode 2 — security audit) — OWASP Top 10 scan,
    validates Stage 4 security requirements were implemented, secrets scan, dependency CVE
    check. Critical/High findings become Critical Issues, any unmet security requirement = FAIL.
 The Review agent incorporates both sets of findings into its sign-off report.
@@ -521,23 +521,23 @@ It operates in two modes:
 
 ### Security Engineer Agent (Tri-Mode)
 The Security Engineer is a Claude Code sub-agent at `~/.claude/agents/security-engineer.md`.
-It operates in three modes:
+Default model: **Sonnet**. It operates in three modes:
 
-**Pipeline mode 1 — Architecture threat model** (Stage 4):
-- Auto-invoked by the Architecture agent after software-architect enrichment
+**Pipeline mode 1 — Architecture threat model** (Stage 4, **Opus override**):
+- Auto-invoked by the Architecture agent with `model: "opus"` after software-architect enrichment
 - Produces attack surface map, STRIDE threat analysis per component
 - Defines mandatory security requirements for the Implement agent
 - Flags missing controls (auth, encryption, rate limiting, input validation, CSP)
 - Returns findings to Architecture agent → incorporated as "Security Architecture" section
 
-**Pipeline mode 2 — Security audit** (Stage 6):
+**Pipeline mode 2 — Security audit** (Stage 6, Sonnet):
 - Auto-invoked by the Review agent after code-reviewer pass
 - Runs OWASP Top 10 line-by-line scan on implementation code
 - Validates that Stage 4 security requirements were actually implemented
 - Scans for hardcoded secrets, runs dependency CVE checks
 - Returns findings to Review agent → Critical/High become Critical Issues, unmet requirements = FAIL
 
-**Standalone mode** (outside REPAIR):
+**Standalone mode** (outside REPAIR, Sonnet):
 - Auto-invokes when changes touch security-sensitive files (`*auth*`, `*secret*`, `*token*`,
   `*password*`, `*.env*`, config files, CI/CD pipelines, files importing crypto/auth/JWT libraries)
 - Manually invokable for ad-hoc security audits

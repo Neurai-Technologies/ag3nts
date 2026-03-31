@@ -80,11 +80,13 @@ that you weave into the architecture. You own the final document.
 
 After incorporating the software-architect's findings, invoke the `security-engineer`
 agent (in pipeline mode 1 — architecture threat model) to validate security posture.
+**Use `model: "opus"` override** — threat modeling requires deeper reasoning than the
+agent's default Sonnet model.
 
 ### How it works
 
 1. You incorporate the software-architect's ADRs and domain model into your draft
-2. **Invoke** the `security-engineer` sub-agent with the enriched architecture document
+2. **Invoke** the `security-engineer` sub-agent with `model: "opus"` and the enriched architecture document
 3. Security-engineer returns:
    - **Attack surface map** — all entry points, trust boundaries, data flows crossing boundaries
    - **STRIDE analysis** — threats per component (Spoofing, Tampering, Repudiation, Info Disclosure, DoS, Elevation)
