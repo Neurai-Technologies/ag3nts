@@ -1,6 +1,7 @@
 #!/bin/bash
-# pre-commit-review-gate.sh — Blocks git commit until code-reviewer and security-engineer
-# agents have been run. Uses a marker file with staged-diff hash to validate.
+# pre-commit-review-gate.sh — Blocks git commit until the 3-step pre-commit protocol
+# has been completed: (1) lint agent, (2) security-engineer agent, (3) marker creation.
+# Uses a marker file with staged-diff hash to validate.
 # Harness-enforced via PreToolUse hook. Exit 2 = block, Exit 0 = allow.
 
 INPUT=$(cat)
@@ -33,15 +34,16 @@ fi
 cat >&2 << EOF
 BLOCKED: Pre-commit review gate.
 
-You must run code-reviewer and security-engineer agents before committing.
+You must complete the 3-step pre-commit protocol before committing.
 
 Steps:
-1. Run the code-reviewer agent on staged changes (git diff --cached).
-   Fix any blockers it reports, re-stage fixed files.
-2. Run the security-engineer agent on staged changes (git diff --cached).
+1. LINT: Invoke the lint agent on staged files.
+   It detects project linters, runs them, and auto-fixes issues.
+   If it fixes files, they are re-staged automatically.
+2. SECURITY: Invoke the security-engineer agent on staged changes (git diff --cached).
    Fix any Critical/High findings, re-stage fixed files.
-   If you had to fix issues, re-run both agents.
-3. After both agents pass clean, create the review marker:
+   If you had to fix issues, re-run both lint and security-engineer.
+3. MARKER: After both agents pass clean, create the review marker:
    echo "\$(git diff --cached | shasum | cut -d' ' -f1)" > /tmp/.claude-pre-commit-reviewed
 4. Then retry the git commit.
 

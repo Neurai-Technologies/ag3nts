@@ -81,14 +81,16 @@ Hook scripts live in `shared/claude-code/hooks/`, symlinked to `~/.claude/hooks/
 **Before any `git commit`** (PreToolUse hooks on Bash):
 1. **Secrets scan** (`pre-commit-secrets-scan.sh`) — hard-blocks the commit if hardcoded
    credentials, API keys, private keys, or connection strings are detected in the staged diff.
-2. **Review gate** (`pre-commit-review-gate.sh`) — blocks the commit until you have:
-   - Invoked the `code-reviewer` agent on staged changes (`git diff --cached`)
-   - Invoked the `security-engineer` agent on staged changes (`git diff --cached`)
-   - Fixed any Critical/High findings and re-run both agents
-   - Created the review marker:
+2. **Review gate** (`pre-commit-review-gate.sh`) — blocks the commit until the 3-step
+   pre-commit protocol has been completed:
+   - **Step 1 — LINT**: Invoke the `lint` agent (Sonnet) on staged files. It detects
+     project-specific linters, runs them, auto-fixes issues, and re-stages fixed files.
+   - **Step 2 — SECURITY**: Invoke the `security-engineer` agent (Sonnet) on staged
+     changes (`git diff --cached`). Fix any Critical/High findings, re-stage.
+   - **Step 3 — MARKER**: After both agents pass clean, create the review marker:
      `echo "$(git diff --cached | shasum | cut -d' ' -f1)" > /tmp/.claude-pre-commit-reviewed`
-   The marker includes a hash of the staged diff — if staged changes are modified after
-   review, the marker is invalidated and both agents must be re-run.
+   If either agent requires fixes that change staged files, re-run both agents from Step 1.
+   The marker hash ensures this — modified staged files invalidate the marker.
 
 **Before creating a PR** (PreToolUse hook on Bash):
 - **PR review gate** (`pre-pr-review-gate.sh`) — blocks `gh pr create` until you have
