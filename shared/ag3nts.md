@@ -72,26 +72,38 @@ Approve one action to resume auto mode.
 **Environment context** is configured in platform settings.json under `autoMode.environment`
 — tells the classifier which repos and infrastructure are trusted.
 
-## Auto-Invoke Rules
+## Auto-Invoke Rules (Harness-Enforced)
 
-**Before any `git commit`**: Always invoke the `code-reviewer` agent first.
-It reviews staged changes, fixes blockers automatically, and reports suggestions. Do not
-commit until the code-reviewer pass completes. If blockers were fixed, re-stage
-the affected files before proceeding with the commit.
+The following rules are enforced by PreToolUse/PostToolUse hooks in `settings.json`.
+The harness runs these checks automatically — they cannot be skipped or forgotten.
+Hook scripts live in `shared/claude-code/hooks/`, symlinked to `~/.claude/hooks/`.
 
-**Before any `git commit`**: After the code-reviewer pass, always invoke the `security-engineer`
-agent. It scans the staged diff (`git diff --cached`) for vulnerabilities — secrets,
-injection flaws, insecure dependencies, OWASP Top 10 issues, and misconfigurations.
-**The commit is blocked until the security-engineer returns a clean report.** If any
-Critical or High severity findings are reported, the commit MUST NOT proceed. Fix the
-vulnerabilities, re-stage, then re-run both the code-reviewer and security-engineer scans.
-Medium/Low findings are reported as warnings but do not block the commit.
+**Before any `git commit`** (PreToolUse hooks on Bash):
+1. **Secrets scan** (`pre-commit-secrets-scan.sh`) — hard-blocks the commit if hardcoded
+   credentials, API keys, private keys, or connection strings are detected in the staged diff.
+2. **Review gate** (`pre-commit-review-gate.sh`) — blocks the commit until you have:
+   - Invoked the `code-reviewer` agent on staged changes (`git diff --cached`)
+   - Invoked the `security-engineer` agent on staged changes (`git diff --cached`)
+   - Fixed any Critical/High findings and re-run both agents
+   - Created the review marker:
+     `echo "$(git diff --cached | shasum | cut -d' ' -f1)" > /tmp/.claude-pre-commit-reviewed`
+   The marker includes a hash of the staged diff — if staged changes are modified after
+   review, the marker is invalidated and both agents must be re-run.
 
-**Before creating a PR**: Invoke `code-reviewer` on the full branch diff (`git diff main...HEAD`).
+**Before creating a PR** (PreToolUse hook on Bash):
+- **PR review gate** (`pre-pr-review-gate.sh`) — blocks `gh pr create` until you have
+  invoked `code-reviewer` on the full branch diff and created the marker:
+  `echo "$(git diff main...HEAD | shasum | cut -d' ' -f1)" > /tmp/.claude-pre-pr-reviewed`
 
-**When touching security-sensitive files**: Invoke `security-engineer` when changes touch
-files matching `*auth*`, `*login*`, `*session*`, `*token*`, `*secret*`, `*password*`,
-`*.env*`, config files, CI/CD pipelines, or files importing crypto/auth/JWT libraries.
+**When editing security-sensitive files** (PostToolUse hook on Edit/Write):
+- **File check** (`security-sensitive-file-check.sh`) — detects writes to files matching
+  `*auth*`, `*login*`, `*session*`, `*token*`, `*secret*`, `*password*`, `*.env*`,
+  CI/CD pipelines, certificate/key files, or security middleware. Injects a context
+  reminder to invoke the `security-engineer` agent before the next commit.
+
+**REPAIR pipeline modes** (Stages 4 and 6):
+- NOT hook-enforced — orchestrated by RepairBoss at defined pipeline stages.
+- Stage 4 threat model and Stage 6 OWASP audit remain as agent dispatch instructions.
 
 ## Scripted / Automated Runs
 

@@ -148,6 +148,8 @@ sync_shared() {
             dest="$platform_dir/$filename"
             # Skip files that are already symlinked
             [ -L "$dest" ] && continue
+            # Don't overwrite platform-specific settings.json
+            [ "$filename" = "settings.json" ] && continue
             if [ -f "$dest" ]; then
                 if ! cmp -s "$file" "$dest"; then
                     cp "$file" "$dest"
@@ -190,6 +192,7 @@ symlink_shared "../../../shared/ag3nts.md" "$CLAUDE_CONFIG_SSD/ag3nts.md" "ag3nt
 symlink_shared "../../../shared/claude-code/CLAUDE.md" "$CLAUDE_CONFIG_SSD/CLAUDE.md" "CLAUDE.md"
 symlink_shared "../../../shared/claude-code/statusline.sh" "$CLAUDE_CONFIG_SSD/statusline.sh" "statusline.sh"
 symlink_shared "../../../shared/claude-code/files/agents" "$CLAUDE_CONFIG_SSD/agents" "agents/"
+symlink_shared "../../../shared/claude-code/hooks" "$CLAUDE_CONFIG_SSD/hooks" "hooks/"
 
 sync_shared "$SHARED/claude-code" "$CLAUDE_CONFIG_SSD"
 sync_shared "$SHARED/gemini-cli" "$GEMINI_CONFIG_SSD"
