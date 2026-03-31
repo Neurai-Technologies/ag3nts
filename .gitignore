@@ -81,7 +81,7 @@ windows/claude-code/config/ag3nts.md
 windows/claude-code/config/CLAUDE.md
 windows/claude-code/config/settings.json
 windows/claude-code/config/agents/
-windows/claude-code/config/hooks/
+windows/claude-code/config/hooks
 windows/gemini-cli/config/ag3nts.md
 windows/gemini-cli/config/GEMINI.md
 windows/gemini-cli/config/settings.json
@@ -92,7 +92,7 @@ macos/claude-code/config/ag3nts.md
 macos/claude-code/config/CLAUDE.md
 macos/claude-code/config/settings.json
 macos/claude-code/config/agents/
-macos/claude-code/config/hooks/
+macos/claude-code/config/hooks
 macos/gemini-cli/config/ag3nts.md
 macos/gemini-cli/config/GEMINI.md
 macos/gemini-cli/config/settings.json
