@@ -153,6 +153,7 @@ function New-SharedSymlink($target, $link, $label) {
 
 New-SharedSymlink "$SHARED\ag3nts.md" "$CLAUDE_CONFIG_SSD\ag3nts.md" "ag3nts.md"
 New-SharedSymlink "$SHARED\claude-code\CLAUDE.md" "$CLAUDE_CONFIG_SSD\CLAUDE.md" "CLAUDE.md"
+New-SharedSymlink "$SHARED\claude-code\settings.json" "$CLAUDE_CONFIG_SSD\settings.json" "settings.json"
 New-SharedSymlink "$SHARED\claude-code\statusline.sh" "$CLAUDE_CONFIG_SSD\statusline.sh" "statusline.sh"
 New-SharedSymlink "$SHARED\claude-code\files\agents" "$CLAUDE_CONFIG_SSD\agents" "agents/"
 New-SharedSymlink "$SHARED\claude-code\hooks" "$CLAUDE_CONFIG_SSD\hooks" "hooks/"
@@ -173,8 +174,6 @@ foreach ($pair in $syncPairs) {
             if ((Test-Path $dest) -and ((Get-Item $dest -Force).Attributes -match "ReparsePoint")) {
                 continue
             }
-            # Don't overwrite platform-specific settings.json
-            if ($file.Name -eq "settings.json") { continue }
             $destExists = Test-Path $dest
             if ($destExists) {
                 $srcHash = (Get-FileHash $file.FullName).Hash

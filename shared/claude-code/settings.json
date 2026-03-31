@@ -1,8 +1,91 @@
 {
+  "permissions": {
+    "allow": [
+      "Read",
+      "Grep",
+      "Glob",
+      "WebSearch",
+      "WebFetch",
+      "Bash(grep *)",
+      "Bash(rg *)",
+      "Bash(find *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(wc *)",
+      "Bash(which *)",
+      "Bash(file *)",
+      "Bash(cd *)",
+      "Bash(pwd)",
+      "Bash(git status*)",
+      "Bash(git log*)",
+      "Bash(git diff*)",
+      "Bash(git show*)",
+      "Bash(git branch*)",
+      "Bash(git remote*)",
+      "Bash(gh api *)",
+      "Bash(gh repo clone *)",
+      "Bash(gh repo view *)",
+      "Bash(gh pr view *)",
+      "Bash(gh issue view *)"
+    ],
+    "defaultMode": "auto"
+  },
+  "autoMode": {
+    "environment": [
+      "Developer: Rohan (@rohanrgit), solo developer on personal projects",
+      "Source control: github.com/rohanrgit and all repos under it",
+      "Trusted repos: ag3nts, rohanya1",
+      "Portable SSD setup: all config lives on external SSD at ag3nts/, symlinked to ~/.claude"
+    ]
+  },
   "statusLine": {
     "type": "command",
-    "command": "echo hello"
+    "command": "bash ~/.claude/statusline.sh"
   },
   "autoUpdatesChannel": "latest",
-  "effortLevel": "high"
+  "effortLevel": "high",
+  "skipDangerousModePermissionPrompt": true,
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/pre-commit-secrets-scan.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/pre-commit-review-gate.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/pre-pr-review-gate.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/security-sensitive-file-check.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/security-sensitive-file-check.sh"
+          }
+        ]
+      }
+    ]
+  }
 }
