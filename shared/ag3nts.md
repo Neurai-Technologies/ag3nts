@@ -74,18 +74,18 @@ Approve one action to resume auto mode.
 
 ## Auto-Invoke Rules
 
-**Before any `git commit` or `git push`**: Always invoke the `code-reviewer` agent first.
+**Before any `git commit`**: Always invoke the `code-reviewer` agent first.
 It reviews staged changes, fixes blockers automatically, and reports suggestions. Do not
-commit or push until the code-reviewer pass completes. If blockers were fixed, re-stage
+commit until the code-reviewer pass completes. If blockers were fixed, re-stage
 the affected files before proceeding with the commit.
 
-**Before any `git push`**: After the code-reviewer pass, always invoke the `security-engineer`
-agent. It scans the full diff being pushed (`git diff origin/<branch>...HEAD`) for
-vulnerabilities — secrets, injection flaws, insecure dependencies, OWASP Top 10 issues,
-and misconfigurations. **The push is blocked until the security-engineer returns a clean
-report.** If any Critical or High severity findings are reported, the push MUST NOT proceed.
-Fix the vulnerabilities, re-stage, commit the fix, then re-run the security-engineer scan.
-Medium/Low findings are reported as warnings but do not block the push.
+**Before any `git commit`**: After the code-reviewer pass, always invoke the `security-engineer`
+agent. It scans the staged diff (`git diff --cached`) for vulnerabilities — secrets,
+injection flaws, insecure dependencies, OWASP Top 10 issues, and misconfigurations.
+**The commit is blocked until the security-engineer returns a clean report.** If any
+Critical or High severity findings are reported, the commit MUST NOT proceed. Fix the
+vulnerabilities, re-stage, then re-run both the code-reviewer and security-engineer scans.
+Medium/Low findings are reported as warnings but do not block the commit.
 
 **Before creating a PR**: Invoke `code-reviewer` on the full branch diff (`git diff main...HEAD`).
 

@@ -3,8 +3,8 @@ name: security-engineer
 description: >
   Security review and threat modeling specialist. Runs in three modes: (1) REPAIR Stage 4
   sub-step — threat models the architecture before code is written, (2) REPAIR Stage 6
-  sub-step — OWASP audit on implementation code, (3) standalone — auto-invokes when
-  changes touch auth, secrets, API endpoints, or config. Also manually invokable.
+  sub-step — OWASP audit on implementation code, (3) standalone — auto-invokes before any
+  git commit and when changes touch auth, secrets, API endpoints, or config. Also manually invokable.
 tools: Read, Grep, Glob, Bash, WebSearch
 model: opus
 maxTurns: 20
