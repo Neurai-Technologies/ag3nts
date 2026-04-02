@@ -59,6 +59,26 @@ active workflow, tier, and MCP server configuration.`,
 			ui.Fail("No workflow installed")
 		}
 
+		// Orchestrator
+		fmt.Println()
+		fmt.Println("Orchestrator:")
+		if cfg.Orchestrator.Primary != "" {
+			ui.OK(fmt.Sprintf("Primary: %s", cfg.Orchestrator.Primary))
+		} else {
+			ui.Skip("Primary: auto-detect (not configured)")
+		}
+		ui.OK(fmt.Sprintf("Max concurrency: %d", cfg.Orchestrator.MaxConcurrency))
+		ui.OK(fmt.Sprintf("Routing rules: %d", len(cfg.Routing.Rules)))
+		httpCount := 0
+		for _, a := range cfg.Agents {
+			if a.Type == "http" {
+				httpCount++
+			}
+		}
+		if httpCount > 0 {
+			ui.OK(fmt.Sprintf("HTTP agents: %d", httpCount))
+		}
+
 		return nil
 	},
 }

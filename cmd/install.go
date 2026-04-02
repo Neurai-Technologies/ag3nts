@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/rohanrgit/ag3nts/internal/symlinks"
 	"github.com/rohanrgit/ag3nts/internal/tools"
 	"github.com/rohanrgit/ag3nts/internal/ui"
 	"github.com/spf13/cobra"
@@ -29,6 +30,11 @@ Creates the directory layout, installs tools, sets up symlinks, and runs OAuth s
 			return fmt.Errorf("create directories: %w", err)
 		}
 		ui.OK("Directory layout created")
+
+		// Set up home directory symlinks (~/.claude, ~/.codex, ~/.gemini)
+		if err := symlinks.CreateAll(layout); err != nil {
+			return fmt.Errorf("create symlinks: %w", err)
+		}
 
 		// Determine which tools to install based on tier
 		allowed := cfg.AllowedTools()

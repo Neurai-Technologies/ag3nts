@@ -1,0 +1,421 @@
+// Package orchestrator is the central coordinator that wires agents, router,
+// task queue, and event bus together. It manages the dispatch loop, primary
+// agent conversation, and inter-agent communication.
+package orchestrator
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/rohanrgit/ag3nts/internal/agent"
+	"github.com/rohanrgit/ag3nts/internal/bus"
+	"github.com/rohanrgit/ag3nts/internal/router"
+	"github.com/rohanrgit/ag3nts/internal/task"
+)
+
+// Config holds orchestrator initialization parameters.
+type Config struct {
+	Primary        string         // default primary agent name
+	MaxConcurrency int            // max parallel agent executions
+	PersistDir     string         // directory for task/result persistence
+	Routes         []router.Route // routing rules
+}
+
+// Orchestrator coordinates agent dispatch, task management, and message flow.
+type Orchestrator struct {
+	agents  *agent.Registry
+	router  *router.Router
+	queue   *task.Queue
+	store   *Store
+	bus     *bus.Bus
+	primary string
+	maxConc int
+
+	mu       sync.Mutex
+	running  map[string]*agent.Session // taskID → active session
+	mainSess *agent.Session            // primary agent interactive session
+
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
+// New creates an orchestrator from the given config and agent registry.
+func New(cfg Config, agents *agent.Registry) (*Orchestrator, error) {
+	r, err := router.New(cfg.Routes, cfg.Primary, agents)
+	if err != nil {
+		return nil, fmt.Errorf("create router: %w", err)
+	}
+
+	maxConc := cfg.MaxConcurrency
+	if maxConc <= 0 {
+		maxConc = 3
+	}
+
+	persistDir := cfg.PersistDir
+	taskDir := ""
+	resultDir := ""
+	if persistDir != "" {
+		taskDir = persistDir + "/tasks"
+		resultDir = persistDir + "/results"
+	}
+
+	return &Orchestrator{
+		agents:  agents,
+		router:  r,
+		queue:   task.NewQueue(taskDir),
+		store:   NewStore(resultDir),
+		bus:     bus.New(),
+		primary: cfg.Primary,
+		maxConc: maxConc,
+		running: make(map[string]*agent.Session),
+	}, nil
+}
+
+// Bus returns the event bus for external consumers to subscribe to events.
+func (o *Orchestrator) Bus() *bus.Bus {
+	return o.bus
+}
+
+// Start begins the orchestrator dispatch loop in a background goroutine.
+func (o *Orchestrator) Start(ctx context.Context) error {
+	o.ctx, o.cancel = context.WithCancel(ctx)
+
+	// Restore persisted tasks if any.
+	if err := o.queue.Load(); err != nil {
+		return fmt.Errorf("load tasks: %w", err)
+	}
+
+	// Start the dispatch loop.
+	go o.dispatchLoop()
+
+	return nil
+}
+
+// Stop gracefully shuts down the orchestrator: stops all running agents,
+// persists queue state, and cancels the dispatch loop.
+func (o *Orchestrator) Stop() error {
+	if o.cancel != nil {
+		o.cancel()
+	}
+
+	o.mu.Lock()
+	sessions := make([]*agent.Session, 0, len(o.running))
+	for _, sess := range o.running {
+		sessions = append(sessions, sess)
+	}
+	o.mu.Unlock()
+
+	// Stop all running agent sessions.
+	for _, sess := range sessions {
+		a := o.agents.Get(sess.Agent)
+		if a != nil {
+			_ = a.Stop(sess)
+		}
+	}
+
+	// B-4 fix: read mainSess under lock.
+	o.mu.Lock()
+	mainSess := o.mainSess
+	o.mu.Unlock()
+	if mainSess != nil {
+		a := o.agents.Get(o.primary)
+		if a != nil {
+			_ = a.Stop(mainSess)
+		}
+	}
+
+	// Close the event bus.
+	o.bus.Close()
+
+	// Persist final queue state.
+	return o.queue.Save()
+}
+
+// Send sends a message to the primary agent. Each message starts a fresh
+// session since subprocess agents don't yet support multi-turn Send().
+func (o *Orchestrator) Send(message string) error {
+	a := o.agents.Get(o.primary)
+	if a == nil {
+		return fmt.Errorf("primary agent %q not found", o.primary)
+	}
+
+	// Stop any existing primary session before starting a new one.
+	o.mu.Lock()
+	oldSess := o.mainSess
+	o.mainSess = nil
+	o.mu.Unlock()
+
+	if oldSess != nil {
+		_ = a.Stop(oldSess)
+	}
+
+	newSess, err := a.Start(o.ctx, message, &agent.StartOpts{
+		TaskID: "_primary",
+	})
+	if err != nil {
+		return fmt.Errorf("start primary agent: %w", err)
+	}
+
+	o.mu.Lock()
+	o.mainSess = newSess
+	o.mu.Unlock()
+	go o.drainEvents(newSess)
+	return nil
+}
+
+// SendTo sends a message directly to a specific agent (not through routing).
+func (o *Orchestrator) SendTo(agentName string, message string) error {
+	a := o.agents.Get(agentName)
+	if a == nil {
+		return fmt.Errorf("agent %q not found", agentName)
+	}
+
+	sess, err := a.Start(o.ctx, message, &agent.StartOpts{
+		TaskID: fmt.Sprintf("_direct-%s-%d", agentName, time.Now().UnixNano()),
+	})
+	if err != nil {
+		return fmt.Errorf("start %s: %w", agentName, err)
+	}
+	go o.drainEvents(sess)
+	return nil
+}
+
+// CreateTask adds a task to the queue. It will be dispatched by the
+// dispatch loop when its dependencies are satisfied.
+func (o *Orchestrator) CreateTask(t *task.Task) error {
+	if t.ID == "" {
+		t.ID = fmt.Sprintf("T%d", time.Now().UnixNano())
+	}
+	return o.queue.Add(t)
+}
+
+// SetPrimary changes the primary agent. Existing sessions are not affected.
+func (o *Orchestrator) SetPrimary(name string) error {
+	if err := o.router.SetPrimary(name); err != nil {
+		return err
+	}
+	o.primary = name
+	return nil
+}
+
+// Primary returns the current primary agent name.
+func (o *Orchestrator) Primary() string {
+	return o.primary
+}
+
+// Agents returns the agent registry for external consumers (e.g. TUI).
+func (o *Orchestrator) Agents() *agent.Registry {
+	return o.agents
+}
+
+// Tasks returns the task queue for external consumers (e.g. TUI).
+func (o *Orchestrator) Tasks() *task.Queue {
+	return o.queue
+}
+
+// Router returns the router for external consumers.
+func (o *Orchestrator) Router() *router.Router {
+	return o.router
+}
+
+// RunningCount returns the number of currently running agent sessions.
+func (o *Orchestrator) RunningCount() int {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return len(o.running)
+}
+
+// dispatchLoop runs in a goroutine, polling the queue for ready tasks
+// and dispatching them to agents in parallel.
+func (o *Orchestrator) dispatchLoop() {
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-o.ctx.Done():
+			return
+		case <-ticker.C:
+			o.dispatchReady()
+		}
+	}
+}
+
+// dispatchReady finds tasks with satisfied dependencies and dispatches them.
+func (o *Orchestrator) dispatchReady() {
+	ready := o.queue.Ready()
+	if len(ready) == 0 {
+		return
+	}
+
+	o.mu.Lock()
+	runCount := len(o.running)
+	o.mu.Unlock()
+
+	for _, t := range ready {
+		if runCount >= o.maxConc {
+			break
+		}
+
+		// Resolve which agent handles this task.
+		agentName, err := o.router.Resolve(t.Type, t.Agent)
+		if err != nil {
+			_ = o.queue.Update(t.ID, task.StatusFailed, &task.Result{
+				Error: fmt.Sprintf("routing failed: %v", err),
+			})
+			continue
+		}
+
+		a := o.agents.Get(agentName)
+		if a == nil {
+			_ = o.queue.Update(t.ID, task.StatusFailed, &task.Result{
+				Error: fmt.Sprintf("agent %q not in registry", agentName),
+			})
+			continue
+		}
+
+		// Mark as running.
+		_ = o.queue.Update(t.ID, task.StatusRunning, nil)
+
+		// Build context from referenced task results.
+		contextStr := o.buildContext(t.ContextFrom)
+
+		go o.executeTask(t, a, contextStr)
+		runCount++
+	}
+}
+
+// executeTask runs a single task on the given agent and collects results.
+func (o *Orchestrator) executeTask(t *task.Task, a agent.Agent, contextStr string) {
+	ctx := o.ctx
+	if t.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, t.Timeout)
+		defer cancel()
+	}
+
+	sess, err := a.Start(ctx, t.Description, &agent.StartOpts{
+		TaskID:  t.ID,
+		Context: contextStr,
+	})
+	if err != nil {
+		_ = o.queue.Update(t.ID, task.StatusFailed, &task.Result{
+			Error: fmt.Sprintf("start failed: %v", err),
+		})
+		return
+	}
+
+	o.mu.Lock()
+	o.running[t.ID] = sess
+	o.mu.Unlock()
+
+	// Collect events until the session closes.
+	var output strings.Builder
+	var events []agent.AgentEvent
+	var usage *agent.TokenUsage
+	start := time.Now()
+
+	for event := range sess.Events() {
+		events = append(events, event)
+
+		// Publish to event bus for TUI and other subscribers.
+		o.publish(event)
+
+		switch event.Kind {
+		case agent.EventMessage:
+			output.WriteString(event.Content)
+		case agent.EventComplete:
+			if event.Usage != nil {
+				usage = event.Usage
+			}
+		}
+	}
+
+	duration := time.Since(start)
+
+	// Determine final status.
+	status := task.StatusCompleted
+	var errStr string
+	if sess.Status == agent.StatusFailed {
+		status = task.StatusFailed
+		errStr = "agent session failed"
+	}
+
+	result := &task.Result{
+		Output:   output.String(),
+		Events:   events,
+		Usage:    usage,
+		Duration: duration,
+		Error:    errStr,
+	}
+
+	_ = o.queue.Update(t.ID, status, result)
+
+	// Save result to context store for downstream tasks.
+	o.store.SaveResult(t.ID, result)
+
+	o.mu.Lock()
+	delete(o.running, t.ID)
+	o.mu.Unlock()
+}
+
+// buildContext assembles context from completed task results.
+// SR-12: Truncates individual results at 100KB.
+func (o *Orchestrator) buildContext(taskIDs []string) string {
+	if len(taskIDs) == 0 {
+		return ""
+	}
+
+	const maxResultSize = 100 * 1024  // SR-12: 100KB per result
+	const maxTotalContext = 512 * 1024 // M-1 fix: 512KB total context cap
+
+	var parts []string
+	var totalSize int
+	for _, id := range taskIDs {
+		result := o.store.GetResult(id)
+		if result == nil {
+			continue
+		}
+		output := result.Output
+		if len(output) > maxResultSize {
+			output = output[:maxResultSize] + "\n[TRUNCATED]"
+		}
+		totalSize += len(output)
+		if totalSize > maxTotalContext {
+			parts = append(parts, "[CONTEXT LIMIT REACHED — further results omitted]")
+			break
+		}
+		parts = append(parts, fmt.Sprintf("=== Result from task %s ===\n%s", id, output))
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+// drainEvents reads all events from a session and publishes them to the bus.
+// Used for the primary agent session and direct sends.
+func (o *Orchestrator) drainEvents(sess *agent.Session) {
+	for event := range sess.Events() {
+		o.publish(event)
+	}
+}
+
+// publish sends an agent event to the bus on both agent-specific and
+// task-specific topics so subscribers can filter by either dimension.
+func (o *Orchestrator) publish(event agent.AgentEvent) {
+	// Publish on agent topic: "agent.claude", "agent.gemini", etc.
+	o.bus.Publish("agent."+event.Agent, event.Agent, event)
+
+	// Publish on task topic if tagged.
+	if event.TaskID != "" {
+		o.bus.Publish("task."+event.TaskID, event.Agent, event)
+	}
+
+	// Publish on the global system topic.
+	o.bus.Publish("system", event.Agent, event)
+}

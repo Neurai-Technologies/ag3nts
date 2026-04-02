@@ -19,9 +19,41 @@ const (
 
 // Config is the top-level ag3nts configuration.
 type Config struct {
-	General   GeneralConfig              `toml:"general"`
-	Node      NodeConfig                 `toml:"node"`
-	Workflows WorkflowsConfig            `toml:"workflows"`
+	General      GeneralConfig            `toml:"general"`
+	Node         NodeConfig               `toml:"node"`
+	Workflows    WorkflowsConfig          `toml:"workflows"`
+	Orchestrator OrchestratorConfig       `toml:"orchestrator"`
+	Agents       map[string]AgentConfig   `toml:"agents"`
+	Routing      RoutingConfig            `toml:"routing"`
+}
+
+// OrchestratorConfig holds settings for the multi-agent orchestrator.
+type OrchestratorConfig struct {
+	Primary        string `toml:"primary"`         // default primary agent name
+	MaxConcurrency int    `toml:"max_concurrency"` // max parallel agent executions
+	PersistSessions bool  `toml:"persist_sessions"` // save session IDs for resume
+}
+
+// AgentConfig defines a single agent backend.
+type AgentConfig struct {
+	Type         string   `toml:"type"`         // "subprocess" or "http"
+	Model        string   `toml:"model"`        // model override
+	Endpoint     string   `toml:"endpoint"`     // HTTP endpoint (for type=http)
+	Flags        []string `toml:"flags"`        // extra CLI flags (for type=subprocess)
+	Capabilities []string `toml:"capabilities"` // declared capabilities for routing
+}
+
+// RoutingConfig holds task routing rules.
+type RoutingConfig struct {
+	Rules []RouteRule `toml:"rules"`
+}
+
+// RouteRule maps a task type pattern to an agent with optional fallback.
+type RouteRule struct {
+	Pattern  string `toml:"pattern"`  // regex matched against task type
+	Agent    string `toml:"agent"`    // target agent name
+	Fallback string `toml:"fallback"` // fallback agent if primary unavailable
+	Priority int    `toml:"priority"` // lower = higher priority
 }
 
 // GeneralConfig holds general settings.
@@ -100,6 +132,11 @@ func Default() *Config {
 		Workflows: WorkflowsConfig{
 			Workflows: make(map[string]WorkflowEntry),
 		},
+		Orchestrator: OrchestratorConfig{
+			MaxConcurrency: 3,
+			PersistSessions: true,
+		},
+		Agents: make(map[string]AgentConfig),
 	}
 }
 

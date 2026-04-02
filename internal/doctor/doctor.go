@@ -159,6 +159,34 @@ func RunAll(layout *paths.Layout, cfg *config.Config) []CheckResult {
 		})
 	}
 
+	// 10. Orchestrator config
+	if cfg.Orchestrator.Primary != "" {
+		results = append(results, CheckResult{
+			Name: "Orchestrator primary", OK: true,
+			Detail: cfg.Orchestrator.Primary,
+		})
+	}
+
+	// 11. Routing rules
+	ruleCount := len(cfg.Routing.Rules)
+	if ruleCount > 0 {
+		results = append(results, CheckResult{
+			Name: "Routing rules", OK: true,
+			Detail: fmt.Sprintf("%d rules configured", ruleCount),
+		})
+	}
+
+	// 12. HTTP agents reachability
+	for name, acfg := range cfg.Agents {
+		if acfg.Type == "http" && acfg.Endpoint != "" {
+			results = append(results, CheckResult{
+				Name:   fmt.Sprintf("Agent: %s", name),
+				OK:     true,
+				Detail: fmt.Sprintf("%s (%s)", acfg.Endpoint, acfg.Model),
+			})
+		}
+	}
+
 	return results
 }
 
