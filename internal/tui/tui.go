@@ -24,7 +24,6 @@ type panel int
 const (
 	panelInput panel = iota
 	panelOutput
-	panelSidebar
 )
 
 // Model is the root Bubbletea model for the orchestrator TUI.
@@ -63,7 +62,7 @@ func New(orch *orchestrator.Orchestrator) Model {
 		orch:        orch,
 		input:       ta,
 		activePanel: panelInput,
-		eventCh:     orch.Bus().Subscribe(512, "system"), // subscribe to system topic only (wildcard causes duplicates)
+		eventCh:     orch.Bus().Subscribe(512, "system"),
 	}
 }
 
@@ -105,19 +104,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshOutput()
 		return m, nil
 
-	case tea.MouseWheelMsg:
-		// Forward scroll events to the output viewport.
-		var cmd tea.Cmd
-		m.output, cmd = m.output.Update(msg)
-		if cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-		return m, tea.Batch(cmds...)
-
-	case tea.MouseClickMsg, tea.MouseReleaseMsg, tea.MouseMotionMsg:
-		// Ignore — don't pass to sub-models or trigger re-renders.
-		return m, nil
-
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c":
@@ -129,8 +115,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.activePanel = panelOutput
 				m.input.Blur()
 			case panelOutput:
-				m.activePanel = panelSidebar
-			case panelSidebar:
 				m.activePanel = panelInput
 				m.input.Focus()
 			}
@@ -157,7 +141,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.input, cmd = m.input.Update(msg)
 			cmds = append(cmds, cmd)
-			// Recalculate layout if textarea grew or shrank.
 			if m.input.Height() != oldH {
 				m.resizeLayout()
 			}
@@ -186,9 +169,6 @@ func (m Model) View() tea.View {
 		return v
 	}
 
-	// Status bar.
-	statusBar := m.renderStatusBar()
-
 	// Output viewport with border.
 	outputBorder := borderNormal
 	if m.activePanel == panelOutput {
@@ -198,12 +178,6 @@ func (m Model) View() tea.View {
 		Width(m.layout.outputWidth).
 		Height(m.layout.outputHeight).
 		Render(m.output.View())
-
-	// Sidebar: agents + tasks.
-	sidebarPanel := m.renderSidebar()
-
-	// Main content: output | sidebar.
-	mainContent := lipgloss.JoinHorizontal(lipgloss.Top, outputPanel, sidebarPanel)
 
 	// Input area with border.
 	inputBorder := borderNormal
@@ -215,37 +189,21 @@ func (m Model) View() tea.View {
 		Height(m.layout.inputHeight).
 		Render(m.input.View())
 
-	// Stack vertically: status → main → input.
-	content := lipgloss.JoinVertical(lipgloss.Left, statusBar, mainContent, inputPanel)
+	// Status bar (bottom): system info + agents + tasks.
+	statusBar := m.renderStatusBar()
+
+	// Stack vertically: output → input → status bar.
+	content := lipgloss.JoinVertical(lipgloss.Left, outputPanel, inputPanel, statusBar)
 
 	v := tea.NewView(content)
 	v.AltScreen = true
-	v.MouseMode = tea.MouseModeCellMotion
 	return v
 }
 
-// renderStatusBar creates the top status line.
+// renderStatusBar creates the bottom status bar with system info, agents, and tasks.
 func (m Model) renderStatusBar() string {
-	primary := m.orch.Primary()
-	agentCount := m.orch.Agents().Count()
-	running := m.orch.RunningCount()
-
-	status := fmt.Sprintf(" ag3nts | primary: %s | agents: %d | running: %d",
-		primary, agentCount, running)
-
-	return statusBarStyle.Width(m.layout.statusWidth).Render(status)
-}
-
-// renderSidebar creates the right panel with agents and tasks.
-func (m Model) renderSidebar() string {
-	sidebarBorder := borderNormal
-	if m.activePanel == panelSidebar {
-		sidebarBorder = borderFocused
-	}
-
-	// Agent list.
-	var agentLines []string
-	agentLines = append(agentLines, lipgloss.NewStyle().Bold(true).Render("Agents"))
+	// Agents inline.
+	var agentParts []string
 	for _, a := range m.orch.Agents().List() {
 		icon := statusIcon("idle")
 		if !a.Available() {
@@ -255,33 +213,23 @@ func (m Model) renderSidebar() string {
 		if name == m.orch.Primary() {
 			name += "*"
 		}
-		line := lipgloss.NewStyle().Foreground(agentColor(a.Name())).
-			Render(fmt.Sprintf(" %s %s", icon, name))
-		agentLines = append(agentLines, line)
+		agentParts = append(agentParts,
+			lipgloss.NewStyle().Foreground(agentColor(a.Name())).
+				Render(icon+" "+name))
 	}
+	agents := strings.Join(agentParts, "  ")
 
-	// Task list.
-	var taskLines []string
-	taskLines = append(taskLines, lipgloss.NewStyle().Bold(true).Render("Tasks"))
+	// Tasks inline.
 	tasks := m.orch.Tasks().List()
-	if len(tasks) == 0 {
-		taskLines = append(taskLines, " (none)")
-	}
-	for _, t := range tasks {
-		icon := taskIcon(t.Status.String())
-		line := fmt.Sprintf(" %s %s", icon, truncate(t.Description, m.layout.sidebarWidth-8))
-		taskLines = append(taskLines, line)
-	}
+	taskCount := fmt.Sprintf("%d", len(tasks))
+	running := m.orch.RunningCount()
 
-	agentContent := strings.Join(agentLines, "\n")
-	taskContent := strings.Join(taskLines, "\n")
-	combined := agentContent + "\n\n" + taskContent
+	status := fmt.Sprintf(" ag3nts | %s | tasks: %s | running: %d",
+		agents, taskCount, running)
 
-	return sidebarBorder.
-		Width(m.layout.sidebarWidth).
-		Height(m.layout.sidebarHeight).
-		Render(combined)
+	return statusBarStyle.Width(m.layout.statusWidth).Render(status)
 }
+
 
 // handleCommand processes user input.
 func (m *Model) handleCommand(input string) tea.Cmd {
@@ -487,16 +435,3 @@ func (m *Model) showStatus() {
 	))
 }
 
-// truncate shortens a string to maxLen, adding "…" if truncated.
-func truncate(s string, maxLen int) string {
-	if maxLen <= 0 {
-		return s
-	}
-	if len(s) <= maxLen {
-		return s
-	}
-	if maxLen <= 1 {
-		return "…"
-	}
-	return s[:maxLen-1] + "…"
-}
