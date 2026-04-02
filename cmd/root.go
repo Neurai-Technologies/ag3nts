@@ -19,14 +19,14 @@ var (
 
 var rootCmd = &cobra.Command{
 	Use:   "ag3nts",
-	Short: "Master agent orchestrator for AI coding tools",
+	Short: "Multi-agent orchestrator for AI coding tools",
 	Long: `ag3nts manages Claude Code, Gemini CLI, and Codex CLI as a unified
 multi-agent system. It installs tools, manages shared configurations
-via workflows, and launches Claude Code with an MCP server that exposes
-Gemini and Codex as callable tools.
+via workflows, and launches the orchestrator TUI for multi-agent collaboration.
 
-  ag3nts              Launch master agent (Claude Code + MCP server)
-  ag3nts install      Install tools for your tier
+  ag3nts              Launch the orchestrator TUI
+  ag3nts install      Install tools and ag3nts binary for your tier
+  ag3nts uninstall    Remove ag3nts tools (preserves user data)
   ag3nts run <tool>   Launch a specific tool directly
   ag3nts workflow     Manage shareable config repos
   ag3nts status       Show system health
@@ -51,8 +51,7 @@ Gemini and Codex as callable tools.
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// No subcommand = launch master agent
-		return runMaster(cmd, args)
+		return runOrchestrate()
 	},
 }
 

@@ -17,6 +17,9 @@ func NewClaudeAgent(layout *paths.Layout) *SubprocessAgent {
 		BinaryPath: tool.BinaryPath(layout),
 		BaseFlags:  []string{"--output-format", "stream-json", "--verbose"},
 		Parser:     ParseClaude,
+		ResumeFlags: func(id string) []string {
+			return []string{"--resume", "--session-id", id}
+		},
 		Capabilities: []string{
 			"code-generation", "code-review", "analysis",
 			"reasoning", "refactoring", "debugging",
@@ -36,6 +39,9 @@ func NewGeminiAgent(layout *paths.Layout) *SubprocessAgent {
 		BinaryPath: tool.BinaryPath(layout),
 		BaseFlags:  []string{"--output-format", "stream-json", "--approval-mode", "yolo"},
 		Parser:     ParseGemini,
+		ResumeFlags: func(id string) []string {
+			return []string{"--resume", id}
+		},
 		Capabilities: []string{
 			"research", "large-context", "exploration",
 			"google-ecosystem", "summarization",
@@ -65,6 +71,9 @@ func NewCodexAgent(layout *paths.Layout) *SubprocessAgent {
 		BaseFlags:  []string{"exec", "--json", "--full-auto"},
 		PromptFlag: "_positional", // codex exec takes prompt as positional arg
 		Parser:     ParseCodex,
+		ResumeFlags: func(id string) []string {
+			return []string{"resume", id}
+		},
 		Capabilities: []string{
 			"code-generation", "code-review",
 			"implementation", "testing",

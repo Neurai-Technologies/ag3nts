@@ -95,7 +95,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.layout = calcLayout(msg.Width, msg.Height)
 		m.output = viewport.New(
 			viewport.WithWidth(m.layout.outputWidth-borderSize),
-			viewport.WithHeight(m.layout.outputHeight),
+			viewport.WithHeight(m.layout.outputHeight-borderSize),
 		)
 		m.input.SetWidth(m.layout.inputWidth - borderSize)
 		m.ready = true
@@ -173,7 +173,7 @@ func (m Model) View() tea.View {
 		outputBorder = borderFocused
 	}
 	outputPanel := outputBorder.
-		Width(m.layout.outputWidth - borderSize).
+		Width(m.layout.outputWidth).
 		Height(m.layout.outputHeight).
 		Render(m.output.View())
 
@@ -189,7 +189,8 @@ func (m Model) View() tea.View {
 		inputBorder = borderFocused
 	}
 	inputPanel := inputBorder.
-		Width(m.layout.inputWidth - borderSize).
+		Width(m.layout.inputWidth).
+		Height(m.layout.inputHeight).
 		Render(m.input.View())
 
 	// Stack vertically: status → main → input.
@@ -254,7 +255,7 @@ func (m Model) renderSidebar() string {
 	combined := agentContent + "\n\n" + taskContent
 
 	return sidebarBorder.
-		Width(m.layout.sidebarWidth - borderSize).
+		Width(m.layout.sidebarWidth).
 		Height(m.layout.sidebarHeight).
 		Render(combined)
 }

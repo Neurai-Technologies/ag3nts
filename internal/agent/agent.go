@@ -4,6 +4,7 @@ package agent
 
 import (
 	"context"
+	"sync"
 	"time"
 )
 
@@ -107,6 +108,9 @@ type Session struct {
 	StartedAt time.Time          // When the session began
 	events    chan AgentEvent     // Internal event channel
 	cancel    context.CancelFunc // Cancels the session context
+
+	mu        sync.Mutex
+	resumeID  string // Provider-side session ID for conversation resume
 }
 
 // NewSession creates a session with the given parameters and an internal
@@ -150,14 +154,29 @@ func (s *Session) Cancel() {
 	}
 }
 
+// SetResumeID stores the provider-side session ID for conversation resume.
+func (s *Session) SetResumeID(id string) {
+	s.mu.Lock()
+	s.resumeID = id
+	s.mu.Unlock()
+}
+
+// ResumeID returns the provider-side session ID, or empty if not set.
+func (s *Session) ResumeID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.resumeID
+}
+
 // StartOpts configures how an agent session is launched.
 type StartOpts struct {
-	SessionID string            // External session ID for resume (empty = new session)
-	Model     string            // Model override (empty = agent default)
-	WorkDir   string            // Working directory for the agent
-	Context   string            // Prepended context from other agents' results
-	TaskID    string            // Orchestrator task ID for event tagging
-	Env       map[string]string // Extra environment variables
+	SessionID       string            // External session ID for resume (empty = new session)
+	ResumeSessionID string            // Provider-side session ID for conversation continuity
+	Model           string            // Model override (empty = agent default)
+	WorkDir         string            // Working directory for the agent
+	Context         string            // Prepended context from other agents' results
+	TaskID          string            // Orchestrator task ID for event tagging
+	Env             map[string]string // Extra environment variables
 }
 
 // Agent is the core interface that all agent backends implement.

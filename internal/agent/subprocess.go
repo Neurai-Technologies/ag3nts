@@ -18,6 +18,9 @@ import (
 // Each CLI tool (Claude, Gemini, Codex) provides its own parser implementation.
 type EventParser func(line []byte, agentName, sessionID, taskID string) *AgentEvent
 
+// ResumeFunc returns CLI flags to resume a previous session given the provider session ID.
+type ResumeFunc func(sessionID string) []string
+
 // SubprocessAgent wraps a CLI tool as an Agent, managing its lifecycle
 // as a subprocess with streaming JSON output.
 type SubprocessAgent struct {
@@ -26,6 +29,7 @@ type SubprocessAgent struct {
 	baseFlags    []string     // default CLI flags (e.g. "--output-format", "stream-json")
 	promptFlag   string       // flag for prompt ("-p" or "" for positional)
 	parser       EventParser  // JSON line → AgentEvent
+	resumeFlags  ResumeFunc   // returns CLI flags for session resume (nil = not supported)
 	capabilities []string
 	layout       *paths.Layout
 	extraPaths   []string // directories to prepend to PATH (e.g. node/bin)
@@ -48,6 +52,7 @@ type SubprocessConfig struct {
 	BaseFlags    []string
 	PromptFlag   string // flag for prompt (e.g. "-p"); empty = positional argument
 	Parser       EventParser
+	ResumeFlags  ResumeFunc // returns CLI flags for session resume (nil = not supported)
 	Capabilities []string
 	Layout       *paths.Layout
 	ExtraPaths   []string
@@ -65,6 +70,7 @@ func NewSubprocessAgent(cfg SubprocessConfig) *SubprocessAgent {
 		baseFlags:    cfg.BaseFlags,
 		promptFlag:   promptFlag,
 		parser:       cfg.Parser,
+		resumeFlags:  cfg.ResumeFlags,
 		capabilities: cfg.Capabilities,
 		layout:       cfg.Layout,
 		extraPaths:   cfg.ExtraPaths,
@@ -165,6 +171,10 @@ func (a *SubprocessAgent) Start(ctx context.Context, prompt string, opts *StartO
 			}
 			if a.parser != nil {
 				if event := a.parser(line, a.name, sessionID, opts.TaskID); event != nil {
+					// Capture provider session ID from init events for resume.
+					if event.Kind == EventInit && event.SessionID != "" && event.SessionID != sessionID {
+						session.SetResumeID(event.SessionID)
+					}
 					session.Emit(*event)
 				}
 			}
@@ -268,6 +278,11 @@ func (a *SubprocessAgent) Events(session *Session) <-chan AgentEvent {
 func (a *SubprocessAgent) buildArgs(prompt string, opts *StartOpts) []string {
 	var args []string
 	args = append(args, a.baseFlags...)
+
+	// Insert resume flags if continuing a previous session.
+	if opts.ResumeSessionID != "" && a.resumeFlags != nil {
+		args = append(args, a.resumeFlags(opts.ResumeSessionID)...)
+	}
 
 	// Append model override if specified.
 	if opts.Model != "" {

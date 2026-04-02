@@ -58,7 +58,7 @@ func calcLayout(width, height int) layoutDimensions {
 	d.outputWidth = width - d.sidebarWidth
 
 	// Vertical space for main content area (between status bar and input).
-	contentHeight := height - statusBarHeight - inputHeight - borderSize
+	contentHeight := height - statusBarHeight - inputHeight
 	if contentHeight < 4 {
 		contentHeight = 4
 	}

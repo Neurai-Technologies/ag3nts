@@ -134,26 +134,30 @@ func (o *Orchestrator) Stop() error {
 	return o.queue.Save()
 }
 
-// Send sends a message to the primary agent. Each message starts a fresh
-// session since subprocess agents don't yet support multi-turn Send().
+// Send sends a message to the primary agent. If a session is already active,
+// it resumes the conversation using the provider's session ID (e.g. Claude's
+// --resume --session-id) so context is preserved across messages.
 func (o *Orchestrator) Send(message string) error {
 	a := o.agents.Get(o.primary)
 	if a == nil {
 		return fmt.Errorf("primary agent %q not found", o.primary)
 	}
 
-	// Stop any existing primary session before starting a new one.
+	// Capture resume ID from existing session before stopping it.
 	o.mu.Lock()
 	oldSess := o.mainSess
 	o.mainSess = nil
 	o.mu.Unlock()
 
+	var resumeID string
 	if oldSess != nil {
+		resumeID = oldSess.ResumeID()
 		_ = a.Stop(oldSess)
 	}
 
 	newSess, err := a.Start(o.ctx, message, &agent.StartOpts{
-		TaskID: "_primary",
+		TaskID:          "_primary",
+		ResumeSessionID: resumeID,
 	})
 	if err != nil {
 		return fmt.Errorf("start primary agent: %w", err)
