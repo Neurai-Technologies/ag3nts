@@ -30,13 +30,16 @@ type layoutDimensions struct {
 
 const (
 	statusBarHeight = 1
-	inputHeight     = 3
+	defaultInputH   = 3  // 1 line + border
+	maxInputLines   = 10 // max lines before input scrolls
 	minSidebarWidth = 24
 	sidebarRatio    = 0.30 // 30% of width
 	borderSize      = 2    // top + bottom border
 )
 
-func calcLayout(width, height int) layoutDimensions {
+// calcLayout computes panel sizes. inputLines is the current number of
+// visible lines in the textarea (1 when empty, grows as user types).
+func calcLayout(width, height, inputLines int) layoutDimensions {
 	d := layoutDimensions{
 		width:  width,
 		height: height,
@@ -57,8 +60,14 @@ func calcLayout(width, height int) layoutDimensions {
 	// Output takes remaining width.
 	d.outputWidth = width - d.sidebarWidth
 
+	// Input height = visible lines + border.
+	d.inputHeight = inputLines + borderSize
+	if d.inputHeight < defaultInputH {
+		d.inputHeight = defaultInputH
+	}
+
 	// Vertical space for main content area (between status bar and input).
-	contentHeight := height - statusBarHeight - inputHeight
+	contentHeight := height - statusBarHeight - d.inputHeight
 	if contentHeight < 4 {
 		contentHeight = 4
 	}
@@ -75,7 +84,6 @@ func calcLayout(width, height int) layoutDimensions {
 
 	// Input spans full width.
 	d.inputWidth = width
-	d.inputHeight = inputHeight
 
 	return d
 }

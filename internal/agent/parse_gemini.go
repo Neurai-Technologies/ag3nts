@@ -69,7 +69,7 @@ func ParseGemini(line []byte, agentName, sessionID, taskID string) *AgentEvent {
 
 	case "tool_use":
 		base.Kind = EventToolUse
-		base.Content = ge.ToolName
+		base.Content = formatToolUse(ge.ToolName, ge.Params)
 
 	case "tool_result":
 		base.Kind = EventToolResult
@@ -99,4 +99,61 @@ func ParseGemini(line []byte, agentName, sessionID, taskID string) *AgentEvent {
 	}
 
 	return &base
+}
+
+// formatToolUse formats a tool call with its parameters for display.
+func formatToolUse(name string, params any) string {
+	p, ok := params.(map[string]any)
+	if !ok || len(p) == 0 {
+		return name
+	}
+
+	// Extract the most useful parameter based on tool name.
+	switch name {
+	case "run_shell_command", "shell":
+		if cmd, ok := p["command"].(string); ok {
+			return name + ": " + cmd
+		}
+	case "read_file":
+		if path, ok := p["path"].(string); ok {
+			return name + ": " + path
+		}
+	case "write_file", "edit_file":
+		if path, ok := p["path"].(string); ok {
+			return name + ": " + path
+		}
+	case "search_files", "grep":
+		if pattern, ok := p["pattern"].(string); ok {
+			return name + ": " + pattern
+		}
+	case "list_directory":
+		if path, ok := p["path"].(string); ok {
+			return name + ": " + path
+		}
+	}
+
+	// Fallback: show all param keys and short values.
+	var parts []string
+	for k, v := range p {
+		s, ok := v.(string)
+		if !ok {
+			continue
+		}
+		if len(s) > 80 {
+			s = s[:77] + "..."
+		}
+		parts = append(parts, k+"="+s)
+	}
+	if len(parts) > 0 {
+		return name + ": " + joinParts(parts)
+	}
+	return name
+}
+
+func joinParts(parts []string) string {
+	result := parts[0]
+	for _, p := range parts[1:] {
+		result += ", " + p
+	}
+	return result
 }

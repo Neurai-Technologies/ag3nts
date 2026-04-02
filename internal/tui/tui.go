@@ -53,6 +53,9 @@ func New(orch *orchestrator.Orchestrator) Model {
 	ta := textarea.New()
 	ta.Placeholder = "Type a message or /help for commands..."
 	ta.ShowLineNumbers = false
+	ta.DynamicHeight = true
+	ta.MinHeight = 1
+	ta.MaxHeight = maxInputLines
 	ta.SetHeight(1)
 	ta.Focus()
 
@@ -92,7 +95,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.layout = calcLayout(msg.Width, msg.Height)
+		m.layout = calcLayout(msg.Width, msg.Height, m.input.Height())
 		m.output = viewport.New(
 			viewport.WithWidth(m.layout.outputWidth-borderSize),
 			viewport.WithHeight(m.layout.outputHeight-borderSize),
@@ -100,6 +103,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.input.SetWidth(m.layout.inputWidth - borderSize)
 		m.ready = true
 		m.refreshOutput()
+		return m, nil
+
+	case tea.MouseWheelMsg:
+		// Forward scroll events to the output viewport.
+		var cmd tea.Cmd
+		m.output, cmd = m.output.Update(msg)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		return m, tea.Batch(cmds...)
+
+	case tea.MouseClickMsg, tea.MouseReleaseMsg, tea.MouseMotionMsg:
+		// Ignore — don't pass to sub-models or trigger re-renders.
 		return m, nil
 
 	case tea.KeyMsg:
@@ -126,6 +142,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if value != "" {
 					cmd := m.handleCommand(value)
 					m.input.Reset()
+					m.resizeLayout()
 					if cmd != nil {
 						cmds = append(cmds, cmd)
 					}
@@ -136,9 +153,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch m.activePanel {
 		case panelInput:
+			oldH := m.input.Height()
 			var cmd tea.Cmd
 			m.input, cmd = m.input.Update(msg)
 			cmds = append(cmds, cmd)
+			// Recalculate layout if textarea grew or shrank.
+			if m.input.Height() != oldH {
+				m.resizeLayout()
+			}
 		case panelOutput:
 			var cmd tea.Cmd
 			m.output, cmd = m.output.Update(msg)
@@ -198,6 +220,7 @@ func (m Model) View() tea.View {
 
 	v := tea.NewView(content)
 	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
 	return v
 }
 
@@ -291,7 +314,8 @@ func (m *Model) handleSlashCommand(input string) tea.Cmd {
 			"  /status             — show overview",
 			"  /quit               — exit",
 			"",
-			"Tab to switch panels. Plain text goes to the primary agent.",
+			"Tab to switch panels. PgUp/PgDn to scroll output.",
+			"Plain text goes to the primary agent.",
 		}, "\n"))
 
 	case "/quit":
@@ -395,6 +419,16 @@ func (m *Model) appendOutput(source, content string) {
 		m.outputLines = m.outputLines[len(m.outputLines)-10000:]
 	}
 
+	m.refreshOutput()
+}
+
+// resizeLayout recalculates layout and viewport after input height changes.
+func (m *Model) resizeLayout() {
+	m.layout = calcLayout(m.layout.width, m.layout.height, m.input.Height())
+	m.output = viewport.New(
+		viewport.WithWidth(m.layout.outputWidth-borderSize),
+		viewport.WithHeight(m.layout.outputHeight-borderSize),
+	)
 	m.refreshOutput()
 }
 

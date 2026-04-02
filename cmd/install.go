@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/rohanrgit/ag3nts/internal/symlinks"
@@ -40,7 +41,8 @@ runnable from anywhere.
 		// Install ag3nts binary to /usr/local/bin
 		if err := installBinary(); err != nil {
 			ui.Fail(fmt.Sprintf("binary install: %v", err))
-			fmt.Fprintln(cmd.ErrOrStderr(), "  You may need: sudo ag3nts install")
+			destBin := filepath.Join(layout.Bin, "ag3nts")
+			fmt.Fprintf(cmd.ErrOrStderr(), "  Run: sudo ln -sf %s %s/ag3nts\n", destBin, systemBinDir)
 		} else {
 			ui.OK(fmt.Sprintf("ag3nts binary → %s/ag3nts", systemBinDir))
 		}
@@ -125,6 +127,11 @@ func installBinary() error {
 		}
 		if err := os.WriteFile(destBin, data, 0755); err != nil {
 			return fmt.Errorf("write binary: %w", err)
+		}
+		// Re-sign with ad-hoc signature — macOS Apple Silicon requires
+		// valid signatures and kills unsigned copied binaries (SIGKILL).
+		if err := exec.Command("codesign", "--force", "--sign", "-", destBin).Run(); err != nil {
+			return fmt.Errorf("codesign binary: %w", err)
 		}
 	}
 

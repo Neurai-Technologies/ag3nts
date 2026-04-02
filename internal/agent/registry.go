@@ -2,6 +2,7 @@ package agent
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 )
 
@@ -40,7 +41,7 @@ func (r *Registry) Get(name string) Agent {
 	return r.agents[name]
 }
 
-// List returns all registered agents in no guaranteed order.
+// List returns all registered agents sorted by name for stable display order.
 func (r *Registry) List() []Agent {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -49,6 +50,9 @@ func (r *Registry) List() []Agent {
 	for _, a := range r.agents {
 		agents = append(agents, a)
 	}
+	sort.Slice(agents, func(i, j int) bool {
+		return agents[i].Name() < agents[j].Name()
+	})
 	return agents
 }
 
