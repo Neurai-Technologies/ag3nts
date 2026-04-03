@@ -60,6 +60,10 @@ func ParseGemini(line []byte, agentName, sessionID, taskID string) *AgentEvent {
 		}
 
 	case "message":
+		// Skip user message echo — we already display user input in the TUI.
+		if ge.Role == "user" {
+			return nil
+		}
 		if ge.Delta {
 			base.Kind = EventProgress
 		} else {
@@ -72,11 +76,13 @@ func ParseGemini(line []byte, agentName, sessionID, taskID string) *AgentEvent {
 		base.Content = formatToolUse(ge.ToolName, ge.Params)
 
 	case "tool_result":
-		base.Kind = EventToolResult
-		base.Content = ge.Output
+		// Only show tool errors, suppress successful output (too noisy).
 		if ge.Status == "error" {
+			base.Kind = EventError
 			base.Content = ge.Error
+			return &base
 		}
+		return nil
 
 	case "error":
 		base.Kind = EventError

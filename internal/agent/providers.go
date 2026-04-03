@@ -37,7 +37,7 @@ func NewGeminiAgent(layout *paths.Layout) *SubprocessAgent {
 	return NewSubprocessAgent(SubprocessConfig{
 		Name:       "gemini",
 		BinaryPath: tool.BinaryPath(layout),
-		BaseFlags:  []string{"--output-format", "stream-json", "--approval-mode", "yolo"},
+		BaseFlags:  []string{"--output-format", "stream-json", "--approval-mode", "yolo", "-e", ""},
 		Parser:     ParseGemini,
 		ResumeFlags: func(id string) []string {
 			return []string{"--resume", id}

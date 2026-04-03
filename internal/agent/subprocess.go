@@ -150,16 +150,6 @@ func (a *SubprocessAgent) Start(ctx context.Context, prompt string, opts *StartO
 	a.sessions[sessionID] = &subprocessSession{cmd: cmd, cancel: cancel, done: done}
 	a.mu.Unlock()
 
-	// Emit init event.
-	session.Emit(AgentEvent{
-		Kind:      EventInit,
-		Agent:     a.name,
-		SessionID: sessionID,
-		TaskID:    opts.TaskID,
-		Content:   fmt.Sprintf("Started %s session", a.name),
-		Timestamp: time.Now(),
-	})
-
 	// Stream stdout in a goroutine — parse each JSON line into AgentEvent.
 	go func() {
 		scanner := bufio.NewScanner(stdout)

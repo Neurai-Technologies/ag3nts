@@ -6,6 +6,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
@@ -21,11 +22,12 @@ import (
 type Model struct {
 	orch *orchestrator.Orchestrator
 
-	input   textarea.Model
-	width   int
-	ready   bool
-	eventCh <-chan bus.Event
-	lastErr string
+	input       textarea.Model
+	width       int
+	ready       bool
+	eventCh     <-chan bus.Event
+	activeAgent string // persists routing to last-used agent; empty = primary
+	lastErr     string
 }
 
 // New creates the TUI model wired to an orchestrator.
@@ -37,6 +39,7 @@ func New(orch *orchestrator.Orchestrator) Model {
 	ta.MinHeight = 1
 	ta.MaxHeight = maxInputLines
 	ta.SetHeight(1)
+	ta.Prompt = ""
 
 	// Clear all default backgrounds so it uses the terminal's native background.
 	clear := lipgloss.NewStyle()
@@ -84,9 +87,14 @@ func (m Model) waitForEvent() tea.Cmd {
 	}
 }
 
-// printLine sends a styled line to the terminal's native scrollback.
+// dimStyle for timestamps.
+var dimStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#616161"))
+
+// printLine sends a timestamped styled line to the terminal's native scrollback.
 func printLine(source, text string) tea.Cmd {
-	styled := lipgloss.NewStyle().Foreground(agentColor(source)).Render(source) +
+	ts := dimStyle.Render(time.Now().Format("15:04:05"))
+	styled := ts + " " +
+		lipgloss.NewStyle().Foreground(agentColor(source)).Render(source) +
 		" " + text
 	return tea.Println(styled)
 }
@@ -182,21 +190,63 @@ func (m Model) renderStatusBar() string {
 	tasks := m.orch.Tasks().List()
 	running := m.orch.RunningCount()
 
-	status := fmt.Sprintf(" ag3nts | %s | tasks: %d | running: %d",
-		agents, len(tasks), running)
+	active := m.activeAgent
+	if active == "" {
+		active = m.orch.Primary()
+	}
+	status := fmt.Sprintf(" ag3nts | talking to: %s | %s | tasks: %d | running: %d",
+		active, agents, len(tasks), running)
 
 	return statusBarStyle.Width(m.width).Render(status)
 }
 
 // handleCommand processes user input, returns a Cmd for output.
+// If the message starts with an agent name (e.g. "gemini research X"),
+// it switches to that agent. Subsequent messages continue to the same
+// agent until another agent name is used.
 func (m *Model) handleCommand(input string) tea.Cmd {
 	if strings.HasPrefix(input, "/") {
 		return m.handleSlashCommand(input)
 	}
 
-	cmds := []tea.Cmd{printLine("you", input)}
-	if err := m.orch.Send(input); err != nil {
-		m.lastErr = err.Error()
+	// Check if first word is a known agent name → switch active agent.
+	parts := strings.SplitN(input, " ", 2)
+	if len(parts) >= 1 {
+		agentName := strings.ToLower(parts[0])
+		if m.orch.Agents().Get(agentName) != nil {
+			m.activeAgent = agentName
+			message := ""
+			if len(parts) == 2 {
+				message = parts[1]
+			}
+			if message == "" {
+				return printLine("system", fmt.Sprintf("Switched to %s. Messages now go to %s.", agentName, agentName))
+			}
+			cmds := []tea.Cmd{printLine("you→"+agentName, message)}
+			if err := m.orch.SendTo(agentName, message); err != nil {
+				cmds = append(cmds, printLine("error", err.Error()))
+			}
+			return tea.Batch(cmds...)
+		}
+	}
+
+	// Send to active agent (or primary if none set).
+	target := m.activeAgent
+	if target == "" {
+		target = m.orch.Primary()
+	}
+
+	if target == m.orch.Primary() {
+		cmds := []tea.Cmd{printLine("you", input)}
+		if err := m.orch.Send(input); err != nil {
+			m.lastErr = err.Error()
+			cmds = append(cmds, printLine("error", err.Error()))
+		}
+		return tea.Batch(cmds...)
+	}
+
+	cmds := []tea.Cmd{printLine("you→"+target, input)}
+	if err := m.orch.SendTo(target, input); err != nil {
 		cmds = append(cmds, printLine("error", err.Error()))
 	}
 	return tea.Batch(cmds...)
@@ -292,16 +342,26 @@ func (m *Model) handleEvent(event bus.Event) tea.Cmd {
 		return printLines(agentEvt.Agent+"[cmd]", agentEvt.Content)
 	case agent.EventToolUse:
 		return printLines(agentEvt.Agent+"[tool]", agentEvt.Content)
+	case agent.EventToolResult:
+		// Don't dump full tool output — just confirm completion.
+		return nil
+	case agent.EventReasoning:
+		// Show a brief thinking indicator, not the full reasoning.
+		return printLine(agentEvt.Agent+"[thinking]", "...")
 	case agent.EventProgress:
 		if agentEvt.Content != "" {
 			return printLines(agentEvt.Agent, agentEvt.Content)
 		}
 	case agent.EventInit:
-		return printLine("system", fmt.Sprintf("[%s] %s", agentEvt.Agent, agentEvt.Content))
+		return printLine("system", fmt.Sprintf("[%s] connected — waiting for response...", agentEvt.Agent))
 	case agent.EventComplete:
 		if agentEvt.Usage != nil {
-			return printLine("system", fmt.Sprintf("[%s] done — %d in / %d out tokens",
-				agentEvt.Agent, agentEvt.Usage.InputTokens, agentEvt.Usage.OutputTokens))
+			cost := ""
+			if agentEvt.Usage.TotalCost > 0 {
+				cost = fmt.Sprintf(" | $%.4f", agentEvt.Usage.TotalCost)
+			}
+			return printLine("system", fmt.Sprintf("[%s] done — %d in / %d out tokens%s",
+				agentEvt.Agent, agentEvt.Usage.InputTokens, agentEvt.Usage.OutputTokens, cost))
 		}
 	}
 	return nil
