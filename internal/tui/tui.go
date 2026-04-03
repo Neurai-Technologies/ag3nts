@@ -37,6 +37,22 @@ func New(orch *orchestrator.Orchestrator) Model {
 	ta.MinHeight = 1
 	ta.MaxHeight = maxInputLines
 	ta.SetHeight(1)
+
+	// Clear all default backgrounds so it uses the terminal's native background.
+	clear := lipgloss.NewStyle()
+	styles := ta.Styles()
+	styles.Focused.Base = clear
+	styles.Focused.Text = clear
+	styles.Focused.CursorLine = clear
+	styles.Focused.EndOfBuffer = clear
+	styles.Focused.Placeholder = clear.Foreground(colorBorder)
+	styles.Blurred.Base = clear
+	styles.Blurred.Text = clear
+	styles.Blurred.CursorLine = clear
+	styles.Blurred.EndOfBuffer = clear
+	styles.Blurred.Placeholder = clear.Foreground(colorBorder)
+	ta.SetStyles(styles)
+
 	ta.Focus()
 
 	return Model{
@@ -135,12 +151,12 @@ func (m Model) View() tea.View {
 		return tea.NewView("Initializing ag3nts orchestrator...")
 	}
 
-	statusBar := m.renderStatusBar()
 	inputPanel := borderFocused.
 		Width(m.width).
 		Render(m.input.View())
+	statusBar := m.renderStatusBar()
 
-	content := lipgloss.JoinVertical(lipgloss.Left, statusBar, inputPanel)
+	content := lipgloss.JoinVertical(lipgloss.Left, inputPanel, statusBar)
 	return tea.NewView(content)
 }
 

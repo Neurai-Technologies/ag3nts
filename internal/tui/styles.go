@@ -52,8 +52,7 @@ var (
 
 // Status bar style.
 var statusBarStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color("#ECEFF1")).
-	Background(lipgloss.Color("#37474F")).
+	Foreground(lipgloss.Color("#90A4AE")).
 	Padding(0, 1)
 
 // Agent status icons.
