@@ -30,6 +30,7 @@ type SubprocessAgent struct {
 	promptFlag   string       // flag for prompt ("-p" or "" for positional)
 	parser       EventParser  // JSON line → AgentEvent
 	resumeFlags  ResumeFunc   // returns CLI flags for session resume (nil = not supported)
+	systemPrompt string       // prepended to every prompt
 	capabilities []string
 	layout       *paths.Layout
 	extraPaths   []string // directories to prepend to PATH (e.g. node/bin)
@@ -53,6 +54,7 @@ type SubprocessConfig struct {
 	PromptFlag   string // flag for prompt (e.g. "-p"); empty = positional argument
 	Parser       EventParser
 	ResumeFlags  ResumeFunc // returns CLI flags for session resume (nil = not supported)
+	SystemPrompt string     // prepended to every prompt (agent-level instructions)
 	Capabilities []string
 	Layout       *paths.Layout
 	ExtraPaths   []string
@@ -71,6 +73,7 @@ func NewSubprocessAgent(cfg SubprocessConfig) *SubprocessAgent {
 		promptFlag:   promptFlag,
 		parser:       cfg.Parser,
 		resumeFlags:  cfg.ResumeFlags,
+		systemPrompt: cfg.SystemPrompt,
 		capabilities: cfg.Capabilities,
 		layout:       cfg.Layout,
 		extraPaths:   cfg.ExtraPaths,
@@ -277,6 +280,11 @@ func (a *SubprocessAgent) buildArgs(prompt string, opts *StartOpts) []string {
 	// Append model override if specified.
 	if opts.Model != "" {
 		args = append(args, "-m", opts.Model)
+	}
+
+	// Prepend system prompt if configured.
+	if a.systemPrompt != "" {
+		prompt = a.systemPrompt + "\n\n" + prompt
 	}
 
 	// Append prompt: some CLIs use -p, others take it as positional arg.

@@ -130,7 +130,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmd := m.handleCommand(value)
 				m.input.Reset()
 				if cmd != nil {
-					cmds = append(cmds, cmd)
+					cmds = append(cmds, tea.Sequence(tea.Println(""), cmd))
 				}
 			}
 			return m, tea.Batch(cmds...)
@@ -200,10 +200,32 @@ func (m Model) renderStatusBar() string {
 	return statusBarStyle.Width(m.width).Render(status)
 }
 
+// searchKeywords triggers auto-routing to Gemini for web search/research.
+var searchKeywords = []string{
+	"search", "look up", "lookup", "find out", "research",
+	"what is", "what are", "who is", "who are", "when did", "when was",
+	"how to", "how do", "how does", "why is", "why do", "why does",
+	"latest", "news", "current", "recent", "today",
+	"compare", "difference between", "versus", "vs ",
+	"explain", "define", "meaning of",
+}
+
+// isSearchQuery returns true if the input looks like a web search request.
+func isSearchQuery(input string) bool {
+	lower := strings.ToLower(input)
+	for _, kw := range searchKeywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
+}
+
 // handleCommand processes user input, returns a Cmd for output.
 // If the message starts with an agent name (e.g. "gemini research X"),
 // it switches to that agent. Subsequent messages continue to the same
 // agent until another agent name is used.
+// Search/research queries are always routed to Gemini.
 func (m *Model) handleCommand(input string) tea.Cmd {
 	if strings.HasPrefix(input, "/") {
 		return m.handleSlashCommand(input)
@@ -228,6 +250,15 @@ func (m *Model) handleCommand(input string) tea.Cmd {
 			}
 			return tea.Batch(cmds...)
 		}
+	}
+
+	// Auto-route search queries to Gemini (regardless of active agent).
+	if isSearchQuery(input) && m.orch.Agents().Get("gemini") != nil {
+		cmds := []tea.Cmd{printLine("you→gemini", input)}
+		if err := m.orch.SendTo("gemini", input); err != nil {
+			cmds = append(cmds, printLine("error", err.Error()))
+		}
+		return tea.Batch(cmds...)
 	}
 
 	// Send to active agent (or primary if none set).
@@ -262,6 +293,7 @@ func (m *Model) handleSlashCommand(input string) tea.Cmd {
 		return printLines("system", strings.Join([]string{
 			"Commands:",
 			"  /to <agent> <msg>   — send directly to an agent",
+			"  /cancel             — stop the active agent's session",
 			"  /task <type> <desc> — create a routed task",
 			"  /primary <agent>    — switch primary agent",
 			"  /agents             — list agents",
@@ -269,12 +301,22 @@ func (m *Model) handleSlashCommand(input string) tea.Cmd {
 			"  /status             — show overview",
 			"  /quit               — exit",
 			"",
-			"Plain text goes to the primary agent.",
-			"Scroll, select, and copy work natively.",
+			"Type an agent name to switch (e.g. 'gemini hello').",
+			"Sessions auto-timeout after 2 minutes.",
 		}, "\n"))
 
 	case "/quit":
 		return tea.Quit
+
+	case "/cancel":
+		target := m.activeAgent
+		if target == "" {
+			target = m.orch.Primary()
+		}
+		if err := m.orch.Cancel(target); err != nil {
+			return printLine("system", err.Error())
+		}
+		return printLine("system", fmt.Sprintf("Cancelled %s session.", target))
 
 	case "/to":
 		if len(parts) < 3 {

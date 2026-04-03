@@ -16,6 +16,9 @@ import (
 	"github.com/rohanrgit/ag3nts/internal/task"
 )
 
+// Default session timeout for interactive sends.
+const defaultSessionTimeout = 120 * time.Second
+
 // Config holds orchestrator initialization parameters.
 type Config struct {
 	Primary        string         // default primary agent name
@@ -34,9 +37,10 @@ type Orchestrator struct {
 	primary string
 	maxConc int
 
-	mu       sync.Mutex
-	running  map[string]*agent.Session // taskID → active session
-	mainSess *agent.Session            // primary agent interactive session
+	mu         sync.Mutex
+	running    map[string]*agent.Session // taskID → active session
+	mainSess   *agent.Session            // primary agent interactive session
+	directSess map[string]*agent.Session // agentName → direct send session (for resume)
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -63,14 +67,15 @@ func New(cfg Config, agents *agent.Registry) (*Orchestrator, error) {
 	}
 
 	return &Orchestrator{
-		agents:  agents,
-		router:  r,
-		queue:   task.NewQueue(taskDir),
-		store:   NewStore(resultDir),
-		bus:     bus.New(),
-		primary: cfg.Primary,
-		maxConc: maxConc,
-		running: make(map[string]*agent.Session),
+		agents:     agents,
+		router:     r,
+		queue:      task.NewQueue(taskDir),
+		store:      NewStore(resultDir),
+		bus:        bus.New(),
+		primary:    cfg.Primary,
+		maxConc:    maxConc,
+		running:    make(map[string]*agent.Session),
+		directSess: make(map[string]*agent.Session),
 	}, nil
 }
 
@@ -155,7 +160,8 @@ func (o *Orchestrator) Send(message string) error {
 		_ = a.Stop(oldSess)
 	}
 
-	newSess, err := a.Start(o.ctx, message, &agent.StartOpts{
+	sessCtx, _ := context.WithTimeout(o.ctx, defaultSessionTimeout)
+	newSess, err := a.Start(sessCtx, message, &agent.StartOpts{
 		TaskID:          "_primary",
 		ResumeSessionID: resumeID,
 	})
@@ -171,18 +177,38 @@ func (o *Orchestrator) Send(message string) error {
 }
 
 // SendTo sends a message directly to a specific agent (not through routing).
+// Resumes the previous session if one exists for this agent.
 func (o *Orchestrator) SendTo(agentName string, message string) error {
 	a := o.agents.Get(agentName)
 	if a == nil {
 		return fmt.Errorf("agent %q not found", agentName)
 	}
 
-	sess, err := a.Start(o.ctx, message, &agent.StartOpts{
-		TaskID: fmt.Sprintf("_direct-%s-%d", agentName, time.Now().UnixNano()),
+	// Capture resume ID from existing session before stopping it.
+	o.mu.Lock()
+	oldSess := o.directSess[agentName]
+	delete(o.directSess, agentName)
+	o.mu.Unlock()
+
+	var resumeID string
+	if oldSess != nil {
+		resumeID = oldSess.ResumeID()
+		_ = a.Stop(oldSess)
+	}
+
+	sessCtx, _ := context.WithTimeout(o.ctx, defaultSessionTimeout)
+	sess, err := a.Start(sessCtx, message, &agent.StartOpts{
+		TaskID:          fmt.Sprintf("_direct-%s-%d", agentName, time.Now().UnixNano()),
+		ResumeSessionID: resumeID,
 	})
 	if err != nil {
 		return fmt.Errorf("start %s: %w", agentName, err)
 	}
+
+	o.mu.Lock()
+	o.directSess[agentName] = sess
+	o.mu.Unlock()
+
 	go o.drainEvents(sess)
 	return nil
 }
@@ -401,11 +427,55 @@ func (o *Orchestrator) buildContext(taskIDs []string) string {
 	return strings.Join(parts, "\n\n")
 }
 
+// Cancel stops the active session for a given agent.
+func (o *Orchestrator) Cancel(agentName string) error {
+	a := o.agents.Get(agentName)
+	if a == nil {
+		return fmt.Errorf("agent %q not found", agentName)
+	}
+
+	o.mu.Lock()
+	// Check direct sessions first.
+	if sess, ok := o.directSess[agentName]; ok {
+		delete(o.directSess, agentName)
+		o.mu.Unlock()
+		return a.Stop(sess)
+	}
+	// Check primary session.
+	if agentName == o.primary && o.mainSess != nil {
+		sess := o.mainSess
+		o.mainSess = nil
+		o.mu.Unlock()
+		return a.Stop(sess)
+	}
+	o.mu.Unlock()
+	return fmt.Errorf("no active session for %s", agentName)
+}
+
 // drainEvents reads all events from a session and publishes them to the bus.
-// Used for the primary agent session and direct sends.
+// Emits a heartbeat every 30s if no events arrive so the user knows it's alive.
 func (o *Orchestrator) drainEvents(sess *agent.Session) {
-	for event := range sess.Events() {
-		o.publish(event)
+	heartbeat := time.NewTicker(30 * time.Second)
+	defer heartbeat.Stop()
+
+	for {
+		select {
+		case event, ok := <-sess.Events():
+			if !ok {
+				return
+			}
+			o.publish(event)
+			heartbeat.Reset(30 * time.Second)
+		case <-heartbeat.C:
+			o.publish(agent.AgentEvent{
+				Kind:      agent.EventProgress,
+				Agent:     sess.Agent,
+				SessionID: sess.ID,
+				TaskID:    sess.TaskID,
+				Content:   "still working...",
+				Timestamp: time.Now(),
+			})
+		}
 	}
 }
 
