@@ -1,6 +1,6 @@
-// Package tui implements the Bubbletea v2 terminal interface for the
-// ag3nts orchestrator. It displays agent status, task progress, streaming
-// output, and accepts user commands.
+// Package tui implements the terminal interface for the ag3nts orchestrator.
+// Uses Bubbletea in inline mode — output goes to native terminal scrollback,
+// only the input prompt and status bar are re-rendered in place.
 package tui
 
 import (
@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/textarea"
-	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
@@ -18,39 +17,21 @@ import (
 	"github.com/rohanrgit/ag3nts/internal/task"
 )
 
-// panel tracks which UI panel has focus.
-type panel int
-
-const (
-	panelInput panel = iota
-	panelOutput
-)
-
 // Model is the root Bubbletea model for the orchestrator TUI.
 type Model struct {
 	orch *orchestrator.Orchestrator
 
-	// Sub-models.
-	output viewport.Model
-	input  textarea.Model
-
-	// Layout state.
-	layout      layoutDimensions
-	activePanel panel
-	ready       bool
-
-	// Content buffers.
-	outputLines []string // accumulated output lines
-	eventCh     <-chan bus.Event
-
-	// Error display.
+	input   textarea.Model
+	width   int
+	ready   bool
+	eventCh <-chan bus.Event
 	lastErr string
 }
 
 // New creates the TUI model wired to an orchestrator.
 func New(orch *orchestrator.Orchestrator) Model {
 	ta := textarea.New()
-	ta.Placeholder = "Type a message or /help for commands..."
+	ta.Placeholder = "Type a message or /help..."
 	ta.ShowLineNumbers = false
 	ta.DynamicHeight = true
 	ta.MinHeight = 1
@@ -59,10 +40,9 @@ func New(orch *orchestrator.Orchestrator) Model {
 	ta.Focus()
 
 	return Model{
-		orch:        orch,
-		input:       ta,
-		activePanel: panelInput,
-		eventCh:     orch.Bus().Subscribe(512, "system"),
+		orch:    orch,
+		input:   ta,
+		eventCh: orch.Bus().Subscribe(512, "system"),
 	}
 }
 
@@ -88,20 +68,31 @@ func (m Model) waitForEvent() tea.Cmd {
 	}
 }
 
-// Update handles all messages: key presses, window resize, bus events.
+// printLine sends a styled line to the terminal's native scrollback.
+func printLine(source, text string) tea.Cmd {
+	styled := lipgloss.NewStyle().Foreground(agentColor(source)).Render(source) +
+		" " + text
+	return tea.Println(styled)
+}
+
+// printLines sends multiple lines to scrollback.
+func printLines(source, content string) tea.Cmd {
+	var cmds []tea.Cmd
+	for _, line := range strings.Split(content, "\n") {
+		cmds = append(cmds, printLine(source, line))
+	}
+	return tea.Batch(cmds...)
+}
+
+// Update handles all messages.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.layout = calcLayout(msg.Width, msg.Height, m.input.Height())
-		m.output = viewport.New(
-			viewport.WithWidth(m.layout.outputWidth-borderSize),
-			viewport.WithHeight(m.layout.outputHeight-borderSize),
-		)
-		m.input.SetWidth(m.layout.inputWidth - borderSize)
+		m.width = msg.Width
+		m.input.SetWidth(m.width - borderSize)
 		m.ready = true
-		m.refreshOutput()
 		return m, nil
 
 	case tea.KeyMsg:
@@ -109,98 +100,51 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c":
 			return m, tea.Quit
 
-		case "tab":
-			switch m.activePanel {
-			case panelInput:
-				m.activePanel = panelOutput
-				m.input.Blur()
-			case panelOutput:
-				m.activePanel = panelInput
-				m.input.Focus()
-			}
-			return m, nil
-
 		case "enter":
-			if m.activePanel == panelInput {
-				value := strings.TrimSpace(m.input.Value())
-				if value != "" {
-					cmd := m.handleCommand(value)
-					m.input.Reset()
-					m.resizeLayout()
-					if cmd != nil {
-						cmds = append(cmds, cmd)
-					}
+			value := strings.TrimSpace(m.input.Value())
+			if value != "" {
+				cmd := m.handleCommand(value)
+				m.input.Reset()
+				if cmd != nil {
+					cmds = append(cmds, cmd)
 				}
-				return m, tea.Batch(cmds...)
 			}
+			return m, tea.Batch(cmds...)
 		}
 
-		switch m.activePanel {
-		case panelInput:
-			oldH := m.input.Height()
-			var cmd tea.Cmd
-			m.input, cmd = m.input.Update(msg)
-			cmds = append(cmds, cmd)
-			if m.input.Height() != oldH {
-				m.resizeLayout()
-			}
-		case panelOutput:
-			var cmd tea.Cmd
-			m.output, cmd = m.output.Update(msg)
+		var cmd tea.Cmd
+		m.input, cmd = m.input.Update(msg)
+		if cmd != nil {
 			cmds = append(cmds, cmd)
 		}
-
 		return m, tea.Batch(cmds...)
 
 	case eventMsg:
-		m.handleEvent(bus.Event(msg))
-		cmds = append(cmds, m.waitForEvent())
+		cmd := m.handleEvent(bus.Event(msg))
+		cmds = append(cmds, cmd, m.waitForEvent())
 		return m, tea.Batch(cmds...)
 	}
 
 	return m, nil
 }
 
-// View renders the complete TUI layout.
+// View renders only the status bar and input prompt inline.
+// All output goes to native scrollback via tea.Println.
 func (m Model) View() tea.View {
 	if !m.ready {
-		v := tea.NewView("Initializing ag3nts orchestrator...")
-		v.AltScreen = true
-		return v
+		return tea.NewView("Initializing ag3nts orchestrator...")
 	}
 
-	// Output viewport with border.
-	outputBorder := borderNormal
-	if m.activePanel == panelOutput {
-		outputBorder = borderFocused
-	}
-	outputPanel := outputBorder.
-		Width(m.layout.outputWidth).
-		Height(m.layout.outputHeight).
-		Render(m.output.View())
-
-	// Input area with border.
-	inputBorder := borderNormal
-	if m.activePanel == panelInput {
-		inputBorder = borderFocused
-	}
-	inputPanel := inputBorder.
-		Width(m.layout.inputWidth).
-		Height(m.layout.inputHeight).
+	statusBar := m.renderStatusBar()
+	inputPanel := borderFocused.
+		Width(m.width).
 		Render(m.input.View())
 
-	// Status bar (bottom): system info + agents + tasks.
-	statusBar := m.renderStatusBar()
-
-	// Stack vertically: output → input → status bar.
-	content := lipgloss.JoinVertical(lipgloss.Left, outputPanel, inputPanel, statusBar)
-
-	v := tea.NewView(content)
-	v.AltScreen = true
-	return v
+	content := lipgloss.JoinVertical(lipgloss.Left, statusBar, inputPanel)
+	return tea.NewView(content)
 }
 
-// renderStatusBar creates the bottom status bar with system info, agents, and tasks.
+// renderStatusBar creates the inline status line.
 func (m Model) renderStatusBar() string {
 	// Agents inline.
 	var agentParts []string
@@ -219,30 +163,27 @@ func (m Model) renderStatusBar() string {
 	}
 	agents := strings.Join(agentParts, "  ")
 
-	// Tasks inline.
 	tasks := m.orch.Tasks().List()
-	taskCount := fmt.Sprintf("%d", len(tasks))
 	running := m.orch.RunningCount()
 
-	status := fmt.Sprintf(" ag3nts | %s | tasks: %s | running: %d",
-		agents, taskCount, running)
+	status := fmt.Sprintf(" ag3nts | %s | tasks: %d | running: %d",
+		agents, len(tasks), running)
 
-	return statusBarStyle.Width(m.layout.statusWidth).Render(status)
+	return statusBarStyle.Width(m.width).Render(status)
 }
 
-
-// handleCommand processes user input.
+// handleCommand processes user input, returns a Cmd for output.
 func (m *Model) handleCommand(input string) tea.Cmd {
 	if strings.HasPrefix(input, "/") {
 		return m.handleSlashCommand(input)
 	}
 
-	m.appendOutput("you", input)
+	cmds := []tea.Cmd{printLine("you", input)}
 	if err := m.orch.Send(input); err != nil {
 		m.lastErr = err.Error()
-		m.appendOutput("error", err.Error())
+		cmds = append(cmds, printLine("error", err.Error()))
 	}
-	return nil
+	return tea.Batch(cmds...)
 }
 
 // handleSlashCommand parses and executes TUI commands.
@@ -252,7 +193,7 @@ func (m *Model) handleSlashCommand(input string) tea.Cmd {
 
 	switch cmd {
 	case "/help":
-		m.appendOutput("system", strings.Join([]string{
+		return printLines("system", strings.Join([]string{
 			"Commands:",
 			"  /to <agent> <msg>   — send directly to an agent",
 			"  /task <type> <desc> — create a routed task",
@@ -262,8 +203,8 @@ func (m *Model) handleSlashCommand(input string) tea.Cmd {
 			"  /status             — show overview",
 			"  /quit               — exit",
 			"",
-			"Tab to switch panels. PgUp/PgDn to scroll output.",
 			"Plain text goes to the primary agent.",
+			"Scroll, select, and copy work natively.",
 		}, "\n"))
 
 	case "/quit":
@@ -271,20 +212,19 @@ func (m *Model) handleSlashCommand(input string) tea.Cmd {
 
 	case "/to":
 		if len(parts) < 3 {
-			m.appendOutput("error", "Usage: /to <agent> <message>")
-			return nil
+			return printLine("error", "Usage: /to <agent> <message>")
 		}
 		agentName := parts[1]
 		message := strings.Join(parts[2:], " ")
-		m.appendOutput("you→"+agentName, message)
+		cmds := []tea.Cmd{printLine("you→"+agentName, message)}
 		if err := m.orch.SendTo(agentName, message); err != nil {
-			m.appendOutput("error", err.Error())
+			cmds = append(cmds, printLine("error", err.Error()))
 		}
+		return tea.Batch(cmds...)
 
 	case "/task":
 		if len(parts) < 3 {
-			m.appendOutput("error", "Usage: /task <type> <description>")
-			return nil
+			return printLine("error", "Usage: /task <type> <description>")
 		}
 		taskType := parts[1]
 		desc := strings.Join(parts[2:], " ")
@@ -293,101 +233,66 @@ func (m *Model) handleSlashCommand(input string) tea.Cmd {
 			Description: desc,
 		}
 		if err := m.orch.CreateTask(t); err != nil {
-			m.appendOutput("error", err.Error())
-		} else {
-			m.appendOutput("system", fmt.Sprintf("Task created: [%s] %s", taskType, desc))
+			return printLine("error", err.Error())
 		}
+		return printLine("system", fmt.Sprintf("Task created: [%s] %s", taskType, desc))
 
 	case "/primary":
 		if len(parts) < 2 {
-			m.appendOutput("error", "Usage: /primary <agent>")
-			return nil
+			return printLine("error", "Usage: /primary <agent>")
 		}
 		if err := m.orch.SetPrimary(parts[1]); err != nil {
-			m.appendOutput("error", err.Error())
-		} else {
-			m.appendOutput("system", fmt.Sprintf("Primary agent → %s", parts[1]))
+			return printLine("error", err.Error())
 		}
+		return printLine("system", fmt.Sprintf("Primary agent → %s", parts[1]))
 
 	case "/agents":
-		m.showAgents()
+		return m.showAgents()
 
 	case "/tasks":
-		m.showTasks()
+		return m.showTasks()
 
 	case "/status":
-		m.showStatus()
+		return m.showStatus()
 
 	default:
-		m.appendOutput("error", fmt.Sprintf("Unknown command: %s (try /help)", cmd))
+		return printLine("error", fmt.Sprintf("Unknown command: %s (try /help)", cmd))
 	}
-
-	return nil
 }
 
-// handleEvent processes a bus event and updates the output viewport.
-func (m *Model) handleEvent(event bus.Event) {
+// handleEvent processes a bus event and prints to scrollback.
+func (m *Model) handleEvent(event bus.Event) tea.Cmd {
 	agentEvt, ok := event.Payload.(agent.AgentEvent)
 	if !ok {
-		return
+		return nil
 	}
 
 	switch agentEvt.Kind {
 	case agent.EventMessage:
-		m.appendOutput(agentEvt.Agent, agentEvt.Content)
+		return printLines(agentEvt.Agent, agentEvt.Content)
 	case agent.EventError:
-		m.appendOutput(agentEvt.Agent+"[err]", agentEvt.Content)
+		return printLines(agentEvt.Agent+"[err]", agentEvt.Content)
 	case agent.EventCommand:
-		m.appendOutput(agentEvt.Agent+"[cmd]", agentEvt.Content)
+		return printLines(agentEvt.Agent+"[cmd]", agentEvt.Content)
 	case agent.EventToolUse:
-		m.appendOutput(agentEvt.Agent+"[tool]", agentEvt.Content)
+		return printLines(agentEvt.Agent+"[tool]", agentEvt.Content)
 	case agent.EventProgress:
 		if agentEvt.Content != "" {
-			m.appendOutput(agentEvt.Agent, agentEvt.Content)
+			return printLines(agentEvt.Agent, agentEvt.Content)
 		}
 	case agent.EventInit:
-		m.appendOutput("system", fmt.Sprintf("[%s] %s", agentEvt.Agent, agentEvt.Content))
+		return printLine("system", fmt.Sprintf("[%s] %s", agentEvt.Agent, agentEvt.Content))
 	case agent.EventComplete:
 		if agentEvt.Usage != nil {
-			m.appendOutput("system", fmt.Sprintf("[%s] done — %d in / %d out tokens",
+			return printLine("system", fmt.Sprintf("[%s] done — %d in / %d out tokens",
 				agentEvt.Agent, agentEvt.Usage.InputTokens, agentEvt.Usage.OutputTokens))
 		}
 	}
+	return nil
 }
 
-// appendOutput adds a line to the output buffer and refreshes the viewport.
-func (m *Model) appendOutput(source, content string) {
-	for _, line := range strings.Split(content, "\n") {
-		styled := lipgloss.NewStyle().Foreground(agentColor(source)).Render(source) +
-			" " + line
-		m.outputLines = append(m.outputLines, styled)
-	}
-
-	if len(m.outputLines) > 10000 {
-		m.outputLines = m.outputLines[len(m.outputLines)-10000:]
-	}
-
-	m.refreshOutput()
-}
-
-// resizeLayout recalculates layout and viewport after input height changes.
-func (m *Model) resizeLayout() {
-	m.layout = calcLayout(m.layout.width, m.layout.height, m.input.Height())
-	m.output = viewport.New(
-		viewport.WithWidth(m.layout.outputWidth-borderSize),
-		viewport.WithHeight(m.layout.outputHeight-borderSize),
-	)
-	m.refreshOutput()
-}
-
-// refreshOutput updates the viewport content from the output buffer.
-func (m *Model) refreshOutput() {
-	m.output.SetContent(strings.Join(m.outputLines, "\n"))
-	m.output.GotoBottom()
-}
-
-// showAgents displays agent status in the output panel.
-func (m *Model) showAgents() {
+// showAgents displays agent status.
+func (m *Model) showAgents() tea.Cmd {
 	var lines []string
 	lines = append(lines, "Agents:")
 	for _, a := range m.orch.Agents().List() {
@@ -402,15 +307,14 @@ func (m *Model) showAgents() {
 		lines = append(lines, fmt.Sprintf("  %s %s — %s%s",
 			statusIcon(avail), a.Name(), avail, primary))
 	}
-	m.appendOutput("system", strings.Join(lines, "\n"))
+	return printLines("system", strings.Join(lines, "\n"))
 }
 
-// showTasks displays task list in the output panel.
-func (m *Model) showTasks() {
+// showTasks displays task list.
+func (m *Model) showTasks() tea.Cmd {
 	tasks := m.orch.Tasks().List()
 	if len(tasks) == 0 {
-		m.appendOutput("system", "No tasks.")
-		return
+		return printLine("system", "No tasks.")
 	}
 	var lines []string
 	lines = append(lines, "Tasks:")
@@ -418,13 +322,13 @@ func (m *Model) showTasks() {
 		lines = append(lines, fmt.Sprintf("  %s %s [%s] — %s",
 			taskIcon(t.Status.String()), t.ID, t.Type, t.Description))
 	}
-	m.appendOutput("system", strings.Join(lines, "\n"))
+	return printLines("system", strings.Join(lines, "\n"))
 }
 
 // showStatus displays orchestrator overview.
-func (m *Model) showStatus() {
+func (m *Model) showStatus() tea.Cmd {
 	counts := m.orch.Tasks().Count()
-	m.appendOutput("system", fmt.Sprintf(
+	return printLine("system", fmt.Sprintf(
 		"Status: primary=%s | agents=%d | running=%d | pending=%d | completed=%d | failed=%d",
 		m.orch.Primary(),
 		m.orch.Agents().Count(),
@@ -434,4 +338,3 @@ func (m *Model) showStatus() {
 		counts[task.StatusFailed],
 	))
 }
-
