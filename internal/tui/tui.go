@@ -28,6 +28,7 @@ type Model struct {
 	eventCh     <-chan bus.Event
 	activeAgent string // persists routing to last-used agent; empty = primary
 	lastErr     string
+	stream      *streamBuffer // buffers streaming deltas per agent
 }
 
 // New creates the TUI model wired to an orchestrator.
@@ -62,6 +63,7 @@ func New(orch *orchestrator.Orchestrator) Model {
 		orch:    orch,
 		input:   ta,
 		eventCh: orch.Bus().Subscribe(512, "system"),
+		stream:  newStreamBuffer(),
 	}
 }
 
@@ -369,6 +371,8 @@ func (m *Model) handleSlashCommand(input string) tea.Cmd {
 }
 
 // handleEvent processes a bus event and prints to scrollback.
+// Streaming deltas (EventProgress, EventMessage) are buffered per agent
+// and flushed as rendered markdown on EventComplete or non-text events.
 func (m *Model) handleEvent(event bus.Event) tea.Cmd {
 	agentEvt, ok := event.Payload.(agent.AgentEvent)
 	if !ok {
@@ -377,36 +381,80 @@ func (m *Model) handleEvent(event bus.Event) tea.Cmd {
 
 	switch agentEvt.Kind {
 	case agent.EventMessage:
-		return printLines(agentEvt.Agent, agentEvt.Content)
-	case agent.EventError:
-		return printLines(agentEvt.Agent+"[err]", agentEvt.Content)
-	case agent.EventCommand:
-		return printLines(agentEvt.Agent+"[cmd]", agentEvt.Content)
-	case agent.EventToolUse:
-		return printLines(agentEvt.Agent+"[tool]", agentEvt.Content)
-	case agent.EventToolResult:
-		// Don't dump full tool output — just confirm completion.
+		// Buffer message text — will render on complete.
+		m.stream.Append(agentEvt.Agent, agentEvt.Content)
 		return nil
-	case agent.EventReasoning:
-		// Show a brief thinking indicator, not the full reasoning.
-		return printLine(agentEvt.Agent+"[thinking]", "...")
+
 	case agent.EventProgress:
+		// Buffer streaming deltas.
 		if agentEvt.Content != "" {
-			return printLines(agentEvt.Agent, agentEvt.Content)
+			m.stream.Append(agentEvt.Agent, agentEvt.Content)
 		}
+		return nil
+
+	case agent.EventToolUse:
+		// Flush any buffered text before showing tool use.
+		var cmds []tea.Cmd
+		if cmd := m.flushAgent(agentEvt.Agent); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		cmds = append(cmds, printLine(agentEvt.Agent, formatToolLine(agentEvt.Content)))
+		return tea.Batch(cmds...)
+
+	case agent.EventReasoning:
+		return printLine(agentEvt.Agent, dimStyle.Render("thinking..."))
+
+	case agent.EventError:
+		var cmds []tea.Cmd
+		if cmd := m.flushAgent(agentEvt.Agent); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		cmds = append(cmds, printLines(agentEvt.Agent+"[err]", agentEvt.Content))
+		return tea.Batch(cmds...)
+
+	case agent.EventToolResult:
+		return nil
+
 	case agent.EventInit:
 		return printLine("system", fmt.Sprintf("[%s] connected — waiting for response...", agentEvt.Agent))
+
 	case agent.EventComplete:
+		var cmds []tea.Cmd
+		// Flush remaining buffered text with markdown rendering.
+		if cmd := m.flushAgent(agentEvt.Agent); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 		if agentEvt.Usage != nil {
 			cost := ""
 			if agentEvt.Usage.TotalCost > 0 {
 				cost = fmt.Sprintf(" | $%.4f", agentEvt.Usage.TotalCost)
 			}
-			return printLine("system", fmt.Sprintf("[%s] done — %d in / %d out tokens%s",
-				agentEvt.Agent, agentEvt.Usage.InputTokens, agentEvt.Usage.OutputTokens, cost))
+			cmds = append(cmds, printLine("system", fmt.Sprintf("[%s] done — %d in / %d out tokens%s",
+				agentEvt.Agent, agentEvt.Usage.InputTokens, agentEvt.Usage.OutputTokens, cost)))
 		}
+		return tea.Batch(cmds...)
 	}
 	return nil
+}
+
+// flushAgent renders buffered text for an agent as markdown and prints it.
+func (m *Model) flushAgent(agentName string) tea.Cmd {
+	text := m.stream.Flush(agentName)
+	if text == "" {
+		return nil
+	}
+
+	rendered := renderMarkdown(text)
+	if rendered == "" {
+		return nil
+	}
+
+	// Print with agent label on first line, then indented content.
+	ts := dimStyle.Render(time.Now().Format("15:04:05"))
+	label := lipgloss.NewStyle().Foreground(agentColor(agentName)).Render(agentName)
+	output := ts + " " + label + "\n" + rendered
+
+	return tea.Println(output)
 }
 
 // showAgents displays agent status.

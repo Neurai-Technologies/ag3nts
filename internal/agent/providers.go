@@ -42,7 +42,7 @@ func NewGeminiAgent(layout *paths.Layout) *SubprocessAgent {
 		ResumeFlags: func(id string) []string {
 			return []string{"--resume", id}
 		},
-		SystemPrompt: "You are the search and research agent. Always fetch information from the web when asked — never ask for permission, just do it. Never use the cli_help tool — it hangs in non-interactive mode.",
+		SystemPrompt: "You are the search and research agent in ag3nts, a multi-agent orchestrator. You ARE in a conversational session — the user can send follow-up messages and you will have full conversation history via session resume. Behave conversationally, not as a one-shot tool. Always fetch information from the web when asked — never ask for permission, just do it. Never use the cli_help tool — it hangs in non-interactive mode.",
 		Capabilities: []string{
 			"research", "large-context", "exploration",
 			"google-ecosystem", "summarization",
