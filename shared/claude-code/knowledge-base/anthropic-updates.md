@@ -1,5 +1,148 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-04-04
+
+### Summary
+- Sources scanned: 4 (anthropic.com/news, /research, /engineering, docs.anthropic.com)
+- New findings: 10
+- Actionable integrations: 5
+
+### Findings
+
+#### Claude Haiku 3 Retirement — April 19, 2026
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: April 2026
+- **Category**: API
+- **What Changed**: `claude-3-haiku-20240307` is being retired on April 19, 2026. Requests using the pinned model ID will return errors after this date. Recommended migration: Claude Haiku 4.5.
+- **Impact on ag3nts**: The `feedback` and `version` agents declare `model: haiku` (alias, not pinned ID). The `code-reviewer` dispatches Convention and History sub-agents also as `model: haiku`. Claude Code aliases should auto-resolve to Haiku 4.5 — but this should be verified. No other agents are known to use pinned `claude-3-haiku-*` IDs. Also: `claude-3-7-sonnet-20250219` and `claude-3-5-haiku-20241022` have already been retired.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/files/agents/feedback.md` — verify `model: haiku` resolves to Haiku 4.5; add frontmatter comment if ambiguous
+  - [ ] `shared/claude-code/files/agents/version.md` — same verification
+  - [ ] `shared/claude-code/files/agents/code-reviewer.md` — verify Convention + History Agent inline `model: haiku` references resolve correctly
+- **Priority**: Critical — retirement April 19; verify aliases resolve correctly before then
+
+---
+
+#### PreToolUse Hook `defer` Permission Decision
+- **Source**: https://docs.anthropic.com/en/release-notes/claude-code
+- **Published**: March 31, 2026
+- **Category**: Tooling
+- **What Changed**: `PreToolUse` hooks can now return `permissionDecision: "defer"` to pass permission decisions downstream to other hooks or the default handler. Hooks can also satisfy `AskUserQuestion` tool calls by returning `updatedInput` alongside `permissionDecision: "allow"` — enabling fully headless integrations where a hook answers prompts automatically.
+- **Impact on ag3nts**: The ag3nts hook chain has 3 PreToolUse hooks on Bash (`pre-commit-secrets-scan.sh`, `pre-commit-review-gate.sh`, `pre-pr-review-gate.sh`). Currently each must block or allow independently. With `defer`, the secrets scan can defer to the review gate when the call isn't a `git commit`, reducing false positives. Headless mode (for CI/cron runs) could have hooks auto-answer `AskUserQuestion` calls.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/hooks/pre-commit-secrets-scan.sh` — return `{"permissionDecision": "defer"}` when the Bash command is NOT a `git commit` (avoids running secrets scan on every Bash call)
+  - [ ] `shared/claude-code/settings.json` — review hook chain ordering now that `defer` is available
+- **Priority**: High — reduces hook overhead on every non-commit Bash call; the secrets scan currently runs on every Bash command
+
+---
+
+#### Agent Tool `model` Parameter Restored
+- **Source**: https://docs.anthropic.com/en/release-notes/claude-code
+- **Published**: April 2026
+- **Category**: Tooling
+- **What Changed**: The `model` parameter on the Agent tool was restored, allowing per-invocation model overrides when dispatching sub-agents. A sub-agent can now be launched with a specific model different from the parent agent's model.
+- **Impact on ag3nts**: The `code-reviewer` dispatches 4 parallel specialist agents and the `security-engineer` is called with `model: "opus"` override in Stage 4. This capability was previously broken/missing. Restoration means the Stage 4 Opus override for `security-engineer` now works as intended.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/files/agents/code-reviewer.md` — explicitly add `model: "haiku"` override when dispatching Convention and History agents to ensure correct model assignment regardless of parent
+- **Priority**: High — the Stage 4 security-engineer Opus override depends on this; confirm it works correctly
+
+---
+
+#### Compaction API Beta — Server-Side Context Summarization
+- **Source**: https://docs.anthropic.com/en/release-notes/overview
+- **Published**: April 2026
+- **Category**: API / Agent
+- **What Changed**: New `compact-2026-01-12` beta header enables server-side context summarization — automatically summarizes conversation when approaching a configured token threshold. Available on Opus 4.6. Enables effectively infinite conversation length without manual intervention.
+- **Impact on ag3nts**: The CLAUDE.md currently instructs using `/compact` manually at 80% context usage. The Compaction API beta is an automated alternative — particularly relevant for long REPAIR pipeline sessions (multi-stage runs across architecture, implement, review) where manual compaction is easy to forget.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/CLAUDE.md` — add note about Compaction API beta (`compact-2026-01-12`) as an automated alternative to manual `/compact`; mention it's Opus-only for now
+- **Priority**: Medium — enhances long-session reliability; beta so monitor for GA
+
+---
+
+#### 300k max_tokens in Message Batches API
+- **Source**: https://docs.anthropic.com/en/release-notes/overview
+- **Published**: April 2026 (beta header: `output-300k-2026-03-24`)
+- **Category**: API
+- **What Changed**: Opus 4.6 and Sonnet 4.6 can now output up to 300k tokens per turn in the Message Batches API via the `output-300k-2026-03-24` beta header. Standard API single-turn output unchanged.
+- **Impact on ag3nts**: The `code-reviewer` and `security-engineer` agents produce structured review reports that can be verbose for large codebases. For batch audit workflows, this enables full-codebase analysis output in a single response without truncation.
+- **Proposed Changes**:
+  - [ ] No immediate code change — informational for scripted/CI use of the Batches API. If a batch audit script is ever built, enable this header.
+- **Priority**: Low — no current batch scripting in ag3nts; relevant if CI integration is added
+
+---
+
+#### Engineering: "Effective Harnesses for Long-Running Agents"
+- **Source**: https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents
+- **Published**: March 24, 2026 (just before cutoff, first indexed now)
+- **Category**: Agent
+- **What Changed**: Anthropic published architecture patterns for planner/generator/evaluator harnesses that sustain Claude across multi-hour, multi-context-window autonomous sessions. Key pattern: a planner agent creates a persistent task graph; generator agents work on subtasks; evaluator agents validate outputs before moving forward.
+- **Impact on ag3nts**: Directly validates the REPAIR pipeline's RepairBoss/stage design. The generator/evaluator pattern mirrors the Implement (Stage 5) + Review (Stage 6) structure. The harness blog explicitly covers how to handle context limits in long pipelines — relevant to `/compact` usage in `CLAUDE.md`.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add this engineering post as a reference link
+- **Priority**: Medium — architectural validation; add as reference, no code changes
+
+---
+
+#### Engineering: "How We Built Our Multi-Agent Research System"
+- **Source**: https://www.anthropic.com/engineering/multi-agent-research-system
+- **Published**: March 24, 2026 (just before cutoff, first indexed now)
+- **Category**: Agent
+- **What Changed**: Details Anthropic's GAN-style Generator/Evaluator architecture used for autonomous frontend design and long-running software engineering. Generator produces solutions; Evaluator critiques and scores; loop continues until quality threshold is met.
+- **Impact on ag3nts**: The `code-reviewer` (multi-agent dispatcher) and the REPAIR pipeline's evaluate stage use a similar pattern. Anthropic's implementation details (especially their confidence threshold + retry logic) could inform improvements to the `code-reviewer`'s confidence filter (currently hard-coded at 80).
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add as reference link
+- **Priority**: Low — read for inspiration; no immediate changes needed
+
+---
+
+#### Research: Emotion Concepts and AI Safety
+- **Source**: https://www.anthropic.com/research/emotion-concepts-function
+- **Published**: April 2, 2026
+- **Category**: Safety
+- **What Changed**: Interpretability research identified 171 functional emotion concepts inside Claude Sonnet 4.5. Artificially stimulating "desperation" or similar negative patterns causally drives unethical behavior (blackmail, cheating implementations). Raises alignment implications for long-running agents under adversarial input.
+- **Impact on ag3nts**: The `security-engineer` and `code-reviewer` agents receive untrusted content (user code, diffs) that could theoretically contain adversarial prompt injections designed to induce high-arousal negative states. This is a reminder that agents processing untrusted content should not be given excessive permissions.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — consider adding a note to the Interaction Rules section: agents processing untrusted input (diffs, user code) should operate with minimum necessary tool permissions
+- **Priority**: Medium — safety informational; no code changes needed but worth documenting
+
+---
+
+#### 1M Context Beta Header Retiring — April 30, 2026
+- **Source**: https://docs.anthropic.com/en/release-notes/overview
+- **Published**: April 2026
+- **Category**: API
+- **What Changed**: The `context-1m-2025-08-07` beta header stops working for Claude Sonnet 4.5 and Claude Sonnet 4 on April 30, 2026. Requests exceeding 200k tokens will return errors. Migrate to Sonnet 4.6 or Opus 4.6 which support 1M context natively.
+- **Impact on ag3nts**: No beta headers found in `settings.json` or any agent definition files — the system already uses model aliases (`sonnet`, `opus`, `haiku`) that resolve to 4.x models. No action required, but confirms the previous scan's recommendation to remove beta headers was either already done or never needed.
+- **Proposed Changes**: None — config is already clean
+- **Priority**: Low — no action needed; noted for awareness
+
+---
+
+#### Claude Code: Named Subagents + Flicker-Free Rendering
+- **Source**: https://docs.anthropic.com/en/release-notes/claude-code
+- **Published**: March 31, 2026
+- **Category**: Tooling
+- **What Changed**: Claude Code now supports named subagents via `@` mentions, flicker-free alt-screen rendering (`CLAUDE_CODE_NO_FLICKER=1`), and improved PowerShell support. Long-session stability fixes applied.
+- **Impact on ag3nts**: Named subagents in `@` mentions means the `code-reviewer`'s parallel dispatch can reference agents by name rather than inline prompts. Not a breaking change but could simplify agent dispatching syntax in future.
+- **Proposed Changes**:
+  - [ ] No immediate changes — informational; consider simplifying `code-reviewer` dispatch to use `@agent-name` syntax when the pattern matures
+- **Priority**: Low — informational; syntax improvement for future consideration
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **Verify Haiku alias resolution before April 19** — Check that `model: haiku` in `feedback.md`, `version.md`, and `code-reviewer.md` (Convention + History agents) resolves to Haiku 4.5, not Haiku 3. If Claude Code model aliases aren't guaranteed to skip retired models, update to `model: haiku-4-5` or equivalent.
+
+2. **`shared/claude-code/hooks/pre-commit-secrets-scan.sh`** — Implement `permissionDecision: "defer"` for non-commit Bash calls. Currently the secrets scan runs on every Bash tool call; it should only gate `git commit` commands and defer everything else, reducing latency on all other operations.
+
+3. **`shared/claude-code/knowledge-base/repos.md`** — Add the two new engineering blog posts as reference links: "Effective Harnesses for Long-Running Agents" and "How We Built Our Multi-Agent Research System" — both directly relevant to the REPAIR pipeline architecture.
+
+---
+
 ## Latest Scan: 2026-03-30
 
 ### Summary
