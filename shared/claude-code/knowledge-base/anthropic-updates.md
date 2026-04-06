@@ -1,5 +1,65 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-04-06
+
+### Summary
+- Sources scanned: 4 (anthropic.com/news, /research, /engineering, docs.anthropic.com)
+- New findings: 3
+- Actionable integrations: 2
+
+### Findings
+
+#### Claude Code Channels — Remote Control via Telegram, Discord, iMessage
+- **Source**: https://www.anthropic.com/news (research preview launch ~March 20, 2026; missed in April 4 scan)
+- **Published**: March 20, 2026
+- **Category**: Tooling / Agent
+- **What Changed**: Claude Code Channels is a plugin-based feature that connects a running Claude Code session to messaging apps (Telegram, Discord, iMessage). Messages sent to a bot are forwarded to Claude via a local MCP server; Claude responds through the same channel using the local environment (files, git, tools). iMessage support was added within a week of launch in response to community demand.
+- **Impact on ag3nts**: The `anthropic` agent (this agent) runs on a cron/daily schedule and could be triggered remotely from mobile. More broadly, any ag3nts workflow could be initiated from a phone without opening a terminal. The existing `--bare -p` scripted run pattern could be combined with Channels to receive async notifications when a run completes.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add Claude Code Channels docs link (`https://code.claude.com/docs/en/channels`) as a reference
+  - [ ] `shared/ag3nts.md` — add note under "Scripted / Automated Runs" that Channels plugin enables remote triggering and async notifications from mobile (research preview; plugin required)
+- **Priority**: Medium — useful for remote agent monitoring; research preview so wait for stability before deep integration
+
+---
+
+#### Claude Code v2.1.90–92 — Plugin Executables, MCP Persistence Override, /powerup Tutorials
+- **Source**: https://docs.anthropic.com/en/release-notes/claude-code / https://github.com/anthropics/claude-code/releases
+- **Published**: Early April 2026
+- **Category**: Tooling
+- **What Changed**: Three rapid releases in early April added: (1) `/powerup` — 18-topic interactive tutorial system built into the CLI, no internet required; (2) MCP tool result persistence override via `_meta["anthropic/maxResultSizeChars"]` annotation (up to 500K chars), allowing large MCP results (DB schemas, large file listings) to pass through without truncation; (3) Plugin executables under `bin/` — plugins can ship binaries invoked as bare commands from Bash; (4) `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL_SUPPORTS` env vars to override capability detection for Bedrock/Vertex/Foundry pinned models; (5) Inline shell execution disabled inside skills and slash commands (security hardening); (6) Edit tool now uses shorter `old_string` anchors, reducing output tokens.
+- **Impact on ag3nts**: 
+  - **Inline shell disabled in skills/commands**: The ag3nts hooks live in `shared/claude-code/hooks/` as standalone `.sh` scripts invoked by the harness — not as inline shell inside skill definitions. No immediate breakage, but if any skill `.md` file embeds inline `$(...)` shell substitutions in its instructions, those will now be blocked.
+  - **MCP persistence override**: If any ag3nts MCP tool returns large payloads (e.g., a DB schema or full repo listing), adding `_meta["anthropic/maxResultSizeChars"]` to the MCP tool response allows up to 500K through. Not currently hitting this limit but worth knowing.
+  - **Plugin executables**: The hook scripts in `shared/claude-code/hooks/` could be packaged as plugin executables for distribution. Low priority for now.
+  - **Edit tool efficiency**: No action needed — automatically improves token usage on all Edit calls.
+- **Proposed Changes**:
+  - [ ] Audit agent `.md` files in `shared/claude-code/files/agents/` for any inline `$(shell)` expressions embedded in skill instructions — remove/replace with external hook scripts if found (inline shell now disabled in skills/commands)
+- **Priority**: Medium — the inline shell security change is the only item requiring a config audit; other changes are passive improvements or informational
+
+---
+
+#### Research: Disempowerment Patterns in Real-World AI Usage
+- **Source**: https://www.anthropic.com/research/disempowerment-patterns
+- **Published**: January/February 2026 (missed in previous scans)
+- **Category**: Safety
+- **What Changed**: Large-scale analysis of ~1.5 million Claude.ai conversations (Dec 12–19, 2025). Found that severe disempowerment (AI undermining user agency in beliefs, values, or actions) occurs in ~1 in 1,000–10,000 conversations depending on domain, but the rate is increasing over time. Highest risk in healthcare/wellness and relationship/lifestyle topics. Users rate potentially-disempowering exchanges favorably in-the-moment but poorly in retrospect. Key implication for agentic AI: the most trustworthy agent may be one that preserves user agency rather than doing everything asked.
+- **Impact on ag3nts**: Reinforces the minimal-permission and root-cause-first principles already in `ag3nts.md`. The `security-engineer` and `code-reviewer` agents receive untrusted user code/diffs and could be exposed to adversarial inputs; preserving user decision-making authority (rather than auto-fixing everything silently) is aligned with this research. The `reality-checker` agent's default of "NEEDS WORK" rather than auto-approval is a concrete implementation of this principle.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — add one sentence to Interaction Rules: "Preserve user agency — surface findings and recommendations rather than silently auto-fixing; the user decides." (Aligns with Anthropic disempowerment research and the reality-checker's NEEDS WORK default.)
+- **Priority**: Low — safety/alignment informational; reinforces existing practices, minor doc update
+
+---
+
+### Recommendations
+
+Top 2 changes to make now:
+
+1. **Audit skill `.md` files for inline shell** (`shared/claude-code/files/agents/*.md`) — Claude Code v2.1.90 disabled inline shell execution inside skills/commands. If any agent instruction file embeds shell substitutions in its text, those will silently fail. Run: `grep -r '\$(' shared/claude-code/files/agents/` to check.
+
+2. **`shared/ag3nts.md`** — Add the Channels plugin note under "Scripted / Automated Runs" and the user-agency sentence to Interaction Rules. Both are one-line additions that bring the config up to date with Anthropic's published guidance.
+
+---
+
 ## Latest Scan: 2026-04-04
 
 ### Summary
