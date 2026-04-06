@@ -16,8 +16,8 @@ import (
 	"github.com/rohanrgit/ag3nts/internal/task"
 )
 
-// Default session timeout for interactive sends.
-const defaultSessionTimeout = 120 * time.Second
+// Default session timeout for automated task dispatch (not interactive).
+const taskSessionTimeout = 300 * time.Second
 
 // Config holds orchestrator initialization parameters.
 type Config struct {
@@ -160,8 +160,7 @@ func (o *Orchestrator) Send(message string) error {
 		_ = a.Stop(oldSess)
 	}
 
-	sessCtx, _ := context.WithTimeout(o.ctx, defaultSessionTimeout)
-	newSess, err := a.Start(sessCtx, message, &agent.StartOpts{
+	newSess, err := a.Start(o.ctx, message, &agent.StartOpts{
 		TaskID:          "_primary",
 		ResumeSessionID: resumeID,
 	})
@@ -196,8 +195,7 @@ func (o *Orchestrator) SendTo(agentName string, message string) error {
 		_ = a.Stop(oldSess)
 	}
 
-	sessCtx, _ := context.WithTimeout(o.ctx, defaultSessionTimeout)
-	sess, err := a.Start(sessCtx, message, &agent.StartOpts{
+	sess, err := a.Start(o.ctx, message, &agent.StartOpts{
 		TaskID:          fmt.Sprintf("_direct-%s-%d", agentName, time.Now().UnixNano()),
 		ResumeSessionID: resumeID,
 	})
@@ -210,6 +208,91 @@ func (o *Orchestrator) SendTo(agentName string, message string) error {
 	o.mu.Unlock()
 
 	go o.drainEvents(sess)
+	return nil
+}
+
+// Research runs a two-stage pipeline: Gemini researches (fresh session, no
+// resume to avoid context explosion), then Claude synthesizes the findings.
+// Gemini's tool_use/init/complete events are published for progress visibility,
+// but message content is captured silently and fed to Claude as context.
+func (o *Orchestrator) Research(query string) error {
+	gemini := o.agents.Get("gemini")
+	if gemini == nil {
+		return fmt.Errorf("gemini agent not available")
+	}
+	claude := o.agents.Get(o.primary)
+	if claude == nil {
+		return fmt.Errorf("primary agent %q not available", o.primary)
+	}
+
+	// Stage 1: Gemini researches (fresh session — no resume).
+	sess, err := gemini.Start(o.ctx, query, &agent.StartOpts{
+		TaskID: fmt.Sprintf("_research-%d", time.Now().UnixNano()),
+	})
+	if err != nil {
+		return fmt.Errorf("start gemini research: %w", err)
+	}
+
+	// Drain Gemini events: publish tool/progress events for visibility,
+	// capture message text silently for Claude.
+	go func() {
+		var research strings.Builder
+		synthesized := false
+		for event := range sess.Events() {
+			switch event.Kind {
+			case agent.EventMessage, agent.EventProgress:
+				// Capture silently — don't publish to TUI.
+				research.WriteString(event.Content)
+			case agent.EventComplete:
+				// Publish completion.
+				o.publish(event)
+
+				// Only synthesize once (parser + subprocess both emit EventComplete).
+				if synthesized {
+					continue
+				}
+				synthesized = true
+
+				// Stage 2: Send research to Claude for synthesis (always fresh — no resume).
+				researchText := research.String()
+				if researchText == "" {
+					return
+				}
+
+				// Stop any existing primary session.
+				o.mu.Lock()
+				oldMain := o.mainSess
+				o.mainSess = nil
+				o.mu.Unlock()
+				if oldMain != nil {
+					_ = claude.Stop(oldMain)
+				}
+
+				synthesisPrompt := "Summarize and present the following research findings clearly and concisely:\n\n" + researchText
+				newSess, err := claude.Start(o.ctx, synthesisPrompt, &agent.StartOpts{
+					TaskID: "_primary",
+				})
+				if err != nil {
+					o.publish(agent.AgentEvent{
+						Kind:      agent.EventError,
+						Agent:     o.primary,
+						Content:   fmt.Sprintf("synthesis failed: %v", err),
+						Timestamp: time.Now(),
+					})
+					return
+				}
+
+				o.mu.Lock()
+				o.mainSess = newSess
+				o.mu.Unlock()
+				o.drainEvents(newSess)
+			default:
+				// Publish tool_use, init, error, etc. for visibility.
+				o.publish(event)
+			}
+		}
+	}()
+
 	return nil
 }
 
@@ -255,7 +338,32 @@ func (o *Orchestrator) Router() *router.Router {
 func (o *Orchestrator) RunningCount() int {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	return len(o.running)
+	count := len(o.running)
+	if o.mainSess != nil && o.mainSess.Status == agent.StatusRunning {
+		count++
+	}
+	for _, s := range o.directSess {
+		if s != nil && s.Status == agent.StatusRunning {
+			count++
+		}
+	}
+	return count
+}
+
+// RunningAgents returns the names of agents with active sessions.
+func (o *Orchestrator) RunningAgents() []string {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	var names []string
+	if o.mainSess != nil && o.mainSess.Status == agent.StatusRunning {
+		names = append(names, o.mainSess.Agent)
+	}
+	for name, s := range o.directSess {
+		if s != nil && s.Status == agent.StatusRunning {
+			names = append(names, name)
+		}
+	}
+	return names
 }
 
 // dispatchLoop runs in a goroutine, polling the queue for ready tasks

@@ -141,11 +141,11 @@ and synthesis. Opus handles deep reasoning and critical decisions.
 |-------------|-----------------|------------------|----------------|-----------|-------------|-----------|
 | RepairBoss   | Opus        | —                | adaptive       | summarized| ON          | Maximum   |
 | Agent-Prompt | Haiku       | —                | OFF            | —         | OFF         | Standard  |
-| Research     | Sonnet      | Haiku*       | adaptive       | omitted   | ON (heavy)  | High      |
+| Research     | gemini-3.1-pro| Haiku*       | adaptive       | omitted   | ON (heavy)  | High      |
 | Evaluate     | Opus        | Sonnet*      | adaptive       | omitted   | OFF         | Maximum   |
 | Plan         | Opus        | Opus         | adaptive       | summarized| OFF         | Maximum   |
 | Architecture | Opus        | Opus         | adaptive       | summarized| OFF         | Maximum   |
-| Implement    | Sonnet      | Sonnet       | adaptive       | omitted   | ON (active) | High      |
+| Implement    | gpt-5.4 | gpt-5.4| adaptive       | omitted   | ON (active) | High      |
 | Review       | Opus        | Sonnet*      | adaptive       | omitted   | OFF         | Maximum   |
 | Knowledge    | Haiku       | —                | OFF            | —         | OFF         | Low       |
 | Feedback     | Haiku       | —                | adaptive (max) | omitted   | OFF         | Maximum   |
@@ -199,7 +199,7 @@ final round if you want to inspect the reasoning that led to approval.
   injecting context into a known format. No deep reasoning needed. This saves significant
   tokens since agent-prompt runs before EVERY sub-agent turn.
 
-- **Research** uses Sonnet for Turn 1 (broad synthesis across many sources) and drops
+- **Research** uses gemini-3.1-pro for Turn 1 (broad synthesis across many sources) and drops
   to Haiku for minor refinements (adding a source, fixing a citation). Research/search
   is set to **heavy** — actively search web, GitHub, and documentation.
 
@@ -214,7 +214,7 @@ final round if you want to inspect the reasoning that led to approval.
 - **Architecture** uses Opus for ALL turns. System design is the most intellectually
   demanding stage. No model downgrade — architectural decisions ripple through everything.
 
-- **Implement** uses Sonnet for ALL turns. Code generation needs a strong model
+- **Implement** uses gpt-5.4 for ALL turns. Code generation needs a strong model
   consistently. Research is set to **active** — the agent can search for API docs, check
   library usage, and call the Research sub-agent if it encounters a discrepancy.
 
@@ -258,7 +258,7 @@ not deep reasoning.
 ### Stage 1: Research (R)
 Read `agents/research.md`. Use `agents/agent-prompt.md` to craft the prompt.
 
-**Model**: Sonnet (Turn 1) → Haiku (minor refinements) | **Thinking**: ON | **Research**: ON (heavy)
+**Model**: gemini-3.1-pro (Turn 1) → Haiku (minor refinements) | **Thinking**: ON | **Research**: ON (heavy)
 **Input**: Discovery Brief + user's problem statement
 **Turn 1**: Full research report (includes explicit GitHub search for open-source solutions)
 **Turn 2...N**: Agent asks user questions about gaps, incorporates feedback, refines report
@@ -342,7 +342,7 @@ The harness runs this loop per Phase (e.g., Phase 1.1, Phase 1.2, etc.):
 │     Implement confirms or negotiates. User can adjust.      │
 │                                                             │
 │  2. IMPLEMENT                                               │
-│     Implement agent builds the Phase (Sonnet).          │
+│     Implement agent builds the Phase (gpt-5.4).          │
 │     Follows the Steps within this Phase.                    │
 │                                                             │
 │  3. EVALUATE                                                │
@@ -393,7 +393,7 @@ agreed, the contract is locked for this Phase.
 
 #### Implementation (Step 2)
 
-**Model**: Sonnet (ALL turns) | **Thinking**: ON | **Research**: ON (active)
+**Model**: gpt-5.4 (ALL turns) | **Thinking**: ON | **Research**: ON (active)
 **Input**: Sprint contract + all prior artifacts + progress from completed phases
 
 The Implement agent builds all Steps within the current Phase. It follows the same output
@@ -588,7 +588,7 @@ user preferences into every sub-agent prompt it crafts (via the "User Preference
 | Stage        | Mode             | Primary Actor | Code?  | Turns | Turn 1 Model | Refinement Model |
 |-------------|------------------|---------------|--------|-------|-------------|-----------------|
 | Discovery    | User-interactive | RepairBoss    | No     | Flex  | Opus    | —               |
-| Research     | Agent → User     | Sub-agent     | No     | N     | Sonnet  | Haiku       |
+| Research     | Agent → User     | Sub-agent     | No     | N     | gemini-3.1-pro | Haiku       |
 | Evaluate     | Agent → User     | Sub-agent     | No     | N     | Opus    | Sonnet      |
 | Plan         | User-iterative   | User + Agent  | No     | N     | Opus    | Opus        |
 | Architecture | User-approval    | Agent → User  | No     | N     | Opus    | Opus        |
@@ -596,7 +596,7 @@ user preferences into every sub-agent prompt it crafts (via the "User Preference
 | Security (TM)| Sub-step of Arch | Sub-agent    | No     | 1     | Opus    | —               |
 | Plan Update  | Automatic        | RepairBoss    | No     | 1-2   | Haiku   | Opus        |
 | Sprint Contract | Per-phase      | Review (eval) | No    | 1     | Opus    | —               |
-| Implement    | Generator        | Sub-agent     | Yes    | N     | Sonnet  | Sonnet      |
+| Implement    | Generator        | Sub-agent     | Yes    | N     | gpt-5.4 | gpt-5.4 |
 | Evaluate     | Evaluator loop   | Review (eval) | No     | 1-5   | Opus    | —               |
 | Final Review | Agent → User     | Review (full) | Tests  | N     | Opus    | Sonnet      |
 | Code Review  | Sub-step of Final | 4 parallel   | No     | 1     | Sonnet+Haiku| —               |
@@ -664,7 +664,7 @@ At each stage transition, display:
 ║                         REPAIR Pipeline                               ║
 ╠════════════════════════════════════════════════════════════════════════╣
 ║ [✓] Discovery        — Complete                        [Opus]     ║
-║ [✓] Research         — Complete  (3 turns)             [Sonnet]   ║
+║ [✓] Research         — Complete  (3 turns)     [gemini-3.1-pro]   ║
 ║ [✓] Evaluate         — Complete  (2 turns)             [Opus]     ║
 ║ [✓] Plan             — Complete  (2 turns)             [Opus]     ║
 ║ [✓] Architecture     — Complete  (3 turns)             [Opus]     ║

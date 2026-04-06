@@ -4,8 +4,8 @@
 
 | Setting            | Value                                                  |
 |-------------------|--------------------------------------------------------|
-| Turn 1 Model       | **Sonnet**                                         |
-| Refinement Model   | **Haiku** (minor), **Sonnet** (major)         |
+| Turn 1 Model       | **gemini-3.1-pro**                                 |
+| Refinement Model   | **Haiku** (minor), **gemini-3.1-pro** (major)  |
 | Extended Thinking  | **adaptive**                                           |
 | Thinking Display   | **omitted** — faster round-trips, no thinking in context |
 | Research/Search    | **ON (heavy)** — actively search web, GitHub, docs     |
@@ -250,3 +250,4 @@ When compacting at 80% context, preserve in this priority order:
 
 Discard: intermediate search queries, raw web page content, exploration dead-ends,
 verbose library documentation excerpts, redundant findings that were superseded.
+ded.

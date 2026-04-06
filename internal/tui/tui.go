@@ -196,26 +196,55 @@ func (m Model) renderStatusBar() string {
 	if active == "" {
 		active = m.orch.Primary()
 	}
-	status := fmt.Sprintf(" ag3nts | talking to: %s | %s | tasks: %d | running: %d",
-		active, agents, len(tasks), running)
+
+	runningInfo := fmt.Sprintf("%d", running)
+	if runningNames := m.orch.RunningAgents(); len(runningNames) > 0 {
+		runningInfo = strings.Join(runningNames, ", ")
+	}
+
+	status := fmt.Sprintf(" ag3nts | talking to: %s | %s | tasks: %d | running: %s",
+		active, agents, len(tasks), runningInfo)
 
 	return statusBarStyle.Width(m.width).Render(status)
 }
 
-// searchKeywords triggers auto-routing to Gemini for web search/research.
-var searchKeywords = []string{
-	"search", "look up", "lookup", "find out", "research",
-	"what is", "what are", "who is", "who are", "when did", "when was",
-	"how to", "how do", "how does", "why is", "why do", "why does",
-	"latest", "news", "current", "recent", "today",
+// researchKeywords triggers auto-routing to Gemini for any research task
+// (web search, codebase exploration, information gathering).
+var researchKeywords = []string{
+	// Questions
+	"what", "who", "when", "where", "which", "how", "why",
+	// Research verbs
+	"search", "research", "find", "look up", "lookup", "look at",
+	"check", "explore", "investigate", "examine", "inspect",
+	"tell me", "show me", "list", "give me", "can you",
+	// Information gathering
+	"explain", "define", "meaning of", "describe",
 	"compare", "difference between", "versus", "vs ",
-	"explain", "define", "meaning of",
+	// Timeliness
+	"latest", "news", "current", "recent", "today", "update",
 }
 
-// isSearchQuery returns true if the input looks like a web search request.
-func isSearchQuery(input string) bool {
+// actionKeywords override research routing — these are tasks Claude should handle.
+var actionKeywords = []string{
+	"fix", "implement", "create", "write", "edit", "modify", "change",
+	"update", "add", "remove", "delete", "refactor", "build", "deploy",
+	"commit", "push", "merge", "install", "run", "test", "debug",
+}
+
+// isResearchQuery returns true if the input is an information-gathering request
+// rather than an action request. Actions (fix, implement, etc.) stay with Claude.
+func isResearchQuery(input string) bool {
 	lower := strings.ToLower(input)
-	for _, kw := range searchKeywords {
+
+	// If it contains action verbs, it's a task — don't route to research.
+	for _, kw := range actionKeywords {
+		if strings.Contains(lower, kw) {
+			return false
+		}
+	}
+
+	// Check for research keywords.
+	for _, kw := range researchKeywords {
 		if strings.Contains(lower, kw) {
 			return true
 		}
@@ -254,10 +283,11 @@ func (m *Model) handleCommand(input string) tea.Cmd {
 		}
 	}
 
-	// Auto-route search queries to Gemini (regardless of active agent).
-	if isSearchQuery(input) && m.orch.Agents().Get("gemini") != nil {
-		cmds := []tea.Cmd{printLine("you→gemini", input)}
-		if err := m.orch.SendTo("gemini", input); err != nil {
+	// Auto-route search queries through the research pipeline:
+	// Gemini researches → Claude synthesizes and presents.
+	if isResearchQuery(input) && m.orch.Agents().Get("gemini") != nil {
+		cmds := []tea.Cmd{printLine("system", "researching: "+input)}
+		if err := m.orch.Research(input); err != nil {
 			cmds = append(cmds, printLine("error", err.Error()))
 		}
 		return tea.Batch(cmds...)
@@ -437,7 +467,8 @@ func (m *Model) handleEvent(event bus.Event) tea.Cmd {
 	return nil
 }
 
-// flushAgent renders buffered text for an agent as markdown and prints it.
+// flushAgent renders buffered text for an agent as markdown and prints it
+// line-by-line to avoid overwhelming Bubbletea's inline renderer.
 func (m *Model) flushAgent(agentName string) tea.Cmd {
 	text := m.stream.Flush(agentName)
 	if text == "" {
@@ -449,12 +480,16 @@ func (m *Model) flushAgent(agentName string) tea.Cmd {
 		return nil
 	}
 
-	// Print with agent label on first line, then indented content.
+	// Print agent label, then each rendered line individually.
 	ts := dimStyle.Render(time.Now().Format("15:04:05"))
 	label := lipgloss.NewStyle().Foreground(agentColor(agentName)).Render(agentName)
-	output := ts + " " + label + "\n" + rendered
 
-	return tea.Println(output)
+	var cmds []tea.Cmd
+	cmds = append(cmds, tea.Println(ts+" "+label))
+	for _, line := range strings.Split(rendered, "\n") {
+		cmds = append(cmds, tea.Println(line))
+	}
+	return tea.Sequence(cmds...)
 }
 
 // showAgents displays agent status.
