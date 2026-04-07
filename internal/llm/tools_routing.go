@@ -130,7 +130,8 @@ func toolDeepReason(deps RoutingDeps) ToolExecutor {
 		if err := deps.Models.EnsureLoaded(context.Background(), ModelReasoner); err != nil {
 			return "", fmt.Errorf("load reasoner: %w", err)
 		}
-		defer deps.Models.Unload(context.Background(), ModelReasoner)
+		// No defer Unload — model stays loaded for follow-up calls.
+		// Only evicted when the OTHER secondary model needs to load.
 
 		publishProgress(deps.Bus, "gemma4", "Reasoning...")
 
@@ -166,7 +167,8 @@ func toolAnalyzeRepo(deps RoutingDeps) ToolExecutor {
 		if err := deps.Models.EnsureLoaded(context.Background(), ModelAnalyzer); err != nil {
 			return "", fmt.Errorf("load analyzer: %w", err)
 		}
-		defer deps.Models.Unload(context.Background(), ModelAnalyzer)
+		// No defer Unload — model stays loaded with repo context.
+		// Only evicted when the OTHER secondary model needs to load.
 
 		// Collect file contents if specified.
 		var fileContent strings.Builder

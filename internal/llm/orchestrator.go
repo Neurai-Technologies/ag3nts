@@ -91,13 +91,13 @@ func NewLocalOrchestrator(
 			Name:       cfg.ReasonerModel,
 			Role:       ModelReasoner,
 			ContextLen: 128000,
-			KeepAlive:  "5m",
+			KeepAlive:  "-1", // stays loaded until other secondary needs VRAM
 		},
 		ModelAnalyzer: {
 			Name:       cfg.AnalyzerModel,
 			Role:       ModelAnalyzer,
-			ContextLen: 131072, // Scout supports much more but practical limit
-			KeepAlive:  "5m",
+			ContextLen: 131072,
+			KeepAlive:  "-1", // stays loaded with repo context until evicted
 		},
 	}
 
