@@ -99,6 +99,7 @@ func (c *OllamaClient) StreamChat(ctx context.Context, req ChatRequest, onChunk 
 
 	// Accumulate the full assistant message from streaming chunks.
 	var fullContent string
+	var toolCalls []ToolCall
 	var finalResp ChatResponse
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
@@ -118,6 +119,11 @@ func (c *OllamaClient) StreamChat(ctx context.Context, req ChatRequest, onChunk 
 			fullContent += chunk.Message.Content
 		}
 
+		// Tool calls arrive on a non-done chunk, before the final done=true.
+		if len(chunk.Message.ToolCalls) > 0 {
+			toolCalls = append(toolCalls, chunk.Message.ToolCalls...)
+		}
+
 		if onChunk != nil && chunk.Message.Content != "" {
 			onChunk(chunk)
 		}
@@ -134,15 +140,9 @@ func (c *OllamaClient) StreamChat(ctx context.Context, req ChatRequest, onChunk 
 
 	// Build the complete assistant message.
 	msg := Message{
-		Role:    RoleAssistant,
-		Content: fullContent,
-	}
-
-	// Tool calls appear on the final chunk's message.
-	if len(finalResp.Message.ToolCalls) > 0 {
-		msg.ToolCalls = finalResp.Message.ToolCalls
-		// When model calls tools, content is typically the "thinking" text.
-		// Keep both content and tool calls.
+		Role:      RoleAssistant,
+		Content:   fullContent,
+		ToolCalls: toolCalls,
 	}
 
 	return msg, finalResp, nil

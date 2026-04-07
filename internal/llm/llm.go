@@ -21,6 +21,7 @@ type Message struct {
 
 // ToolCall represents a function call requested by the model.
 type ToolCall struct {
+	ID       string           `json:"id,omitempty"`
 	Function ToolCallFunction `json:"function"`
 }
 

@@ -7,7 +7,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/spf13/cobra"
 
 	"github.com/rohanrgit/ag3nts/internal/agent"
@@ -136,10 +135,7 @@ func runOrchestrate() error {
 	// Create local LLM orchestrator if configured and Ollama is available.
 	var localOrch *llm.LocalOrchestrator
 	if cfg.LLM.Enabled {
-		workDir := ""
-		if cwd, err := os.Getwd(); err == nil {
-			workDir = cwd
-		}
+		workDir := layout.Base
 		lo, err := llm.NewLocalOrchestrator(llm.OrchestratorConfig{
 			Endpoint:      cfg.LLM.Endpoint,
 			HeadModel:     cfg.LLM.HeadModel,
@@ -157,13 +153,11 @@ func runOrchestrate() error {
 		}
 	}
 
-	// Launch the TUI.
-	model := tui.New(orch, localOrch)
-	p := tea.NewProgram(model)
-
-	if _, err := p.Run(); err != nil {
+	// Launch the terminal app.
+	app := tui.New(orch, localOrch)
+	if err := app.Run(ctx); err != nil {
 		_ = orch.Stop()
-		return fmt.Errorf("TUI error: %w", err)
+		return fmt.Errorf("app error: %w", err)
 	}
 
 	return orch.Stop()
