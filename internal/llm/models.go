@@ -154,10 +154,11 @@ func (mm *ModelManager) WarmHead(ctx context.Context) error {
 		return fmt.Errorf("no head model configured")
 	}
 
+	// Use -1 as int for indefinite keep-alive (Ollama API expects int for permanent residency).
 	_, _, err := mm.client.Chat(ctx, ChatRequest{
 		Model:     cfg.Name,
 		Messages:  []Message{{Role: RoleUser, Content: "hello"}},
-		KeepAlive: "-1",
+		KeepAlive: -1,
 	})
 	if err != nil {
 		return fmt.Errorf("warm head model: %w", err)

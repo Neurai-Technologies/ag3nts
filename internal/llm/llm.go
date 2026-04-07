@@ -69,10 +69,10 @@ const (
 
 // ModelConfig describes a local model managed through Ollama.
 type ModelConfig struct {
-	Name       string    // Ollama model name (e.g. "qwen3.5:122b")
+	Name       string // Ollama model name (e.g. "qwen3.5:122b")
 	Role       ModelRole
-	ContextLen int       // Max context window in tokens
-	KeepAlive  string    // Ollama keep_alive parameter (e.g. "30m", "-1" for permanent)
+	ContextLen int    // Max context window in tokens
+	KeepAlive  any    // Ollama keep_alive parameter: string duration like "30m", or int -1 for permanent
 }
 
 // ToolExecutor is the function signature for tool implementations.

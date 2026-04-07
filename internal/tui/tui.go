@@ -60,6 +60,7 @@ func (a *App) Run(ctx context.Context) error {
 		}
 
 		if line == "/quit" || line == "/exit" {
+			a.shutdown()
 			return nil
 		}
 
@@ -67,7 +68,17 @@ func (a *App) Run(ctx context.Context) error {
 		a.printPrompt()
 	}
 
+	a.shutdown()
 	return scanner.Err()
+}
+
+// shutdown unloads all models from VRAM on exit.
+func (a *App) shutdown() {
+	if a.localOrch != nil {
+		fmt.Fprintln(os.Stderr, "Unloading models...")
+		a.localOrch.Shutdown()
+		fmt.Fprintln(os.Stderr, "Done.")
+	}
 }
 
 // printPrompt writes the input prompt and updates the terminal title.
@@ -355,6 +366,11 @@ func (a *App) handleEvent(event bus.Event) {
 			}
 			a.printLine("system", fmt.Sprintf("[%s] done — %d in / %d out tokens%s",
 				agentEvt.Agent, agentEvt.Usage.InputTokens, agentEvt.Usage.OutputTokens, cost))
+		}
+		// If a secondary model completed but the orchestrator is still running,
+		// show that the head model is now synthesizing.
+		if a.localOrch != nil && a.localOrch.IsRunning() && agentEvt.Agent != "qwen3.5" {
+			a.printLine("qwen3.5", dimStyle.Render("synthesizing..."))
 		}
 	}
 }

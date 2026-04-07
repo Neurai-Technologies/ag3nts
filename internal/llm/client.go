@@ -45,7 +45,7 @@ type ChatRequest struct {
 	Stream   bool          `json:"stream"`
 	Tools    []ToolDef     `json:"tools,omitempty"`
 	Options  *ModelOptions `json:"options,omitempty"`
-	KeepAlive string       `json:"keep_alive,omitempty"`
+	KeepAlive any           `json:"keep_alive,omitempty"`
 }
 
 // ModelOptions controls model inference behavior.

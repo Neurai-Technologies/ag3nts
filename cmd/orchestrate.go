@@ -119,10 +119,16 @@ func runOrchestrate() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Create local LLM orchestrator if configured and Ollama is available.
+	var localOrch *llm.LocalOrchestrator
+
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigCh
+		if localOrch != nil {
+			localOrch.Shutdown()
+		}
 		_ = orch.Stop()
 		cancel()
 	}()
@@ -131,9 +137,6 @@ func runOrchestrate() error {
 	if err := orch.Start(ctx); err != nil {
 		return fmt.Errorf("start orchestrator: %w", err)
 	}
-
-	// Create local LLM orchestrator if configured and Ollama is available.
-	var localOrch *llm.LocalOrchestrator
 	if cfg.LLM.Enabled {
 		workDir := layout.Base
 		lo, err := llm.NewLocalOrchestrator(llm.OrchestratorConfig{

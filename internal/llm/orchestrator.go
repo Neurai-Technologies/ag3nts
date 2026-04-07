@@ -85,19 +85,19 @@ func NewLocalOrchestrator(
 			Name:       cfg.HeadModel,
 			Role:       ModelHead,
 			ContextLen: cfg.MaxContext,
-			KeepAlive:  "-1", // permanent
+			KeepAlive:  -1, // permanent residency (int -1 for Ollama)
 		},
 		ModelReasoner: {
 			Name:       cfg.ReasonerModel,
 			Role:       ModelReasoner,
 			ContextLen: 128000,
-			KeepAlive:  "-1", // stays loaded until other secondary needs VRAM
+			KeepAlive:  -1, // stays loaded until other secondary needs VRAM
 		},
 		ModelAnalyzer: {
 			Name:       cfg.AnalyzerModel,
 			Role:       ModelAnalyzer,
 			ContextLen: 131072,
-			KeepAlive:  "-1", // stays loaded with repo context until evicted
+			KeepAlive:  -1, // stays loaded with repo context until evicted
 		},
 	}
 
@@ -152,6 +152,14 @@ func NewLocalOrchestrator(
 // WarmUp loads the head model into VRAM. Call during startup.
 func (lo *LocalOrchestrator) WarmUp(ctx context.Context) error {
 	return lo.models.WarmHead(ctx)
+}
+
+// Shutdown unloads all models from VRAM. Call on exit.
+func (lo *LocalOrchestrator) Shutdown() {
+	ctx := context.Background()
+	for _, role := range []ModelRole{ModelHead, ModelReasoner, ModelAnalyzer} {
+		_ = lo.models.Unload(ctx, role)
+	}
 }
 
 // Send processes a user message through the LLM pipeline.
