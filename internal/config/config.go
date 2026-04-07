@@ -25,6 +25,18 @@ type Config struct {
 	Orchestrator OrchestratorConfig       `toml:"orchestrator"`
 	Agents       map[string]AgentConfig   `toml:"agents"`
 	Routing      RoutingConfig            `toml:"routing"`
+	LLM          LLMConfig                `toml:"llm"`
+}
+
+// LLMConfig holds settings for the local LLM orchestrator (Ollama).
+type LLMConfig struct {
+	Enabled       bool   `toml:"enabled"`
+	Endpoint      string `toml:"endpoint"`
+	HeadModel     string `toml:"head_model"`
+	ReasonerModel string `toml:"reasoner_model"`
+	AnalyzerModel string `toml:"analyzer_model"`
+	SystemPrompt  string `toml:"system_prompt"`
+	MaxContext    int    `toml:"max_context"`
 }
 
 // OrchestratorConfig holds settings for the multi-agent orchestrator.
@@ -137,6 +149,14 @@ func Default() *Config {
 			PersistSessions: true,
 		},
 		Agents: make(map[string]AgentConfig),
+		LLM: LLMConfig{
+			Enabled:       false,
+			Endpoint:      "http://localhost:11434",
+			HeadModel:     "qwen3.5:122b",
+			ReasonerModel: "gemma4:31b",
+			AnalyzerModel: "llama4:scout",
+			MaxContext:     256000,
+		},
 	}
 }
 

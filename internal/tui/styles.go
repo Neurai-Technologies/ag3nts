@@ -12,6 +12,9 @@ var (
 	colorGemini  = lipgloss.Color("#64FFDA") // teal
 	colorCodex   = lipgloss.Color("#FFD54F") // amber
 	colorOllama  = lipgloss.Color("#81C784") // green
+	colorQwen    = lipgloss.Color("#FFA726") // orange — Qwen 3.5 head orchestrator
+	colorGemma   = lipgloss.Color("#7E57C2") // deep purple — Gemma 4 reasoner
+	colorLlama   = lipgloss.Color("#26C6DA") // cyan — Llama 4 Scout analyzer
 	colorDefault = lipgloss.Color("#90A4AE") // grey
 	colorError   = lipgloss.Color("#EF5350") // red
 	colorSystem  = lipgloss.Color("#42A5F5") // blue
@@ -30,6 +33,12 @@ func agentColor(name string) color.Color {
 		return colorCodex
 	case "ollama":
 		return colorOllama
+	case "qwen3.5":
+		return colorQwen
+	case "gemma4":
+		return colorGemma
+	case "llama4-scout":
+		return colorLlama
 	case "error":
 		return colorError
 	case "system":

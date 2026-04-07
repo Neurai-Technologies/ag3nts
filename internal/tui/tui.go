@@ -4,6 +4,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -14,13 +15,15 @@ import (
 
 	"github.com/rohanrgit/ag3nts/internal/agent"
 	"github.com/rohanrgit/ag3nts/internal/bus"
+	"github.com/rohanrgit/ag3nts/internal/llm"
 	"github.com/rohanrgit/ag3nts/internal/orchestrator"
 	"github.com/rohanrgit/ag3nts/internal/task"
 )
 
 // Model is the root Bubbletea model for the orchestrator TUI.
 type Model struct {
-	orch *orchestrator.Orchestrator
+	orch      *orchestrator.Orchestrator
+	localOrch *llm.LocalOrchestrator // nil = use existing CLI orchestrator
 
 	input       textarea.Model
 	width       int
@@ -32,7 +35,8 @@ type Model struct {
 }
 
 // New creates the TUI model wired to an orchestrator.
-func New(orch *orchestrator.Orchestrator) Model {
+// localOrch is optional — if non-nil and available, all messages route through it.
+func New(orch *orchestrator.Orchestrator, localOrch *llm.LocalOrchestrator) Model {
 	ta := textarea.New()
 	ta.Placeholder = "Type a message or /help..."
 	ta.ShowLineNumbers = false
@@ -60,10 +64,11 @@ func New(orch *orchestrator.Orchestrator) Model {
 	ta.Focus()
 
 	return Model{
-		orch:    orch,
-		input:   ta,
-		eventCh: orch.Bus().Subscribe(512, "system"),
-		stream:  newStreamBuffer(),
+		orch:      orch,
+		localOrch: localOrch,
+		input:     ta,
+		eventCh:   orch.Bus().Subscribe(512, "system"),
+		stream:    newStreamBuffer(),
 	}
 }
 
@@ -253,19 +258,39 @@ func isResearchQuery(input string) bool {
 }
 
 // handleCommand processes user input, returns a Cmd for output.
-// If the message starts with an agent name (e.g. "gemini research X"),
-// it switches to that agent. Subsequent messages continue to the same
-// agent until another agent name is used.
-// Search/research queries are always routed to Gemini.
+// When local LLM orchestrator is available, ALL messages go to it —
+// the LLM decides routing via tool calls.
+// Falls back to keyword-based routing when Ollama is unavailable.
 func (m *Model) handleCommand(input string) tea.Cmd {
 	if strings.HasPrefix(input, "/") {
 		return m.handleSlashCommand(input)
 	}
 
+	// Local LLM orchestrator: send everything to Qwen 3.5.
+	if m.localOrch != nil && m.localOrch.Available() {
+		cmds := []tea.Cmd{printLine("you", input)}
+		if err := m.localOrch.Send(context.Background(), input); err != nil {
+			cmds = append(cmds, printLine("error", err.Error()))
+		}
+		return tea.Batch(cmds...)
+	}
+
+	// Fallback: existing keyword-based routing.
+	return m.handleCommandFallback(input)
+}
+
+// handleCommandFallback is the original keyword-based routing logic.
+// Used when the local LLM orchestrator is unavailable.
+func (m *Model) handleCommandFallback(input string) tea.Cmd {
+	if strings.HasPrefix(input, "/") {
+		return m.handleSlashCommand(input)
+	}
+
 	// Check if first word is a known agent name → switch active agent.
+	// Strip trailing punctuation (e.g. "gemini," "claude:" "codex.")
 	parts := strings.SplitN(input, " ", 2)
 	if len(parts) >= 1 {
-		agentName := strings.ToLower(parts[0])
+		agentName := strings.ToLower(strings.TrimRight(parts[0], ",.;:!?"))
 		if m.orch.Agents().Get(agentName) != nil {
 			m.activeAgent = agentName
 			message := ""
@@ -322,25 +347,37 @@ func (m *Model) handleSlashCommand(input string) tea.Cmd {
 
 	switch cmd {
 	case "/help":
-		return printLines("system", strings.Join([]string{
+		lines := []string{
 			"Commands:",
 			"  /to <agent> <msg>   — send directly to an agent",
-			"  /cancel             — stop the active agent's session",
+			"  /cancel             — stop the active session",
 			"  /task <type> <desc> — create a routed task",
 			"  /primary <agent>    — switch primary agent",
 			"  /agents             — list agents",
 			"  /tasks              — list tasks",
 			"  /status             — show overview",
 			"  /quit               — exit",
-			"",
-			"Type an agent name to switch (e.g. 'gemini hello').",
-			"Sessions auto-timeout after 2 minutes.",
-		}, "\n"))
+		}
+		if m.localOrch != nil {
+			lines = append(lines, "",
+				"Local LLM:",
+				"  /local status       — show loaded models",
+				"  /local reset        — clear conversation history",
+			)
+		}
+		lines = append(lines, "", "Plain text goes to the local LLM orchestrator (or CLI agents as fallback).")
+		return printLines("system", strings.Join(lines, "\n"))
 
 	case "/quit":
 		return tea.Quit
 
 	case "/cancel":
+		if m.localOrch != nil {
+			if err := m.localOrch.Cancel(); err != nil {
+				return printLine("system", err.Error())
+			}
+			return printLine("system", "Cancelled local LLM session.")
+		}
 		target := m.activeAgent
 		if target == "" {
 			target = m.orch.Primary()
@@ -349,6 +386,24 @@ func (m *Model) handleSlashCommand(input string) tea.Cmd {
 			return printLine("system", err.Error())
 		}
 		return printLine("system", fmt.Sprintf("Cancelled %s session.", target))
+
+	case "/local":
+		if m.localOrch == nil {
+			return printLine("system", "Local LLM not configured. Set [llm] enabled=true in ag3nts.toml")
+		}
+		sub := ""
+		if len(parts) > 1 {
+			sub = parts[1]
+		}
+		switch sub {
+		case "status":
+			return printLines("system", m.localOrch.ModelStatus(context.Background()))
+		case "reset":
+			m.localOrch.Reset()
+			return printLine("system", "Conversation history cleared.")
+		default:
+			return printLine("system", "Usage: /local status | /local reset")
+		}
 
 	case "/to":
 		if len(parts) < 3 {

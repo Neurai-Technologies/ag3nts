@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	glamour "charm.land/glamour/v2"
+	"charm.land/glamour/v2/ansi"
 )
 
 // streamBuffer accumulates streaming text deltas per agent and renders
@@ -57,11 +58,62 @@ func (sb *streamBuffer) Has(agent string) bool {
 var mdRenderer *glamour.TermRenderer
 var mdOnce sync.Once
 
+// ag3ntsStyle returns a clean glamour style with legible colors.
+func ag3ntsStyle() ansi.StyleConfig {
+	boolPtr := func(b bool) *bool { return &b }
+	strPtr := func(s string) *string { return &s }
+	uintPtr := func(u uint) *uint { return &u }
+
+	return ansi.StyleConfig{
+		Document: ansi.StyleBlock{
+			Margin: uintPtr(0),
+		},
+		Heading: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{Bold: boolPtr(true)},
+		},
+		H1: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{Color: strPtr("#61AFEF"), Bold: boolPtr(true)},
+		},
+		H2: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{Color: strPtr("#61AFEF"), Bold: boolPtr(true)},
+		},
+		H3: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{Color: strPtr("#56B6C2"), Bold: boolPtr(true)},
+		},
+		Strong: ansi.StylePrimitive{Color: strPtr("#E5C07B"), Bold: boolPtr(true)},
+		Emph:   ansi.StylePrimitive{Color: strPtr("#C678DD"), Italic: boolPtr(true)},
+		Code: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Color: strPtr("#98C379"),
+			},
+		},
+		CodeBlock: ansi.StyleCodeBlock{
+			StyleBlock: ansi.StyleBlock{
+				Margin: uintPtr(1),
+			},
+			Chroma: &ansi.Chroma{},
+		},
+		Link:     ansi.StylePrimitive{Color: strPtr("#61AFEF"), Underline: boolPtr(true)},
+		LinkText: ansi.StylePrimitive{Color: strPtr("#61AFEF")},
+		List: ansi.StyleList{
+			StyleBlock: ansi.StyleBlock{Indent: uintPtr(2)},
+		},
+		Item:            ansi.StylePrimitive{},
+		HorizontalRule:  ansi.StylePrimitive{Color: strPtr("#546E7A"), Format: "--------"},
+		Table:           ansi.StyleTable{},
+		Paragraph:       ansi.StyleBlock{},
+		BlockQuote:      ansi.StyleBlock{StylePrimitive: ansi.StylePrimitive{Color: strPtr("#546E7A")}, Indent: uintPtr(1)},
+		Enumeration:     ansi.StylePrimitive{},
+		Text:            ansi.StylePrimitive{},
+		Strikethrough:   ansi.StylePrimitive{CrossedOut: boolPtr(true)},
+	}
+}
+
 // renderMarkdown converts markdown text to styled terminal output.
 func renderMarkdown(text string) string {
 	mdOnce.Do(func() {
 		r, err := glamour.NewTermRenderer(
-			glamour.WithEnvironmentConfig(),
+			glamour.WithStyles(ag3ntsStyle()),
 			glamour.WithWordWrap(100),
 		)
 		if err != nil {
@@ -105,6 +157,12 @@ var toolIcons = map[string]string{
 	"google_web_search": "🌐 ",
 	"save_memory":       "💾 ",
 	"cli_help":          "❓ ",
+	"deep_reason":       "🧠 ",
+	"analyze_repo":      "🔬 ",
+	"web_research":      "🌐 ",
+	"code_task":         "💻 ",
+	"implement":         "🔧 ",
+	"run_command":       "$ ",
 }
 
 // formatToolLine returns an icon-prefixed tool use description.

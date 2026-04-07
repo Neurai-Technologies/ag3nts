@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/rohanrgit/ag3nts/internal/agent"
+	"github.com/rohanrgit/ag3nts/internal/llm"
 	"github.com/rohanrgit/ag3nts/internal/orchestrator"
 	"github.com/rohanrgit/ag3nts/internal/router"
 	"github.com/rohanrgit/ag3nts/internal/tui"
@@ -132,8 +133,32 @@ func runOrchestrate() error {
 		return fmt.Errorf("start orchestrator: %w", err)
 	}
 
+	// Create local LLM orchestrator if configured and Ollama is available.
+	var localOrch *llm.LocalOrchestrator
+	if cfg.LLM.Enabled {
+		workDir := ""
+		if cwd, err := os.Getwd(); err == nil {
+			workDir = cwd
+		}
+		lo, err := llm.NewLocalOrchestrator(llm.OrchestratorConfig{
+			Endpoint:      cfg.LLM.Endpoint,
+			HeadModel:     cfg.LLM.HeadModel,
+			ReasonerModel: cfg.LLM.ReasonerModel,
+			AnalyzerModel: cfg.LLM.AnalyzerModel,
+			SystemPrompt:  cfg.LLM.SystemPrompt,
+			WorkDir:       workDir,
+			MaxContext:     cfg.LLM.MaxContext,
+		}, registry, orch.Bus())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "⚠ local LLM unavailable: %v (falling back to CLI agents)\n", err)
+		} else {
+			localOrch = lo
+			fmt.Fprintf(os.Stderr, "✓ Local LLM orchestrator ready (%s)\n", cfg.LLM.HeadModel)
+		}
+	}
+
 	// Launch the TUI.
-	model := tui.New(orch)
+	model := tui.New(orch, localOrch)
 	p := tea.NewProgram(model)
 
 	if _, err := p.Run(); err != nil {
