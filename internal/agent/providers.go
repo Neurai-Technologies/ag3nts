@@ -17,9 +17,8 @@ func NewClaudeAgent(layout *paths.Layout) *SubprocessAgent {
 		BinaryPath: tool.BinaryPath(layout),
 		BaseFlags:  []string{"--output-format", "stream-json", "--verbose"},
 		Parser:     ParseClaude,
-		ResumeFlags: func(id string) []string {
-			return []string{"--resume"}
-		},
+		// Claude Code resume is unreliable across CLI versions — each message is standalone.
+		// Research pipeline provides context via Gemini→Claude handoff.
 		Capabilities: []string{
 			"code-generation", "code-review", "analysis",
 			"reasoning", "refactoring", "debugging",

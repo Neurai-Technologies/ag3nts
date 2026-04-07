@@ -259,6 +259,32 @@ func (o *Orchestrator) Research(query string) error {
 					return
 				}
 
+				// If research is too thin (<200 chars), retry with a more specific prompt.
+				if len(researchText) < 200 {
+					o.publish(agent.AgentEvent{
+						Kind:      agent.EventProgress,
+						Agent:     "gemini",
+						Content:   "research too brief, retrying with more detail...",
+						Timestamp: time.Now(),
+					})
+					retrySess, retryErr := gemini.Start(o.ctx, "The previous research was too brief. Please provide a much more detailed and thorough answer with specific details, examples, and steps. Original query: "+query, &agent.StartOpts{
+						TaskID: fmt.Sprintf("_research-retry-%d", time.Now().UnixNano()),
+					})
+					if retryErr == nil {
+						var retry strings.Builder
+						for ev := range retrySess.Events() {
+							if ev.Kind == agent.EventMessage || ev.Kind == agent.EventProgress {
+								retry.WriteString(ev.Content)
+							} else if ev.Kind != agent.EventComplete {
+								o.publish(ev)
+							}
+						}
+						if retry.Len() > 0 {
+							researchText = retry.String()
+						}
+					}
+				}
+
 				// Stop any existing primary session.
 				o.mu.Lock()
 				oldMain := o.mainSess
@@ -268,7 +294,7 @@ func (o *Orchestrator) Research(query string) error {
 					_ = claude.Stop(oldMain)
 				}
 
-				synthesisPrompt := "Summarize and present the following research findings clearly and concisely:\n\n" + researchText
+				synthesisPrompt := "IMPORTANT: Do NOT use any tools. Do NOT read files, search, or fetch anything. ONLY synthesize and present the following research findings clearly and concisely. All the information you need is below:\n\n" + researchText
 				newSess, err := claude.Start(o.ctx, synthesisPrompt, &agent.StartOpts{
 					TaskID: "_primary",
 				})
