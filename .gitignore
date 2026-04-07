@@ -3,6 +3,9 @@
 # Excludes binaries, credentials, caches, and runtime files.
 # =============================================================================
 
+# Build artifact
+ag3nts
+
 # --- Tool binaries ---
 *.exe
 *.exe.old.*
