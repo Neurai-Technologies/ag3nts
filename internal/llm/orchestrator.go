@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sync"
 
 	"github.com/rohanrgit/ag3nts/internal/agent"
@@ -14,7 +15,7 @@ type OrchestratorConfig struct {
 	Endpoint      string // Ollama endpoint (default: http://localhost:11434)
 	HeadModel     string // Qwen 3.5 122B model name in Ollama
 	ReasonerModel string // Gemma 4 31B model name
-	AnalyzerModel string // Llama 4 Scout model name
+	ModelsPath    string // Path to Ollama models directory (for OLLAMA_MODELS env)
 	SystemPrompt  string // System prompt for head model (optional override)
 	WorkDir       string // Working directory for file operations
 	MaxContext    int    // Context window limit in tokens (default: 256000)
@@ -25,17 +26,20 @@ const defaultSystemPrompt = `You are the head orchestrator of ag3nts, a multi-ag
 You are highly capable — handle most tasks directly. Only delegate when genuinely needed:
 
 Tools available:
-- read_file, write_file, run_command, search_files: Direct filesystem and shell access. Use for reading code, writing files, running builds/tests.
-- deep_reason: Delegate to Gemma 4 31B for mathematical proofs, formal evaluation, architectural trade-off analysis, or problems requiring deeper reasoning than you can provide.
-- analyze_repo: Delegate to Llama 4 Scout (10M token context) when you need to see more code than fits in your 256K context — full-repo reviews, cross-cutting refactors, architecture audits.
-- web_research: Delegate to Gemini CLI for current information from the internet — documentation, latest releases, news, anything not in your training data.
-- code_task: Delegate to Claude Code for complex multi-file coding tasks requiring deep code understanding.
-- implement: Delegate to Codex CLI for focused, single-purpose implementation tasks.
+- read_file, write_file, run_command, search_files: Direct filesystem and shell access.
+- deep_reason: Delegate to Gemma 4 31B for complex reasoning, evaluation, architecture decisions.
+- recall: Retrieve relevant context from long-term memory. Use when you need information from earlier in the conversation or past findings. Memory persists across sessions.
+- store: Save an important finding, decision, or summary to long-term memory. Use after completing analysis or making decisions. Store the distilled insight, not raw data.
+- web_research: Delegate to Gemini CLI for current information from the internet.
+- code_task: Delegate to Claude Code for complex multi-file coding tasks.
+- implement: Delegate to Codex CLI for focused implementation tasks.
 
 Guidelines:
 - For simple questions, answer directly without tools.
 - Always explain briefly what you're doing before calling a tool.
 - After receiving tool results, synthesize and present them clearly.
+- After completing significant analysis, use store() to save key findings to long-term memory.
+- Use recall() when you need context from earlier in the session or past decisions.
 - Be concise and direct. The user is a developer — no hand-holding.`
 
 // LocalOrchestrator wraps the agent loop, conversation, and model management
@@ -44,6 +48,7 @@ type LocalOrchestrator struct {
 	client       *OllamaClient
 	models       *ModelManager
 	conversation *ConversationManager
+	memory       *Memory
 	loop         *AgentLoop
 	bus          *bus.Bus
 	workDir      string
@@ -70,42 +75,41 @@ func NewLocalOrchestrator(
 		cfg.SystemPrompt = defaultSystemPrompt
 	}
 
-	// Create Ollama client.
-	client, err := NewOllamaClient(cfg.Endpoint)
+	// Create Ollama client (auto-starts Ollama if needed).
+	client, err := NewOllamaClient(cfg.Endpoint, cfg.ModelsPath)
 	if err != nil {
 		return nil, fmt.Errorf("create ollama client: %w", err)
 	}
-	if !client.Available() {
-		return nil, fmt.Errorf("ollama not reachable at %s", cfg.Endpoint)
-	}
 
-	// Configure models.
+	// Configure models (Head + Reasoner only — Scout removed from active config).
 	modelConfigs := map[ModelRole]*ModelConfig{
 		ModelHead: {
 			Name:       cfg.HeadModel,
 			Role:       ModelHead,
 			ContextLen: cfg.MaxContext,
-			KeepAlive:  -1, // permanent residency (int -1 for Ollama)
+			KeepAlive:  -1,
 		},
 		ModelReasoner: {
 			Name:       cfg.ReasonerModel,
 			Role:       ModelReasoner,
 			ContextLen: 128000,
-			KeepAlive:  -1, // stays loaded until other secondary needs VRAM
-		},
-		ModelAnalyzer: {
-			Name:       cfg.AnalyzerModel,
-			Role:       ModelAnalyzer,
-			ContextLen: 131072,
-			KeepAlive:  -1, // stays loaded with repo context until evicted
+			KeepAlive:  -1,
 		},
 	}
 
 	models := NewModelManager(client, modelConfigs)
 	conversation := NewConversationManager(cfg.SystemPrompt, cfg.MaxContext)
 
+	// Memory: Go-native with disk persistence. No LLM needed.
+	persistPath := ""
+	if cfg.WorkDir != "" {
+		persistPath = filepath.Join(cfg.WorkDir, "state", "memory.json")
+	}
+	memory := NewMemory(persistPath)
+
 	// Create agent loop.
 	loop := NewAgentLoop(client, conversation, models, eventBus, cfg.HeadModel)
+	loop.memory = memory // auto-store findings after tool calls
 
 	// Register system tools.
 	sysDefs, sysExecs := RegisterSystemTools(cfg.WorkDir)
@@ -113,11 +117,13 @@ func NewLocalOrchestrator(
 
 	// Register routing tools.
 	routeDeps := RoutingDeps{
-		Client:   client,
-		Models:   models,
-		Registry: registry,
-		Bus:      eventBus,
-		WorkDir:  cfg.WorkDir,
+		Client:       client,
+		Models:       models,
+		Registry:     registry,
+		Bus:          eventBus,
+		Conversation: conversation,
+		Memory:       memory,
+		WorkDir:      cfg.WorkDir,
 	}
 	routeDefs, routeExecs := RegisterRoutingTools(routeDeps)
 	loop.RegisterTools(routeDefs, routeExecs)
@@ -141,6 +147,7 @@ func NewLocalOrchestrator(
 		client:       client,
 		models:       models,
 		conversation: conversation,
+		memory:       memory,
 		loop:         loop,
 		bus:          eventBus,
 		workDir:      cfg.WorkDir,
@@ -154,12 +161,13 @@ func (lo *LocalOrchestrator) WarmUp(ctx context.Context) error {
 	return lo.models.WarmHead(ctx)
 }
 
-// Shutdown unloads all models from VRAM. Call on exit.
+// Shutdown unloads all models and stops Ollama.
 func (lo *LocalOrchestrator) Shutdown() {
 	ctx := context.Background()
-	for _, role := range []ModelRole{ModelHead, ModelReasoner, ModelAnalyzer} {
+	for _, role := range []ModelRole{ModelHead, ModelReasoner} {
 		_ = lo.models.Unload(ctx, role)
 	}
+	lo.client.StopOllama()
 }
 
 // Send processes a user message through the LLM pipeline.
@@ -222,9 +230,13 @@ func (lo *LocalOrchestrator) IsRunning() bool {
 	return lo.running
 }
 
-// ModelStatus returns a human-readable status of all managed models.
+// ModelStatus returns a human-readable status of all managed models and memory.
 func (lo *LocalOrchestrator) ModelStatus(ctx context.Context) string {
-	return lo.models.Status(ctx)
+	status := lo.models.Status(ctx)
+	if lo.memory != nil {
+		status += "\n" + lo.memory.Summary()
+	}
+	return status
 }
 
 // ConversationLen returns the number of messages in the conversation.

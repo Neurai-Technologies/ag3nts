@@ -25,6 +25,7 @@ type AgentLoop struct {
 	tools        map[string]ToolExecutor
 	toolDefs     []ToolDef
 	headModel    string
+	memory       *Memory // auto-store tool results as findings
 }
 
 // NewAgentLoop creates the agent loop.
@@ -140,6 +141,22 @@ func (al *AgentLoop) Run(ctx context.Context, userMessage string) error {
 			// Truncate large results.
 			if len(result) > maxOutputSize {
 				result = result[:maxOutputSize] + "\n[TRUNCATED]"
+			}
+
+			// Auto-store routing tool results in memory (already distilled).
+			// System tool results are raw — they'll be stored when the head
+			// model synthesizes findings via the explicit store() tool.
+			if al.memory != nil && err == nil {
+				switch toolName {
+				case "deep_reason":
+					al.memory.Store("gemma4", "finding", result)
+				case "web_research":
+					al.memory.Store("gemini", "finding", result)
+				case "code_task":
+					al.memory.Store("claude", "finding", result)
+				case "implement":
+					al.memory.Store("codex", "finding", result)
+				}
 			}
 
 			// Append tool result to conversation.

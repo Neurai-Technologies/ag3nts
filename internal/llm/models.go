@@ -77,18 +77,12 @@ func (mm *ModelManager) EnsureLoaded(ctx context.Context, role ModelRole) error 
 }
 
 // Unload removes a model from Ollama VRAM.
+// Always sends the unload request regardless of local tracking state.
 func (mm *ModelManager) Unload(ctx context.Context, role ModelRole) error {
 	cfg, ok := mm.models[role]
 	if !ok {
-		return fmt.Errorf("no model configured for role %d", role)
+		return nil // no model configured for this role, nothing to unload
 	}
-
-	mm.mu.Lock()
-	if !mm.loaded[cfg.Name] {
-		mm.mu.Unlock()
-		return nil
-	}
-	mm.mu.Unlock()
 
 	// Send request with keep_alive=0 to trigger unload.
 	_, _, err := mm.client.Chat(ctx, ChatRequest{

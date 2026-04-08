@@ -141,9 +141,9 @@ func runOrchestrate() error {
 		workDir := layout.Base
 		lo, err := llm.NewLocalOrchestrator(llm.OrchestratorConfig{
 			Endpoint:      cfg.LLM.Endpoint,
+			ModelsPath:    cfg.LLM.ModelsPath,
 			HeadModel:     cfg.LLM.HeadModel,
 			ReasonerModel: cfg.LLM.ReasonerModel,
-			AnalyzerModel: cfg.LLM.AnalyzerModel,
 			SystemPrompt:  cfg.LLM.SystemPrompt,
 			WorkDir:       workDir,
 			MaxContext:     cfg.LLM.MaxContext,

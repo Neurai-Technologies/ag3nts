@@ -3,8 +3,6 @@ package llm
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -14,11 +12,13 @@ import (
 
 // RoutingDeps holds dependencies for routing tools.
 type RoutingDeps struct {
-	Client   *OllamaClient
-	Models   *ModelManager
-	Registry *agent.Registry
-	Bus      *bus.Bus
-	WorkDir  string
+	Client       *OllamaClient
+	Models       *ModelManager
+	Registry     *agent.Registry
+	Bus          *bus.Bus
+	Conversation *ConversationManager
+	Memory       *Memory
+	WorkDir      string
 }
 
 // RegisterRoutingTools returns tool definitions and executors for
@@ -43,15 +43,29 @@ func RegisterRoutingTools(deps RoutingDeps) ([]ToolDef, map[string]ToolExecutor)
 		{
 			Type: "function",
 			Function: ToolFunction{
-				Name:        "analyze_repo",
-				Description: "Delegate to Llama 4 Scout (10M token context) for full-repository analysis, cross-file understanding, large codebase review, or architecture-level refactoring. Use when you need to see more code than fits in your context window.",
+				Name:        "recall",
+				Description: "Retrieve relevant context from long-term memory. Use when you need information from earlier in the conversation, previous tool results, or past decisions. Memory persists across sessions and stores distilled findings, not raw data.",
 				Parameters: ToolFunctionParams{
 					Type: "object",
 					Properties: map[string]ToolParamProp{
-						"question": {Type: "string", Description: "What to analyze or review"},
-						"files":    {Type: "string", Description: "Comma-separated file/directory paths to include (optional, defaults to working directory)"},
+						"query": {Type: "string", Description: "What to recall — describe what you're looking for"},
 					},
-					Required: []string{"question"},
+					Required: []string{"query"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: ToolFunction{
+				Name:        "store",
+				Description: "Store an important finding, decision, or summary in long-term memory. Use after completing analysis, making decisions, or learning something that should be remembered for later. Store the distilled insight, not raw data.",
+				Parameters: ToolFunctionParams{
+					Type: "object",
+					Properties: map[string]ToolParamProp{
+						"category": {Type: "string", Description: "Type of memory: finding, decision, file_summary, error, user_context", Enum: []string{"finding", "decision", "file_summary", "error", "user_context"}},
+						"content":  {Type: "string", Description: "The distilled finding or summary to store"},
+					},
+					Required: []string{"category", "content"},
 				},
 			},
 		},
@@ -102,7 +116,8 @@ func RegisterRoutingTools(deps RoutingDeps) ([]ToolDef, map[string]ToolExecutor)
 
 	executors := map[string]ToolExecutor{
 		"deep_reason":  toolDeepReason(deps),
-		"analyze_repo": toolAnalyzeRepo(deps),
+		"recall":       toolRecall(deps),
+		"store":        toolStore(deps),
 		"web_research": toolWebResearch(deps),
 		"code_task":    toolCodeTask(deps),
 		"implement":    toolImplement(deps),
@@ -112,6 +127,8 @@ func RegisterRoutingTools(deps RoutingDeps) ([]ToolDef, map[string]ToolExecutor)
 }
 
 // toolDeepReason calls Gemma 4 31B for planning/evaluation/reasoning.
+// Automatically includes recent conversation context so Gemma has the
+// same information as the head model (no need to re-read files).
 func toolDeepReason(deps RoutingDeps) ToolExecutor {
 	return func(args map[string]any) (string, error) {
 		question, _ := args["question"].(string)
@@ -120,9 +137,14 @@ func toolDeepReason(deps RoutingDeps) ToolExecutor {
 		}
 		extra, _ := args["context"].(string)
 
+		// Build context from recent conversation if not explicitly provided.
+		if extra == "" && deps.Conversation != nil {
+			extra = recentContext(deps.Conversation, 8000)
+		}
+
 		prompt := question
 		if extra != "" {
-			prompt = extra + "\n\n" + question
+			prompt = "Context from the conversation so far:\n\n" + extra + "\n\n---\n\nQuestion:\n" + question
 		}
 
 		publishProgress(deps.Bus, "gemma4", "Loading Gemma 4 for deep reasoning...")
@@ -130,15 +152,13 @@ func toolDeepReason(deps RoutingDeps) ToolExecutor {
 		if err := deps.Models.EnsureLoaded(context.Background(), ModelReasoner); err != nil {
 			return "", fmt.Errorf("load reasoner: %w", err)
 		}
-		// No defer Unload — model stays loaded for follow-up calls.
-		// Only evicted when the OTHER secondary model needs to load.
 
 		publishProgress(deps.Bus, "gemma4", "Reasoning...")
 
 		msg, resp, err := deps.Client.Chat(context.Background(), ChatRequest{
 			Model: deps.Models.ModelName(ModelReasoner),
 			Messages: []Message{
-				{Role: RoleSystem, Content: "You are a deep reasoning specialist. Provide thorough, well-structured analysis. Consider trade-offs, edge cases, and alternatives."},
+				{Role: RoleSystem, Content: "You are a deep reasoning specialist. Provide thorough, well-structured analysis. Consider trade-offs, edge cases, and alternatives. The context below contains file contents and conversation history — use it directly, do not ask for more information."},
 				{Role: RoleUser, Content: prompt},
 			},
 			Options: &ModelOptions{
@@ -154,87 +174,38 @@ func toolDeepReason(deps RoutingDeps) ToolExecutor {
 	}
 }
 
-// toolAnalyzeRepo calls Llama 4 Scout for massive-context analysis.
-func toolAnalyzeRepo(deps RoutingDeps) ToolExecutor {
+// toolRecall retrieves relevant context from Scout's long-term memory.
+func toolRecall(deps RoutingDeps) ToolExecutor {
 	return func(args map[string]any) (string, error) {
-		question, _ := args["question"].(string)
-		if question == "" {
-			return "", fmt.Errorf("question is required")
+		query, _ := args["query"].(string)
+		if query == "" {
+			return "", fmt.Errorf("query is required")
 		}
 
-		publishProgress(deps.Bus, "llama4-scout", "Loading Llama 4 Scout (10M context)...")
-
-		if err := deps.Models.EnsureLoaded(context.Background(), ModelAnalyzer); err != nil {
-			return "", fmt.Errorf("load analyzer: %w", err)
-		}
-		// No defer Unload — model stays loaded with repo context.
-		// Only evicted when the OTHER secondary model needs to load.
-
-		// Collect file contents if specified.
-		var fileContent strings.Builder
-		if files, _ := args["files"].(string); files != "" {
-			for _, f := range strings.Split(files, ",") {
-				f = strings.TrimSpace(f)
-				path := resolvePath(deps.WorkDir, f)
-
-				info, err := os.Stat(path)
-				if err != nil {
-					continue
-				}
-
-				if info.IsDir() {
-					// Read all files in directory (up to reasonable limit).
-					_ = filepath.Walk(path, func(p string, fi os.FileInfo, err error) error {
-						if err != nil || fi.IsDir() || fi.Size() > maxFileSize {
-							return nil
-						}
-						// Skip binary/hidden files.
-						ext := filepath.Ext(p)
-						if ext == "" || ext == ".exe" || ext == ".bin" || strings.HasPrefix(filepath.Base(p), ".") {
-							return nil
-						}
-						data, err := os.ReadFile(p)
-						if err != nil {
-							return nil
-						}
-						rel, _ := filepath.Rel(deps.WorkDir, p)
-						fileContent.WriteString(fmt.Sprintf("\n=== %s ===\n%s\n", rel, string(data)))
-						return nil
-					})
-				} else {
-					data, err := os.ReadFile(path)
-					if err != nil {
-						continue
-					}
-					rel, _ := filepath.Rel(deps.WorkDir, path)
-					fileContent.WriteString(fmt.Sprintf("\n=== %s ===\n%s\n", rel, string(data)))
-				}
-			}
+		if deps.Memory == nil {
+			return "Memory not available.", nil
 		}
 
-		prompt := question
-		if fileContent.Len() > 0 {
-			prompt = question + "\n\nFiles for analysis:\n" + fileContent.String()
+		return deps.Memory.Recall(query), nil
+	}
+}
+
+// toolStore saves a distilled finding to Scout's long-term memory.
+func toolStore(deps RoutingDeps) ToolExecutor {
+	return func(args map[string]any) (string, error) {
+		category, _ := args["category"].(string)
+		content, _ := args["content"].(string)
+		if category == "" || content == "" {
+			return "", fmt.Errorf("category and content are required")
 		}
 
-		publishProgress(deps.Bus, "llama4-scout", "Analyzing...")
-
-		msg, resp, err := deps.Client.Chat(context.Background(), ChatRequest{
-			Model: deps.Models.ModelName(ModelAnalyzer),
-			Messages: []Message{
-				{Role: RoleSystem, Content: "You are a codebase analysis specialist with massive context capacity. Provide thorough, cross-cutting analysis across files and components."},
-				{Role: RoleUser, Content: prompt},
-			},
-			Options: &ModelOptions{
-				NumCtx: deps.Models.Config(ModelAnalyzer).ContextLen,
-			},
-		})
-		if err != nil {
-			return "", fmt.Errorf("analyze_repo: %w", err)
+		if deps.Memory == nil {
+			return "Memory not available.", nil
 		}
 
-		publishComplete(deps.Bus, "llama4-scout", resp.EvalCount)
-		return msg.Content, nil
+		deps.Memory.Store("qwen3.5", category, content)
+
+		return fmt.Sprintf("Stored %s (%d chars). Memory now has %d entries.", category, len(content), deps.Memory.Len()), nil
 	}
 }
 
@@ -387,4 +358,34 @@ func publishComplete(b *bus.Bus, agentName string, tokens int) {
 // publishEvent emits an agent event to the bus.
 func publishEvent(b *bus.Bus, event agent.AgentEvent) {
 	b.Publish("system", event.Agent, event)
+}
+
+// recentContext extracts the last N chars of conversation as context
+// for secondary models, so they have the same information as the head.
+func recentContext(cm *ConversationManager, maxChars int) string {
+	msgs := cm.Messages()
+	var sb strings.Builder
+
+	// Walk backwards through messages, collecting content.
+	for i := len(msgs) - 1; i >= 0; i-- {
+		msg := msgs[i]
+		if msg.Role == RoleSystem {
+			continue // skip system prompts
+		}
+
+		entry := fmt.Sprintf("[%s]: %s\n", msg.Role, msg.Content)
+
+		// Include tool call info.
+		for _, tc := range msg.ToolCalls {
+			entry += fmt.Sprintf("[tool_call]: %s\n", tc.Function.Name)
+		}
+
+		if sb.Len()+len(entry) > maxChars {
+			break
+		}
+		// Prepend (we're walking backwards).
+		sb.WriteString(entry)
+	}
+
+	return sb.String()
 }

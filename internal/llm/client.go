@@ -9,18 +9,22 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"os/exec"
 	"time"
 )
 
 // OllamaClient handles HTTP communication with the Ollama API.
 type OllamaClient struct {
-	endpoint string
-	client   *http.Client
+	endpoint   string
+	client     *http.Client
+	managedPid int // PID of ollama serve process we started (0 = external)
 }
 
 // NewOllamaClient creates a client for the given Ollama endpoint.
-// Validates the endpoint is localhost (security: SR-11).
-func NewOllamaClient(endpoint string) (*OllamaClient, error) {
+// Kills any existing Ollama, starts a fresh instance with modelsPath set,
+// and waits for it to be ready. Validates localhost only (SR-11).
+func NewOllamaClient(endpoint, modelsPath string) (*OllamaClient, error) {
 	u, err := url.Parse(endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("invalid endpoint: %w", err)
@@ -30,12 +34,72 @@ func NewOllamaClient(endpoint string) (*OllamaClient, error) {
 		return nil, fmt.Errorf("only localhost endpoints allowed (got %s)", host)
 	}
 
-	return &OllamaClient{
+	oc := &OllamaClient{
 		endpoint: endpoint,
 		client: &http.Client{
-			Timeout: 0, // no timeout — streaming can take minutes
+			Timeout: 0,
 		},
-	}, nil
+	}
+
+	// Kill any existing Ollama so we can start fresh with the right OLLAMA_MODELS.
+	_ = exec.Command("pkill", "-f", "ollama").Run()
+	time.Sleep(1 * time.Second)
+
+	// Start Ollama with the correct models path.
+	pid, err := startOllamaServe(modelsPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start ollama: %w", err)
+	}
+	oc.managedPid = pid
+
+	// Wait for it to be ready (up to 15 seconds).
+	ready := false
+	for i := 0; i < 30; i++ {
+		time.Sleep(500 * time.Millisecond)
+		if oc.Available() {
+			ready = true
+			break
+		}
+	}
+	if !ready {
+		oc.StopOllama()
+		return nil, fmt.Errorf("ollama started but not responding after 15s")
+	}
+
+	return oc, nil
+}
+
+// StopOllama kills all Ollama processes — whether we started them or not.
+func (c *OllamaClient) StopOllama() {
+	// Use pkill to stop all ollama processes cleanly.
+	_ = exec.Command("pkill", "-f", "ollama").Run()
+	c.managedPid = 0
+}
+
+// startOllamaServe launches `ollama serve` as a background process
+// with OLLAMA_MODELS set to the given path.
+func startOllamaServe(modelsPath string) (int, error) {
+	ollamaPath, err := exec.LookPath("ollama")
+	if err != nil {
+		return 0, fmt.Errorf("ollama binary not found: %w", err)
+	}
+
+	cmd := exec.Command(ollamaPath, "serve")
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+
+	// Set environment with OLLAMA_MODELS pointing to the SSD.
+	env := os.Environ()
+	if modelsPath != "" {
+		env = append(env, "OLLAMA_MODELS="+modelsPath)
+	}
+	cmd.Env = env
+
+	if err := cmd.Start(); err != nil {
+		return 0, fmt.Errorf("start ollama serve: %w", err)
+	}
+
+	return cmd.Process.Pid, nil
 }
 
 // ChatRequest is the request body for /api/chat.

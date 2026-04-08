@@ -32,9 +32,9 @@ type Config struct {
 type LLMConfig struct {
 	Enabled       bool   `toml:"enabled"`
 	Endpoint      string `toml:"endpoint"`
+	ModelsPath    string `toml:"models_path"`
 	HeadModel     string `toml:"head_model"`
 	ReasonerModel string `toml:"reasoner_model"`
-	AnalyzerModel string `toml:"analyzer_model"`
 	SystemPrompt  string `toml:"system_prompt"`
 	MaxContext    int    `toml:"max_context"`
 }
@@ -152,9 +152,9 @@ func Default() *Config {
 		LLM: LLMConfig{
 			Enabled:       false,
 			Endpoint:      "http://localhost:11434",
+			ModelsPath:    "/Volumes/S990Pro4TB/LLMs/Ollama",
 			HeadModel:     "qwen3.5:122b",
 			ReasonerModel: "gemma4:31b",
-			AnalyzerModel: "llama4:scout",
 			MaxContext:     256000,
 		},
 	}
