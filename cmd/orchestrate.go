@@ -151,12 +151,22 @@ func runOrchestrate() error {
 			fmt.Fprintf(os.Stderr, "⚠ local LLM unavailable: %v (falling back to CLI agents)\n", err)
 		} else {
 			localOrch = lo
-			fmt.Fprintf(os.Stderr, "✓ Local LLM orchestrator ready (%s)\n", cfg.LLM.HeadModel)
+			fmt.Fprintf(os.Stderr, "✓ Ollama connected (%s)\n", cfg.LLM.HeadModel)
+			fmt.Fprintf(os.Stderr, "⠋ Loading model into memory...")
+			if err := lo.WarmUp(ctx); err != nil {
+				fmt.Fprintf(os.Stderr, "\r\033[K⚠ Model warm-up failed: %v\n", err)
+			} else {
+				fmt.Fprintf(os.Stderr, "\r\033[K✓ Model loaded and ready\n")
+			}
 		}
 	}
 
 	// Launch the terminal app.
 	app := tui.New(orch, localOrch)
+	// Wire permission prompts from TUI to LLM orchestrator.
+	if localOrch != nil {
+		localOrch.SetPermission(app.GetPermissionFunc())
+	}
 	if err := app.Run(ctx); err != nil {
 		_ = orch.Stop()
 		return fmt.Errorf("app error: %w", err)

@@ -12,13 +12,14 @@ import (
 
 // RoutingDeps holds dependencies for routing tools.
 type RoutingDeps struct {
-	Client       *OllamaClient
-	Models       *ModelManager
-	Registry     *agent.Registry
-	Bus          *bus.Bus
-	Conversation *ConversationManager
-	Memory       *Memory
-	WorkDir      string
+	Client        *OllamaClient
+	Models        *ModelManager
+	Registry      *agent.Registry
+	Bus           *bus.Bus
+	Conversation  *ConversationManager
+	Memory        *Memory
+	AskPermission PermissionFunc
+	WorkDir       string
 }
 
 // RegisterRoutingTools returns tool definitions and executors for
@@ -155,7 +156,10 @@ func toolWebResearch(deps RoutingDeps) ToolExecutor {
 
 		gemini := deps.Registry.Get("gemini")
 		if gemini == nil {
-			return "", fmt.Errorf("gemini agent not available")
+			return "", fmt.Errorf("gemini agent not configured — run 'ag3nts install'")
+		}
+		if !gemini.Available() {
+			return "", fmt.Errorf("gemini agent not available — check if Gemini CLI is installed")
 		}
 
 		publishProgress(deps.Bus, "gemini", "Researching: "+query)
@@ -198,6 +202,14 @@ func toolCodeTask(deps RoutingDeps) ToolExecutor {
 		if task == "" {
 			return "", fmt.Errorf("task is required")
 		}
+
+		// Permission check: Claude will modify files.
+		if deps.AskPermission != nil {
+			if !deps.AskPermission("code_task (Claude)", task) {
+				return "Permission denied by user.", nil
+			}
+		}
+
 		extra, _ := args["context"].(string)
 
 		prompt := task
@@ -207,7 +219,10 @@ func toolCodeTask(deps RoutingDeps) ToolExecutor {
 
 		claude := deps.Registry.Get("claude")
 		if claude == nil {
-			return "", fmt.Errorf("claude agent not available")
+			return "", fmt.Errorf("claude agent not configured — run 'ag3nts install'")
+		}
+		if !claude.Available() {
+			return "", fmt.Errorf("claude agent not available — check if Claude Code is installed")
 		}
 
 		publishProgress(deps.Bus, "claude", "Working on: "+task)
@@ -241,9 +256,19 @@ func toolImplement(deps RoutingDeps) ToolExecutor {
 			return "", fmt.Errorf("task is required")
 		}
 
+		// Permission check: Codex will modify files.
+		if deps.AskPermission != nil {
+			if !deps.AskPermission("implement (Codex)", task) {
+				return "Permission denied by user.", nil
+			}
+		}
+
 		codex := deps.Registry.Get("codex")
 		if codex == nil {
-			return "", fmt.Errorf("codex agent not available")
+			return "", fmt.Errorf("codex agent not configured — run 'ag3nts install'")
+		}
+		if !codex.Available() {
+			return "", fmt.Errorf("codex agent not available — check if Codex CLI is installed")
 		}
 
 		publishProgress(deps.Bus, "codex", "Implementing: "+task)

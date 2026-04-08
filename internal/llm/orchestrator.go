@@ -12,6 +12,10 @@ import (
 )
 
 // OrchestratorConfig holds configuration for the local LLM orchestrator.
+// PermissionFunc asks the user for approval before executing a dangerous action.
+// Returns true if approved, false if denied.
+type PermissionFunc func(tool, action string) bool
+
 type OrchestratorConfig struct {
 	Endpoint      string // Ollama endpoint (default: http://localhost:11434)
 	HeadModel     string // Gemma 4 31B (with thinking mode)
@@ -19,6 +23,7 @@ type OrchestratorConfig struct {
 	SystemPrompt  string // System prompt for head model (optional override)
 	WorkDir       string // Working directory for file operations
 	MaxContext    int    // Context window limit in tokens (default: 256000)
+	AskPermission PermissionFunc // callback to ask user for permission (nil = auto-approve)
 }
 
 const defaultSystemPrompt = `<|think|>
@@ -50,6 +55,7 @@ Guidelines:
 - After presenting findings, use store() to save key distilled insights to long-term memory.
 - Use recall() when you need context from earlier in the session or past decisions.
 - Be concise and direct. The user is a developer — no hand-holding.
+- CRITICAL: When given a multi-step plan, you MUST execute ALL steps in order. Never skip a step. Never say "I will do X" without actually calling the tool. If a step says "use code_task", you MUST call code_task. If a step says "recall everything", you MUST call recall. Complete every single step before presenting the final summary.
 
 Output formatting:
 - Use markdown formatting in your responses: **bold** for key terms, *italic* for emphasis, headers with ## for sections.
@@ -124,6 +130,7 @@ func NewLocalOrchestrator(
 
 	// Create agent loop.
 	loop := NewAgentLoop(client, conversation, models, eventBus, cfg.HeadModel, memory)
+	loop.askPermission = cfg.AskPermission
 
 	// Register system tools.
 	sysDefs, sysExecs := RegisterSystemTools(cfg.WorkDir)
@@ -131,13 +138,14 @@ func NewLocalOrchestrator(
 
 	// Register routing tools.
 	routeDeps := RoutingDeps{
-		Client:       client,
-		Models:       models,
-		Registry:     registry,
-		Bus:          eventBus,
-		Conversation: conversation,
-		Memory:       memory,
-		WorkDir:      cfg.WorkDir,
+		Client:        client,
+		Models:        models,
+		Registry:      registry,
+		Bus:           eventBus,
+		Conversation:  conversation,
+		Memory:        memory,
+		AskPermission: cfg.AskPermission,
+		WorkDir:       cfg.WorkDir,
 	}
 	routeDefs, routeExecs := RegisterRoutingTools(routeDeps)
 	loop.RegisterTools(routeDefs, routeExecs)
@@ -168,6 +176,12 @@ func NewLocalOrchestrator(
 	}
 
 	return lo, nil
+}
+
+// SetPermission configures the permission callback after creation.
+// Called by the TUI after both orchestrator and app are initialized.
+func (lo *LocalOrchestrator) SetPermission(fn PermissionFunc) {
+	lo.loop.askPermission = fn
 }
 
 // WarmUp loads the head model into VRAM. Call during startup.
@@ -265,6 +279,31 @@ func (lo *LocalOrchestrator) ModelStatus(ctx context.Context) string {
 // ConversationLen returns the number of messages in the conversation.
 func (lo *LocalOrchestrator) ConversationLen() int {
 	return lo.conversation.Len()
+}
+
+// CompactResult holds before/after metrics from a /compact operation.
+type CompactResult struct {
+	BeforeTokens    int
+	AfterTokens     int
+	BeforeMessages  int
+	AfterMessages   int
+}
+
+// Compact manually triggers conversation summarization and returns metrics.
+func (lo *LocalOrchestrator) Compact(ctx context.Context) (*CompactResult, error) {
+	before := lo.conversation.EstimateTokens()
+	beforeMsgs := lo.conversation.Len()
+
+	if err := lo.conversation.Summarize(ctx); err != nil {
+		return nil, err
+	}
+
+	return &CompactResult{
+		BeforeTokens:   before,
+		AfterTokens:    lo.conversation.EstimateTokens(),
+		BeforeMessages: beforeMsgs,
+		AfterMessages:  lo.conversation.Len(),
+	}, nil
 }
 
 // MemoryDump returns all persisted in-memory entries in full detail.

@@ -54,6 +54,26 @@ func (sb *streamBuffer) Has(agent string) bool {
 	return ok && buf.Len() > 0
 }
 
+// Peek returns the current buffer content without clearing it.
+func (sb *streamBuffer) Peek(agent string) string {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	buf, ok := sb.buffers[agent]
+	if !ok {
+		return ""
+	}
+	return buf.String()
+}
+
+// Set replaces the buffer content for an agent (used after partial flush).
+func (sb *streamBuffer) Set(agent, text string) {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	buf := &strings.Builder{}
+	buf.WriteString(text)
+	sb.buffers[agent] = buf
+}
+
 // mdRenderer is a shared glamour markdown renderer.
 var mdRenderer *glamour.TermRenderer
 var mdOnce sync.Once
@@ -84,14 +104,32 @@ func ag3ntsStyle() ansi.StyleConfig {
 		Emph:   ansi.StylePrimitive{Color: strPtr("#C678DD"), Italic: boolPtr(true)},
 		Code: ansi.StyleBlock{
 			StylePrimitive: ansi.StylePrimitive{
-				Color: strPtr("#98C379"),
+				Color:           strPtr("#98C379"),
+				BackgroundColor: strPtr("#2D2D2D"),
 			},
 		},
 		CodeBlock: ansi.StyleCodeBlock{
 			StyleBlock: ansi.StyleBlock{
+				StylePrimitive: ansi.StylePrimitive{
+					Color: strPtr("#ABB2BF"),
+				},
 				Margin: uintPtr(1),
 			},
-			Chroma: &ansi.Chroma{},
+			Chroma: &ansi.Chroma{
+				Text:            ansi.StylePrimitive{Color: strPtr("#ABB2BF")},
+				Keyword:         ansi.StylePrimitive{Color: strPtr("#C678DD")},
+				KeywordReserved: ansi.StylePrimitive{Color: strPtr("#C678DD")},
+				KeywordType:     ansi.StylePrimitive{Color: strPtr("#E5C07B")},
+				Name:            ansi.StylePrimitive{Color: strPtr("#E06C75")},
+				NameBuiltin:     ansi.StylePrimitive{Color: strPtr("#E5C07B")},
+				NameFunction:    ansi.StylePrimitive{Color: strPtr("#61AFEF")},
+				NameClass:       ansi.StylePrimitive{Color: strPtr("#E5C07B")},
+				LiteralString:   ansi.StylePrimitive{Color: strPtr("#98C379")},
+				LiteralNumber:   ansi.StylePrimitive{Color: strPtr("#D19A66")},
+				Operator:        ansi.StylePrimitive{Color: strPtr("#56B6C2")},
+				Comment:         ansi.StylePrimitive{Color: strPtr("#5C6370"), Italic: boolPtr(true)},
+				Punctuation:     ansi.StylePrimitive{Color: strPtr("#ABB2BF")},
+			},
 		},
 		Link:     ansi.StylePrimitive{Color: strPtr("#61AFEF"), Underline: boolPtr(true)},
 		LinkText: ansi.StylePrimitive{Color: strPtr("#61AFEF")},

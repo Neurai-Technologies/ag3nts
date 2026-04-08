@@ -169,6 +169,12 @@ func toolRunCommand(workDir string) ToolExecutor {
 			return "", fmt.Errorf("command is required")
 		}
 
+		// Block interactive/privileged commands that hang in a subprocess.
+		trimmed := strings.TrimSpace(command)
+		if strings.HasPrefix(trimmed, "sudo ") {
+			return "", fmt.Errorf("sudo is not supported — run without sudo or ask the user to run it manually")
+		}
+
 		timeout := defaultTimeout
 		if t, ok := toInt(args["timeout_seconds"]); ok && t > 0 {
 			timeout = t

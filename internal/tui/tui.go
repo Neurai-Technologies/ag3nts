@@ -8,6 +8,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -25,6 +28,14 @@ import (
 
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 var dimStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#616161"))
+var errorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#EF5350")).Bold(true)
+
+// PermissionRequest is sent from tools to the TUI for user approval.
+type PermissionRequest struct {
+	Tool   string // tool name
+	Action string // what it wants to do
+	Reply  chan bool
+}
 
 // App is the main terminal application.
 type App struct {
@@ -35,6 +46,8 @@ type App struct {
 	rl        *readline.Instance
 	mu        sync.Mutex
 	active    string
+	permCh    chan PermissionRequest // tools send permission requests here
+	lastTool  map[string]string      // last tool use line by agent (for formatting tool results)
 
 	// Spinner.
 	spinning  bool
@@ -49,14 +62,39 @@ type App struct {
 	sessionStart  time.Time
 	totalTokenIn  int64
 	totalTokenOut int64
+	agentTokens   map[string][2]int64
+	agentTokensMu sync.RWMutex
+}
+
+// newSlashCompleter creates a tab-completion handler for slash commands.
+func newSlashCompleter() *readline.PrefixCompleter {
+	return readline.NewPrefixCompleter(
+		readline.PcItem("/help"),
+		readline.PcItem("/quit"),
+		readline.PcItem("/exit"),
+		readline.PcItem("/cancel"),
+		readline.PcItem("/compact"),
+		readline.PcItem("/agents"),
+		readline.PcItem("/tasks"),
+		readline.PcItem("/status"),
+		readline.PcItem("/cost"),
+		readline.PcItem("/memory"),
+		readline.PcItem("/local",
+			readline.PcItem("status"),
+			readline.PcItem("reset"),
+		),
+	)
 }
 
 func New(orch *orchestrator.Orchestrator, localOrch *llm.LocalOrchestrator) *App {
 	return &App{
-		orch:      orch,
-		localOrch: localOrch,
-		eventCh:   orch.Bus().Subscribe(512, "system"),
-		stream:    newStreamBuffer(),
+		orch:        orch,
+		localOrch:   localOrch,
+		eventCh:     orch.Bus().Subscribe(512, "system"),
+		stream:      newStreamBuffer(),
+		permCh:      make(chan PermissionRequest),
+		lastTool:    make(map[string]string),
+		agentTokens: make(map[string][2]int64),
 	}
 }
 
@@ -73,6 +111,7 @@ func (a *App) Run(ctx context.Context) error {
 		EOFPrompt:       "/quit",
 		HistoryLimit:    1000,
 		Stdin:           NewPasteReader(os.Stdin),
+		AutoComplete:    newSlashCompleter(),
 	})
 	if err != nil {
 		return fmt.Errorf("readline init: %w", err)
@@ -84,6 +123,7 @@ func (a *App) Run(ctx context.Context) error {
 	a.updateTitle()
 
 	for {
+		fmt.Println(dimStyle.Render("─────────────────────────────────────────────────────────"))
 		rl.SetPrompt("> ")
 		line, err := rl.Readline()
 		if err != nil {
@@ -110,6 +150,8 @@ func (a *App) Run(ctx context.Context) error {
 		if input == "" {
 			continue
 		}
+
+		fmt.Println(dimStyle.Render("─────────────────────────────────────────────────────────"))
 
 		if input == "/quit" || input == "/exit" {
 			DisableBracketedPaste()
@@ -152,35 +194,101 @@ func (a *App) printLine(source, text string) {
 	a.println(styled)
 }
 
+func (a *App) printError(source, text string) {
+	a.stopSpinner()
+	ts := dimStyle.Render(time.Now().Format("15:04:05"))
+	styled := ts + " " +
+		errorStyle.Render("✘") + " " +
+		errorStyle.Render(source) + " " +
+		dimStyle.Render(text)
+	a.println(styled)
+}
+
 func (a *App) printLines(source, content string) {
 	for _, line := range strings.Split(content, "\n") {
 		a.printLine(source, line)
 	}
 }
 
-// printDiff shows a git diff with red/green coloring.
-func (a *App) printDiff(diff string) {
-	addStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#81C784")) // green
-	delStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#EF5350")) // red
-	headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#42A5F5")).Bold(true) // blue bold
+func (a *App) printErrors(source, content string) {
+	for _, line := range strings.Split(content, "\n") {
+		a.printError(source, line)
+	}
+}
 
-	a.println("")
-	for _, line := range strings.Split(diff, "\n") {
+// printDiff shows git diff in Claude Code format:
+//
+//	Update(file.go)
+//	⎿  Added N lines, removed M lines
+//	    12 - old line
+//	    12 + new line
+func (a *App) printDiff(rawDiff string) {
+	addStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#81C784"))
+	delStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#EF5350"))
+	headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#42A5F5")).Bold(true)
+
+	lines := strings.Split(rawDiff, "\n")
+	var currentFile string
+	var added, removed int
+	var hunks []string
+
+	flushFile := func() {
+		if currentFile == "" {
+			return
+		}
+		a.println("")
+		a.println(headerStyle.Render("  Update(" + currentFile + ")"))
+		a.println(dimStyle.Render(fmt.Sprintf("  ⎿  Added %d lines, removed %d lines", added, removed)))
+		// Show up to 30 lines of context.
+		limit := 30
+		for i, h := range hunks {
+			if i >= limit {
+				a.println(dimStyle.Render(fmt.Sprintf("      ... %d more lines", len(hunks)-limit)))
+				break
+			}
+			a.println(h)
+		}
+		currentFile = ""
+		added = 0
+		removed = 0
+		hunks = nil
+	}
+
+	lineNum := 0
+	for _, line := range lines {
 		switch {
-		case strings.HasPrefix(line, "+++ ") || strings.HasPrefix(line, "--- "):
-			a.println(headerStyle.Render(line))
-		case strings.HasPrefix(line, "+"):
-			a.println(addStyle.Render(line))
-		case strings.HasPrefix(line, "-"):
-			a.println(delStyle.Render(line))
+		case strings.HasPrefix(line, "diff --git"):
+			flushFile()
+		case strings.HasPrefix(line, "+++ b/"):
+			currentFile = strings.TrimPrefix(line, "+++ b/")
+		case strings.HasPrefix(line, "--- a/"):
+			// skip, we use +++ for the filename
 		case strings.HasPrefix(line, "@@"):
-			a.println(dimStyle.Render(line))
-		case strings.HasPrefix(line, "diff "):
-			a.println(headerStyle.Render(line))
+			// Parse line number from @@ -X,Y +Z,W @@
+			if idx := strings.Index(line, "+"); idx >= 0 {
+				numStr := line[idx+1:]
+				if commaIdx := strings.Index(numStr, ","); commaIdx > 0 {
+					numStr = numStr[:commaIdx]
+				} else if spaceIdx := strings.Index(numStr, " "); spaceIdx > 0 {
+					numStr = numStr[:spaceIdx]
+				}
+				fmt.Sscanf(numStr, "%d", &lineNum)
+			}
+		case strings.HasPrefix(line, "+"):
+			added++
+			hunks = append(hunks, fmt.Sprintf("      %s", addStyle.Render(fmt.Sprintf("%d + %s", lineNum, line[1:]))))
+			lineNum++
+		case strings.HasPrefix(line, "-"):
+			removed++
+			hunks = append(hunks, fmt.Sprintf("      %s", delStyle.Render(fmt.Sprintf("%d - %s", lineNum, line[1:]))))
 		default:
-			a.println(dimStyle.Render(line))
+			if currentFile != "" && len(line) > 0 {
+				hunks = append(hunks, dimStyle.Render(fmt.Sprintf("      %d   %s", lineNum, line)))
+				lineNum++
+			}
 		}
 	}
+	flushFile()
 	a.println("")
 }
 
@@ -340,7 +448,7 @@ func (a *App) handleInput(ctx context.Context, input string) {
 		a.startSpinner("thinking...")
 		if err := a.localOrch.Send(ctx, input); err != nil {
 			a.stopSpinner()
-			a.printLine("error", err.Error())
+			a.printError("error", err.Error())
 			return
 		}
 		a.waitForCompletion()
@@ -389,7 +497,7 @@ func (a *App) handleFallback(ctx context.Context, input string) {
 			}
 			a.printLine("you→"+agentName, message)
 			if err := a.orch.SendTo(agentName, message); err != nil {
-				a.printLine("error", err.Error())
+				a.printError("error", err.Error())
 			}
 			return
 		}
@@ -398,7 +506,7 @@ func (a *App) handleFallback(ctx context.Context, input string) {
 	if isResearchQuery(input) && a.orch.Agents().Get("gemini") != nil {
 		a.printLine("ag3nts", "researching: "+input)
 		if err := a.orch.Research(input); err != nil {
-			a.printLine("error", err.Error())
+			a.printError("error", err.Error())
 		}
 		return
 	}
@@ -410,11 +518,11 @@ func (a *App) handleFallback(ctx context.Context, input string) {
 	a.printLine("you", input)
 	if target == a.orch.Primary() {
 		if err := a.orch.Send(input); err != nil {
-			a.printLine("error", err.Error())
+			a.printError("error", err.Error())
 		}
 	} else {
 		if err := a.orch.SendTo(target, input); err != nil {
-			a.printLine("error", err.Error())
+			a.printError("error", err.Error())
 		}
 	}
 }
@@ -430,10 +538,13 @@ func (a *App) handleSlash(_ context.Context, input string) {
 		lines := []string{
 			"Commands:",
 			"  /cancel   — cancel current operation (or Ctrl+C)",
+			"  /compact  — compress conversation history to free context",
 			"  /agents   — list agents",
 			"  /tasks    — list tasks",
 			"  /status   — show overview",
+			"  /cost    — show session cost breakdown",
 			"  /quit     — exit",
+			"Errors are prefixed with a red ✘ icon.",
 		}
 		if a.localOrch != nil {
 			lines = append(lines, "",
@@ -483,6 +594,22 @@ func (a *App) handleSlash(_ context.Context, input string) {
 			a.printLine("ag3nts", "Usage: /local status | /local reset")
 		}
 
+	case "/compact":
+		if a.localOrch == nil {
+			a.printLine("ag3nts", "Local LLM not configured.")
+			return
+		}
+		result, err := a.localOrch.Compact(context.Background())
+		if err != nil {
+			a.printError("ag3nts", fmt.Sprintf("Compact failed: %v", err))
+			return
+		}
+		saved := result.BeforeTokens - result.AfterTokens
+		removed := result.BeforeMessages - result.AfterMessages
+		a.printLine("ag3nts", fmt.Sprintf(
+			"Context compacted: %d → %d tokens (saved %d). %d messages summarized into 1.",
+			result.BeforeTokens, result.AfterTokens, saved, removed))
+
 	case "/memory":
 		if a.localOrch == nil {
 			a.printLine("ag3nts", "Local LLM not configured.")
@@ -521,14 +648,38 @@ func (a *App) handleSlash(_ context.Context, input string) {
 			a.orch.Primary(), a.orch.Agents().Count(),
 			counts[task.StatusPending], counts[task.StatusCompleted], counts[task.StatusFailed]))
 
+	case "/cost":
+		lines := []string{"Session Duration: " + formatDuration(time.Since(a.sessionStart))}
+		if a.localOrch != nil {
+			lines = append(lines, "Total Messages: "+strconv.Itoa(a.localOrch.ConversationLen()))
+		}
+		lines = append(lines, "Total Tokens: ↑"+formatTokens(atomic.LoadInt64(&a.totalTokenIn))+" ↓"+formatTokens(atomic.LoadInt64(&a.totalTokenOut)))
+
+		a.agentTokensMu.RLock()
+		agentNames := make([]string, 0, len(a.agentTokens))
+		for name := range a.agentTokens {
+			agentNames = append(agentNames, name)
+		}
+		sort.Strings(agentNames)
+		for _, name := range agentNames {
+			tokens := a.agentTokens[name]
+			lines = append(lines, fmt.Sprintf("%s: ↑%s ↓%s", name, formatTokens(tokens[0]), formatTokens(tokens[1])))
+		}
+		a.agentTokensMu.RUnlock()
+
+		a.printLines("ag3nts", strings.Join(lines, "\n"))
+
 	default:
-		a.printLine("error", fmt.Sprintf("Unknown: %s (try /help)", cmd))
+		a.printError("error", fmt.Sprintf("Unknown: %s (try /help)", cmd))
 	}
 }
 
 // --- Event handling ---
 
 func (a *App) eventLoop(ctx context.Context) {
+	heartbeat := time.NewTicker(2 * time.Second)
+	defer heartbeat.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -538,7 +689,60 @@ func (a *App) eventLoop(ctx context.Context) {
 				return
 			}
 			a.handleEvent(event)
+		case req := <-a.permCh:
+			a.handlePermission(req)
+		case <-heartbeat.C:
+			// Restart spinner if orchestrator is working but spinner died.
+			if a.localOrch != nil && a.localOrch.IsRunning() {
+				a.spinMu.Lock()
+				running := a.spinning
+				a.spinMu.Unlock()
+				if !running {
+					a.startSpinner("working...")
+				}
+			}
 		}
+	}
+}
+
+// handlePermission asks the user to approve or deny a tool action.
+func (a *App) handlePermission(req PermissionRequest) {
+	a.stopSpinner()
+	// Show the permission prompt.
+	promptStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FFD54F")).Bold(true)
+	a.println("")
+	a.println(promptStyle.Render("⚠ Permission required"))
+	a.println(fmt.Sprintf("  Tool:   %s", req.Tool))
+	a.println(fmt.Sprintf("  Action: %s", req.Action))
+	fmt.Print(dimStyle.Render("  Allow? [y/n] "))
+
+	// Read a single character response.
+	var response string
+	fmt.Scanln(&response)
+	response = strings.ToLower(strings.TrimSpace(response))
+
+	approved := response == "y" || response == "yes"
+	if approved {
+		a.println(lipgloss.NewStyle().Foreground(lipgloss.Color("#81C784")).Render("  ✓ Approved"))
+	} else {
+		a.println(errorStyle.Render("  ✘ Denied"))
+	}
+	a.println("")
+	a.startSpinner("processing...")
+
+	req.Reply <- approved
+}
+
+// GetPermissionFunc returns a function that tools can call to request permission.
+func (a *App) GetPermissionFunc() func(tool, action string) bool {
+	return func(tool, action string) bool {
+		reply := make(chan bool, 1)
+		a.permCh <- PermissionRequest{
+			Tool:   tool,
+			Action: action,
+			Reply:  reply,
+		}
+		return <-reply
 	}
 }
 
@@ -551,11 +755,11 @@ func (a *App) handleEvent(event bus.Event) {
 	switch agentEvt.Kind {
 	case agent.EventMessage:
 		if agentEvt.Content == "" {
-			// Empty message = flush signal from agent loop.
-			a.flushAgent(agentEvt.Agent)
+			// Empty message = flush signal.
+			a.flushStream(agentEvt.Agent)
 		} else {
-			a.stream.Append(agentEvt.Agent, agentEvt.Content)
-			a.addTokens(len(agentEvt.Content))
+			a.stopSpinner()
+			a.appendAndFlushParagraphs(agentEvt.Agent, agentEvt.Content)
 		}
 
 	case agent.EventProgress:
@@ -565,16 +769,30 @@ func (a *App) handleEvent(event bus.Event) {
 				a.printDiff(agentEvt.Content)
 				a.startSpinner("processing...")
 			} else if strings.HasSuffix(agentEvt.Agent, "[result]") {
-				a.printLine(agentEvt.Agent, dimStyle.Render(agentEvt.Content))
+				a.stopSpinner()
+				baseAgent := strings.TrimSuffix(agentEvt.Agent, "[result]")
+				toolSpec := a.lastTool[baseAgent]
+				content := agentEvt.Content
+				if toolName, body, ok := splitToolResultPreview(agentEvt.Content); ok {
+					content = body
+					if toolSpec == "" {
+						toolSpec = toolName
+					} else if seenName, _ := splitToolDescriptor(toolSpec); seenName != toolName {
+						toolSpec = toolName
+					}
+				}
+				formatted := a.formatToolResult(toolSpec, content)
+				a.println(formatted)
 				a.startSpinner("processing...")
 			} else {
-				a.stream.Append(agentEvt.Agent, agentEvt.Content)
-				a.addTokens(len(agentEvt.Content))
+				a.stopSpinner()
+				a.appendAndFlushParagraphs(agentEvt.Agent, agentEvt.Content)
 			}
 		}
 
 	case agent.EventToolUse:
-		a.flushAgent(agentEvt.Agent)
+		a.flushStream(agentEvt.Agent)
+		a.lastTool[agentEvt.Agent] = agentEvt.Content
 		a.printLine(agentEvt.Agent, formatToolLine(agentEvt.Content))
 		// Contextual spinner based on tool type.
 		switch {
@@ -600,11 +818,27 @@ func (a *App) handleEvent(event bus.Event) {
 		a.startSpinner("reasoning...")
 
 	case agent.EventError:
-		a.flushAgent(agentEvt.Agent)
-		a.printLines(agentEvt.Agent+"[err]", agentEvt.Content)
+		a.flushStream(agentEvt.Agent)
+		a.printErrors(agentEvt.Agent, agentEvt.Content)
 
 	case agent.EventToolResult:
-		// suppress
+		a.stopSpinner()
+		toolSpec := a.lastTool[agentEvt.Agent]
+		content := agentEvt.Content
+		if toolName, body, ok := splitToolResultPreview(agentEvt.Content); ok {
+			content = body
+			if toolSpec == "" {
+				toolSpec = toolName
+			} else if seenName, _ := splitToolDescriptor(toolSpec); seenName != toolName {
+				toolSpec = toolName
+			}
+		}
+		if toolSpec == "" {
+			toolSpec = agentEvt.Agent
+		}
+		formatted := a.formatToolResult(toolSpec, content)
+		a.println(formatted)
+		a.startSpinner("processing...")
 
 	case agent.EventInit:
 		a.updateTitle()
@@ -613,10 +847,18 @@ func (a *App) handleEvent(event bus.Event) {
 
 	case agent.EventComplete:
 		a.updateTitle()
-		a.flushAgent(agentEvt.Agent)
+		a.flushStream(agentEvt.Agent)
 		if agentEvt.Usage != nil {
-			atomic.AddInt64(&a.totalTokenIn, int64(agentEvt.Usage.InputTokens))
-			atomic.AddInt64(&a.totalTokenOut, int64(agentEvt.Usage.OutputTokens))
+			in := int64(agentEvt.Usage.InputTokens)
+			out := int64(agentEvt.Usage.OutputTokens)
+			atomic.AddInt64(&a.totalTokenIn, in)
+			atomic.AddInt64(&a.totalTokenOut, out)
+			a.agentTokensMu.Lock()
+			tokens := a.agentTokens[agentEvt.Agent]
+			tokens[0] += in
+			tokens[1] += out
+			a.agentTokens[agentEvt.Agent] = tokens
+			a.agentTokensMu.Unlock()
 			cost := ""
 			if agentEvt.Usage.TotalCost > 0 {
 				cost = fmt.Sprintf(" | $%.4f", agentEvt.Usage.TotalCost)
@@ -632,6 +874,119 @@ func (a *App) handleEvent(event bus.Event) {
 				a.startSpinner("processing...")
 			}
 		}
+	}
+}
+
+// formatToolResult styles tool output using tool-specific formatting.
+func (a *App) formatToolResult(toolName, content string) string {
+	name, details := splitToolDescriptor(toolName)
+
+	switch name {
+	case "read_file":
+		path := details
+		if path == "" {
+			path = "file"
+		}
+		return "📄 " + path + "\n" + wrapCodeFence(codeFenceLanguage(path), content)
+	case "run_command":
+		cmd := details
+		if cmd == "" {
+			cmd = "command"
+		}
+		return "$ " + cmd + "\n" + wrapCodeFence("bash", content)
+	case "search_files":
+		return wrapCodeFence("", content)
+	case "web_research", "code_task", "implement":
+		return renderMarkdown(content)
+	default:
+		return content
+	}
+}
+
+func splitToolDescriptor(value string) (string, string) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", ""
+	}
+	if i := strings.Index(value, ": "); i >= 0 {
+		return strings.TrimSpace(value[:i]), strings.TrimSpace(value[i+2:])
+	}
+	return value, ""
+}
+
+func splitToolResultPreview(content string) (string, string, bool) {
+	name, body := splitToolDescriptor(content)
+	if name == "" || body == "" {
+		return "", "", false
+	}
+	if _, ok := toolIcons[name]; !ok {
+		return "", "", false
+	}
+	return name, body, true
+}
+
+func wrapCodeFence(lang, content string) string {
+	body := strings.TrimRight(content, "\n")
+	if lang == "" {
+		return "```\n" + body + "\n```"
+	}
+	return "```" + lang + "\n" + body + "\n```"
+}
+
+func codeFenceLanguage(path string) string {
+	ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), ".")
+	switch ext {
+	case "":
+		return ""
+	case "md":
+		return "markdown"
+	case "yml":
+		return "yaml"
+	case "sh", "bash", "zsh":
+		return "bash"
+	default:
+		return ext
+	}
+}
+
+// appendAndFlushParagraphs adds text to the stream buffer and flushes
+// completed paragraphs (separated by double newline) through glamour.
+// This gives progressive rendering — paragraph by paragraph, fully styled.
+func (a *App) appendAndFlushParagraphs(agentName, content string) {
+	a.stream.Append(agentName, content)
+	a.addTokens(len(content))
+
+	// Check if the buffer contains a paragraph break (double newline).
+	buf := a.stream.Peek(agentName)
+	for {
+		idx := strings.Index(buf, "\n\n")
+		if idx < 0 {
+			break
+		}
+		// Render the paragraph up to the break.
+		paragraph := buf[:idx]
+		buf = buf[idx+2:]
+
+		if strings.TrimSpace(paragraph) != "" {
+			rendered := renderMarkdown(paragraph)
+			if rendered != "" {
+				a.println(rendered)
+			}
+		}
+	}
+	// Keep the remainder in the buffer.
+	a.stream.Set(agentName, buf)
+}
+
+// flushStream renders any remaining buffered text and clears the buffer.
+func (a *App) flushStream(agentName string) {
+	text := a.stream.Flush(agentName)
+	if text == "" {
+		return
+	}
+	rendered := renderMarkdown(text)
+	if rendered != "" {
+		a.println(rendered)
 	}
 }
 

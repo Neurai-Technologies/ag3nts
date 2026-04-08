@@ -26,9 +26,10 @@ type AgentLoop struct {
 	bus          *bus.Bus
 	tools        map[string]ToolExecutor
 	toolDefs     []ToolDef
-	headModel    string // full model name for API (e.g. "gemma4:31b")
-	headDisplay  string // short name for display (e.g. "gemma4")
-	memory       *Memory
+	headModel     string // full model name for API (e.g. "gemma4:31b")
+	headDisplay   string // short name for display (e.g. "gemma4")
+	memory        *Memory
+	askPermission PermissionFunc
 }
 
 // NewAgentLoop creates the agent loop.
@@ -142,6 +143,15 @@ func (al *AgentLoop) Run(ctx context.Context, userMessage string) error {
 
 			// Emit tool use for TUI visibility.
 			al.emitToolUse(tc)
+
+			// Permission check for file-modifying system tools.
+			if toolName == "write_file" && al.askPermission != nil {
+				path, _ := tc.Function.Arguments["path"].(string)
+				if !al.askPermission("write_file", path) {
+					al.conversation.Append(Message{Role: RoleTool, Content: "Permission denied by user."})
+					continue
+				}
+			}
 
 			// Execute the tool.
 			executor, ok := al.tools[toolName]
@@ -270,37 +280,18 @@ func (al *AgentLoop) emitFlush() {
 	time.Sleep(50 * time.Millisecond)
 }
 
-// emitDiff runs git diff --stat and git diff and publishes the output.
+// emitDiff runs git diff and publishes formatted per-file diffs.
 func (al *AgentLoop) emitDiff() {
-	// Run git diff --stat for a summary.
-	statCmd := exec.Command("git", "diff", "--stat")
-	statOut, err := statCmd.Output()
-	if err != nil || len(statOut) == 0 {
-		return // no changes or not a git repo
-	}
-
-	// Emit the stat summary.
-	al.bus.Publish("system", al.headDisplay, agent.AgentEvent{
-		Kind:      agent.EventProgress,
-		Agent:     "ag3nts[diff]",
-		Content:   strings.TrimSpace(string(statOut)),
-		Timestamp: time.Now(),
-	})
-
-	// Run git diff for actual changes (truncated).
 	diffCmd := exec.Command("git", "diff")
 	diffOut, err := diffCmd.Output()
 	if err != nil || len(diffOut) == 0 {
 		return
 	}
-	diff := string(diffOut)
-	if len(diff) > 2000 {
-		diff = diff[:2000] + "\n... (truncated)"
-	}
+
 	al.bus.Publish("system", al.headDisplay, agent.AgentEvent{
 		Kind:      agent.EventProgress,
 		Agent:     "ag3nts[diff]",
-		Content:   diff,
+		Content:   string(diffOut),
 		Timestamp: time.Now(),
 	})
 }
