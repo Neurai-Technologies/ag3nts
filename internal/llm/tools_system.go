@@ -170,8 +170,7 @@ func toolRunCommand(workDir string) ToolExecutor {
 		}
 
 		// Block interactive/privileged commands that hang in a subprocess.
-		trimmed := strings.TrimSpace(command)
-		if strings.HasPrefix(trimmed, "sudo ") {
+		if containsSudo(command) {
 			return "", fmt.Errorf("sudo is not supported — run without sudo or ask the user to run it manually")
 		}
 
@@ -283,6 +282,20 @@ func safeEnv() []string {
 		}
 	}
 	return env
+}
+
+// containsSudo checks if a command contains sudo anywhere (start, after &&, ;, |).
+func containsSudo(command string) bool {
+	trimmed := strings.TrimSpace(command)
+	if strings.HasPrefix(trimmed, "sudo ") || trimmed == "sudo" {
+		return true
+	}
+	for _, sep := range []string{"&& ", "; ", "| "} {
+		if strings.Contains(command, sep+"sudo ") {
+			return true
+		}
+	}
+	return false
 }
 
 // toInt extracts an int from a map value (JSON numbers arrive as float64).

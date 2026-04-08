@@ -144,10 +144,19 @@ func (al *AgentLoop) Run(ctx context.Context, userMessage string) error {
 			// Emit tool use for TUI visibility.
 			al.emitToolUse(tc)
 
-			// Permission check for file-modifying system tools.
-			if toolName == "write_file" && al.askPermission != nil {
-				path, _ := tc.Function.Arguments["path"].(string)
-				if !al.askPermission("write_file", path) {
+			// Permission check for file-modifying and system tools.
+			if al.askPermission != nil {
+				var needsPermission bool
+				var permAction string
+				switch toolName {
+				case "write_file":
+					permAction, _ = tc.Function.Arguments["path"].(string)
+					needsPermission = true
+				case "run_command":
+					permAction, _ = tc.Function.Arguments["command"].(string)
+					needsPermission = true
+				}
+				if needsPermission && !al.askPermission(toolName, permAction) {
 					al.conversation.Append(Message{Role: RoleTool, Content: "Permission denied by user."})
 					continue
 				}

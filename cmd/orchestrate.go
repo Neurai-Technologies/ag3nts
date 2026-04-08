@@ -140,12 +140,12 @@ func runOrchestrate() error {
 	if cfg.LLM.Enabled {
 		workDir := layout.Base
 		lo, err := llm.NewLocalOrchestrator(llm.OrchestratorConfig{
-			Endpoint:      cfg.LLM.Endpoint,
-			ModelsPath:    cfg.LLM.ModelsPath,
-			HeadModel:     cfg.LLM.HeadModel,
-			SystemPrompt:  cfg.LLM.SystemPrompt,
-			WorkDir:       workDir,
-			MaxContext:     cfg.LLM.MaxContext,
+			Endpoint:     cfg.LLM.Endpoint,
+			ModelsPath:   cfg.LLM.ModelsPath,
+			HeadModel:    cfg.LLM.HeadModel,
+			SystemPrompt: cfg.LLM.SystemPrompt,
+			WorkDir:      workDir,
+			MaxContext:   cfg.LLM.MaxContext,
 		}, registry, orch.Bus())
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "⚠ local LLM unavailable: %v (falling back to CLI agents)\n", err)
@@ -162,7 +162,7 @@ func runOrchestrate() error {
 	}
 
 	// Launch the terminal app.
-	app := tui.New(orch, localOrch)
+	app := tui.New(orch, localOrch, layout.ConfigFile())
 	// Wire permission prompts from TUI to LLM orchestrator.
 	if localOrch != nil {
 		localOrch.SetPermission(app.GetPermissionFunc())

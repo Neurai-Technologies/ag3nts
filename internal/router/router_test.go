@@ -150,9 +150,73 @@ func TestInvalidPattern(t *testing.T) {
 	}
 }
 
+func TestUpdateRoutesReplacesAndResorts(t *testing.T) {
+	reg := agent.NewRegistry()
+	_ = reg.Register(&mockAgent{name: "gemini"})
+	_ = reg.Register(&mockAgent{name: "codex"})
+	_ = reg.Register(&mockAgent{name: "claude"})
+
+	r, err := New([]Route{
+		{Pattern: "code", Agent: "codex", Priority: 1},
+	}, "claude", reg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := r.UpdateRoutes([]Route{
+		{Pattern: "research|explore", Agent: "gemini", Priority: 2},
+		{Pattern: "research", Agent: "codex", Priority: 1}, // lower = higher priority
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := r.Resolve("research", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "codex" {
+		t.Errorf("Resolve(research) = %q, want codex", got)
+	}
+
+	got, err = r.Resolve("code", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "claude" {
+		t.Errorf("Resolve(code) = %q, want claude (primary after route replacement)", got)
+	}
+}
+
+func TestUpdateRoutesInvalidPatternKeepsExistingRoutes(t *testing.T) {
+	reg := agent.NewRegistry()
+	_ = reg.Register(&mockAgent{name: "gemini"})
+	_ = reg.Register(&mockAgent{name: "claude"})
+
+	r, err := New([]Route{
+		{Pattern: "research", Agent: "gemini", Priority: 1},
+	}, "claude", reg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := r.UpdateRoutes([]Route{
+		{Pattern: "[invalid", Agent: "claude", Priority: 1},
+	}); err == nil {
+		t.Fatal("expected update to fail for invalid regex")
+	}
+
+	got, err := r.Resolve("research", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "gemini" {
+		t.Errorf("Resolve(research) = %q, want gemini (old routes preserved)", got)
+	}
+}
+
 type mockAgent struct {
-	name   string
-	avail  bool // when true → available; when false with unavail set → unavailable
+	name    string
+	avail   bool // when true → available; when false with unavail set → unavailable
 	unavail bool // explicitly mark as unavailable
 }
 

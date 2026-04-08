@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,8 +22,10 @@ import (
 
 	"github.com/rohanrgit/ag3nts/internal/agent"
 	"github.com/rohanrgit/ag3nts/internal/bus"
+	"github.com/rohanrgit/ag3nts/internal/config"
 	"github.com/rohanrgit/ag3nts/internal/llm"
 	"github.com/rohanrgit/ag3nts/internal/orchestrator"
+	"github.com/rohanrgit/ag3nts/internal/router"
 	"github.com/rohanrgit/ag3nts/internal/task"
 )
 
@@ -39,15 +42,18 @@ type PermissionRequest struct {
 
 // App is the main terminal application.
 type App struct {
-	orch      *orchestrator.Orchestrator
-	localOrch *llm.LocalOrchestrator
-	eventCh   <-chan bus.Event
-	stream    *streamBuffer
-	rl        *readline.Instance
-	mu        sync.Mutex
-	active    string
-	permCh    chan PermissionRequest // tools send permission requests here
-	lastTool  map[string]string      // last tool use line by agent (for formatting tool results)
+	orch       *orchestrator.Orchestrator
+	localOrch  *llm.LocalOrchestrator
+	configPath string
+	currentCfg *config.Config
+	cfgMu      sync.RWMutex
+	eventCh    <-chan bus.Event
+	stream     *streamBuffer
+	rl         *readline.Instance
+	mu         sync.Mutex
+	active     string
+	permCh     chan PermissionRequest // tools send permission requests here
+	lastTool   map[string]string      // last tool use line by agent (for formatting tool results)
 
 	// Spinner.
 	spinning  bool
@@ -77,6 +83,7 @@ func newSlashCompleter() *readline.PrefixCompleter {
 		readline.PcItem("/agents"),
 		readline.PcItem("/tasks"),
 		readline.PcItem("/status"),
+		readline.PcItem("/reload"),
 		readline.PcItem("/cost"),
 		readline.PcItem("/memory"),
 		readline.PcItem("/local",
@@ -86,16 +93,93 @@ func newSlashCompleter() *readline.PrefixCompleter {
 	)
 }
 
-func New(orch *orchestrator.Orchestrator, localOrch *llm.LocalOrchestrator) *App {
+func New(orch *orchestrator.Orchestrator, localOrch *llm.LocalOrchestrator, configPath string) *App {
+	currentCfg := config.Default()
+	if configPath != "" {
+		if loaded, err := config.Load(configPath); err == nil {
+			currentCfg = loaded
+		}
+	}
+
 	return &App{
 		orch:        orch,
 		localOrch:   localOrch,
+		configPath:  configPath,
+		currentCfg:  currentCfg,
 		eventCh:     orch.Bus().Subscribe(512, "system"),
 		stream:      newStreamBuffer(),
 		permCh:      make(chan PermissionRequest),
 		lastTool:    make(map[string]string),
 		agentTokens: make(map[string][2]int64),
 	}
+}
+
+func cloneConfig(cfg *config.Config) *config.Config {
+	if cfg == nil {
+		return nil
+	}
+	clone := *cfg
+	return &clone
+}
+
+func effectiveMaxConcurrency(cfg *config.Config) int {
+	if cfg == nil || cfg.Orchestrator.MaxConcurrency <= 0 {
+		return 3
+	}
+	return cfg.Orchestrator.MaxConcurrency
+}
+
+func defaultRoutes() []router.Route {
+	return []router.Route{
+		{Pattern: "research|explore|analyze", Agent: "gemini", Fallback: "claude", Priority: 1},
+		{Pattern: "implement|fix|refactor|code", Agent: "codex", Fallback: "claude", Priority: 2},
+		{Pattern: "review|audit|security", Agent: "claude", Priority: 3},
+	}
+}
+
+func routesFromConfig(cfg *config.Config) []router.Route {
+	if cfg != nil && len(cfg.Routing.Rules) > 0 {
+		routes := make([]router.Route, len(cfg.Routing.Rules))
+		for i, r := range cfg.Routing.Rules {
+			routes[i] = router.Route{
+				Pattern:  r.Pattern,
+				Agent:    r.Agent,
+				Fallback: r.Fallback,
+				Priority: r.Priority,
+			}
+		}
+		return routes
+	}
+	return defaultRoutes()
+}
+
+func routesEqual(a, b []router.Route) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Pattern != b[i].Pattern ||
+			a[i].Agent != b[i].Agent ||
+			a[i].Fallback != b[i].Fallback ||
+			a[i].Priority != b[i].Priority {
+			return false
+		}
+	}
+	return true
+}
+
+func hasRestartRequiredChanges(current, next *config.Config) bool {
+	if current == nil || next == nil {
+		return false
+	}
+
+	if current.Orchestrator.Primary != next.Orchestrator.Primary {
+		return true
+	}
+	if !reflect.DeepEqual(current.LLM, next.LLM) {
+		return true
+	}
+	return !reflect.DeepEqual(current.Agents, next.Agents)
 }
 
 func (a *App) Run(ctx context.Context) error {
@@ -122,31 +206,61 @@ func (a *App) Run(ctx context.Context) error {
 	go a.eventLoop(ctx)
 	a.updateTitle()
 
+	// Get the PasteReader for multi-line terminator tracking.
+	pasteReader, _ := rl.Config.Stdin.(*PasteReader)
+
 	for {
 		fmt.Println(dimStyle.Render("─────────────────────────────────────────────────────────"))
-		rl.SetPrompt("> ")
-		line, err := rl.Readline()
-		if err != nil {
-			if err == readline.ErrInterrupt {
-				if a.localOrch != nil && a.localOrch.IsRunning() {
-					_ = a.localOrch.Cancel()
-					a.stopSpinner()
-					fmt.Println(dimStyle.Render("  cancelled"))
-					continue
+
+		// Multi-line accumulation: Ctrl+J (LF) continues, Enter (CR) submits.
+		var accumulated strings.Builder
+		prompt := "> "
+
+		for {
+			rl.SetPrompt(prompt)
+			if pasteReader != nil {
+				pasteReader.LastTerminator = 0
+			}
+			line, err := rl.Readline()
+			if err != nil {
+				if err == readline.ErrInterrupt {
+					if accumulated.Len() > 0 {
+						// Cancel multi-line input, start over.
+						accumulated.Reset()
+						break
+					}
+					if a.localOrch != nil && a.localOrch.IsRunning() {
+						_ = a.localOrch.Cancel()
+						a.stopSpinner()
+						fmt.Println(dimStyle.Render("  cancelled"))
+						break
+					}
+					DisableBracketedPaste()
+					a.shutdown()
+					return nil
 				}
-				DisableBracketedPaste()
-				a.shutdown()
-				return nil
+				if err == io.EOF {
+					DisableBracketedPaste()
+					a.shutdown()
+					return nil
+				}
+				return err
 			}
-			if err == io.EOF {
-				DisableBracketedPaste()
-				a.shutdown()
-				return nil
+
+			accumulated.WriteString(line)
+
+			// Check if Alt+Enter (ESC+CR=27) was the terminator → continue input.
+			if pasteReader != nil && pasteReader.LastTerminator == 27 {
+				accumulated.WriteString("\n")
+				prompt = "... > "
+				continue
 			}
-			return err
+
+			// Enter (CR=13) or unknown → submit.
+			break
 		}
 
-		input := strings.TrimSpace(line)
+		input := strings.TrimSpace(accumulated.String())
 		if input == "" {
 			continue
 		}
@@ -223,8 +337,8 @@ func (a *App) printErrors(source, content string) {
 //	    12 - old line
 //	    12 + new line
 func (a *App) printDiff(rawDiff string) {
-	addStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#81C784"))
-	delStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#EF5350"))
+	addStyle := lipgloss.NewStyle().Background(lipgloss.Color("#2E7D32"))
+	delStyle := lipgloss.NewStyle().Background(lipgloss.Color("#C62828"))
 	headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#42A5F5")).Bold(true)
 
 	lines := strings.Split(rawDiff, "\n")
@@ -529,7 +643,65 @@ func (a *App) handleFallback(ctx context.Context, input string) {
 
 // --- Slash commands ---
 
-func (a *App) handleSlash(_ context.Context, input string) {
+func (a *App) handleReload(ctx context.Context) {
+	_ = ctx
+
+	if strings.TrimSpace(a.configPath) == "" {
+		a.printError("ag3nts", "Reload failed: config path is not set")
+		return
+	}
+
+	nextCfg, err := config.Load(a.configPath)
+	if err != nil {
+		a.printError("ag3nts", fmt.Sprintf("Reload failed: %v", err))
+		return
+	}
+
+	a.cfgMu.RLock()
+	currentCfg := cloneConfig(a.currentCfg)
+	a.cfgMu.RUnlock()
+	if currentCfg == nil {
+		currentCfg = config.Default()
+	}
+
+	currentRoutes := routesFromConfig(currentCfg)
+	nextRoutes := routesFromConfig(nextCfg)
+	currentMax := effectiveMaxConcurrency(currentCfg)
+	nextMax := effectiveMaxConcurrency(nextCfg)
+
+	var updates []string
+
+	if !routesEqual(currentRoutes, nextRoutes) {
+		if err := a.orch.UpdateRouting(nextRoutes); err != nil {
+			a.printError("ag3nts", fmt.Sprintf("Reload failed: %v", err))
+			return
+		}
+		updates = append(updates, fmt.Sprintf("routing rules updated (%d -> %d)", len(currentRoutes), len(nextRoutes)))
+		currentCfg.Routing = nextCfg.Routing
+	}
+
+	if currentMax != nextMax {
+		a.orch.UpdateMaxConcurrency(nextMax)
+		updates = append(updates, fmt.Sprintf("max_concurrency updated (%d -> %d)", currentMax, nextMax))
+		currentCfg.Orchestrator.MaxConcurrency = nextCfg.Orchestrator.MaxConcurrency
+	}
+
+	if len(updates) == 0 {
+		a.printLine("ag3nts", fmt.Sprintf("Reloaded %s: no hot-reloadable changes.", a.configPath))
+	} else {
+		a.printLines("ag3nts", "Reloaded configuration:\n  - "+strings.Join(updates, "\n  - "))
+	}
+
+	if hasRestartRequiredChanges(currentCfg, nextCfg) {
+		a.printLine("ag3nts", "⚠ Some settings changed (e.g. LLM model, endpoint, primary agent) that require a restart to take effect.")
+	}
+
+	a.cfgMu.Lock()
+	a.currentCfg = currentCfg
+	a.cfgMu.Unlock()
+}
+
+func (a *App) handleSlash(ctx context.Context, input string) {
 	parts := strings.Fields(input)
 	cmd := parts[0]
 
@@ -539,9 +711,11 @@ func (a *App) handleSlash(_ context.Context, input string) {
 			"Commands:",
 			"  /cancel   — cancel current operation (or Ctrl+C)",
 			"  /compact  — compress conversation history to free context",
+			"  /export   — export conversation to a timestamped file",
 			"  /agents   — list agents",
 			"  /tasks    — list tasks",
 			"  /status   — show overview",
+			"  /reload   — reload config and apply hot settings",
 			"  /cost    — show session cost breakdown",
 			"  /quit     — exit",
 			"Errors are prefixed with a red ✘ icon.",
@@ -610,6 +784,23 @@ func (a *App) handleSlash(_ context.Context, input string) {
 			"Context compacted: %d → %d tokens (saved %d). %d messages summarized into 1.",
 			result.BeforeTokens, result.AfterTokens, saved, removed))
 
+	case "/export":
+		if a.localOrch == nil {
+			a.printLine("ag3nts", "Local LLM not configured.")
+			return
+		}
+		export := a.localOrch.ExportConversation()
+		filename := filepath.Join("state", fmt.Sprintf("export-%s.txt", time.Now().Format("20060102-150405")))
+		if err := os.MkdirAll(filepath.Dir(filename), 0755); err != nil {
+			a.printError("ag3nts", fmt.Sprintf("Export failed: %v", err))
+			return
+		}
+		if err := os.WriteFile(filename, []byte(export), 0644); err != nil {
+			a.printError("ag3nts", fmt.Sprintf("Export failed: %v", err))
+			return
+		}
+		a.printLine("ag3nts", fmt.Sprintf("Session exported to %s", filename))
+
 	case "/memory":
 		if a.localOrch == nil {
 			a.printLine("ag3nts", "Local LLM not configured.")
@@ -647,6 +838,9 @@ func (a *App) handleSlash(_ context.Context, input string) {
 			"primary=%s | agents=%d | pending=%d | completed=%d | failed=%d",
 			a.orch.Primary(), a.orch.Agents().Count(),
 			counts[task.StatusPending], counts[task.StatusCompleted], counts[task.StatusFailed]))
+
+	case "/reload":
+		a.handleReload(ctx)
 
 	case "/cost":
 		lines := []string{"Session Duration: " + formatDuration(time.Since(a.sessionStart))}
@@ -698,7 +892,7 @@ func (a *App) eventLoop(ctx context.Context) {
 				running := a.spinning
 				a.spinMu.Unlock()
 				if !running {
-					a.startSpinner("working...")
+					a.startSpinner(a.headModel() + " working...")
 				}
 			}
 		}
@@ -728,7 +922,7 @@ func (a *App) handlePermission(req PermissionRequest) {
 		a.println(errorStyle.Render("  ✘ Denied"))
 	}
 	a.println("")
-	a.startSpinner("processing...")
+	a.startSpinner(a.headModel() + " processing...")
 
 	req.Reply <- approved
 }
@@ -767,7 +961,7 @@ func (a *App) handleEvent(event bus.Event) {
 			if strings.HasSuffix(agentEvt.Agent, "[diff]") {
 				a.stopSpinner()
 				a.printDiff(agentEvt.Content)
-				a.startSpinner("processing...")
+				a.startSpinner(a.headModel() + " processing...")
 			} else if strings.HasSuffix(agentEvt.Agent, "[result]") {
 				a.stopSpinner()
 				baseAgent := strings.TrimSuffix(agentEvt.Agent, "[result]")
@@ -783,7 +977,7 @@ func (a *App) handleEvent(event bus.Event) {
 				}
 				formatted := a.formatToolResult(toolSpec, content)
 				a.println(formatted)
-				a.startSpinner("processing...")
+				a.startSpinner(a.headModel() + " processing...")
 			} else {
 				a.stopSpinner()
 				a.appendAndFlushParagraphs(agentEvt.Agent, agentEvt.Content)
@@ -838,7 +1032,7 @@ func (a *App) handleEvent(event bus.Event) {
 		}
 		formatted := a.formatToolResult(toolSpec, content)
 		a.println(formatted)
-		a.startSpinner("processing...")
+		a.startSpinner(a.headModel() + " processing...")
 
 	case agent.EventInit:
 		a.updateTitle()
@@ -868,10 +1062,11 @@ func (a *App) handleEvent(event bus.Event) {
 		}
 		// If the orchestrator is still running, show what's happening next.
 		if a.localOrch != nil && a.localOrch.IsRunning() {
-			if agentEvt.Agent != a.headModel() {
-				a.startSpinner("synthesizing results...")
+			head := a.headModel()
+			if agentEvt.Agent != head {
+				a.startSpinner(head + " synthesizing " + agentEvt.Agent + " results...")
 			} else {
-				a.startSpinner("processing...")
+				a.startSpinner(head + " processing...")
 			}
 		}
 	}
@@ -887,7 +1082,14 @@ func (a *App) formatToolResult(toolName, content string) string {
 		if path == "" {
 			path = "file"
 		}
-		return "📄 " + path + "\n" + wrapCodeFence(codeFenceLanguage(path), content)
+		lines := strings.Split(content, "\n")
+		preview := content
+		footer := ""
+		if len(lines) > 15 {
+			preview = strings.Join(lines[:15], "\n")
+			footer = "\n" + dimStyle.Render(fmt.Sprintf("... %d more lines", len(lines)-15))
+		}
+		return "📄 " + path + "\n" + wrapCodeFence(codeFenceLanguage(path), preview) + footer
 	case "run_command":
 		cmd := details
 		if cmd == "" {

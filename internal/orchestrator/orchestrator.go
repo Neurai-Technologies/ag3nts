@@ -340,6 +340,22 @@ func (o *Orchestrator) SetPrimary(name string) error {
 	return nil
 }
 
+// UpdateMaxConcurrency changes the maximum number of tasks dispatched in
+// parallel. Non-positive values fall back to the default of 3.
+func (o *Orchestrator) UpdateMaxConcurrency(n int) {
+	if n <= 0 {
+		n = 3
+	}
+	o.mu.Lock()
+	o.maxConc = n
+	o.mu.Unlock()
+}
+
+// UpdateRouting replaces routing rules in the underlying router.
+func (o *Orchestrator) UpdateRouting(routes []router.Route) error {
+	return o.router.UpdateRoutes(routes)
+}
+
 // Primary returns the current primary agent name.
 func (o *Orchestrator) Primary() string {
 	return o.primary
@@ -417,10 +433,11 @@ func (o *Orchestrator) dispatchReady() {
 
 	o.mu.Lock()
 	runCount := len(o.running)
+	maxConc := o.maxConc
 	o.mu.Unlock()
 
 	for _, t := range ready {
-		if runCount >= o.maxConc {
+		if runCount >= maxConc {
 			break
 		}
 
@@ -533,7 +550,7 @@ func (o *Orchestrator) buildContext(taskIDs []string) string {
 		return ""
 	}
 
-	const maxResultSize = 100 * 1024  // SR-12: 100KB per result
+	const maxResultSize = 100 * 1024   // SR-12: 100KB per result
 	const maxTotalContext = 512 * 1024 // M-1 fix: 512KB total context cap
 
 	var parts []string

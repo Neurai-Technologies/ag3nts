@@ -26,10 +26,15 @@ func DisableBracketedPaste() {
 // PasteReader wraps an io.Reader (stdin) and intercepts bracketed paste
 // sequences. Newlines within a paste are replaced with spaces so readline
 // treats the entire paste as a single line.
+// LastTerminator records how the line ended:
+//
+//	13 = Enter (submit), 27 = Alt+Enter (continue multi-line)
 type PasteReader struct {
-	r       io.Reader
-	buf     []byte // look-ahead buffer for detecting escape sequences
-	pasting bool
+	r              io.Reader
+	buf            []byte // look-ahead buffer for detecting escape sequences
+	pasting        bool
+	sawESC         bool // true if last byte of previous chunk was ESC
+	LastTerminator byte // 13 = Enter, 27 = Alt+Enter
 }
 
 // NewPasteReader creates a paste-aware stdin wrapper.
@@ -75,7 +80,48 @@ func (p *PasteReader) process(data []byte) []byte {
 				continue
 			}
 			// No paste sequence — pass through normally.
-			result = append(result, data...)
+			// Detect Alt+Enter (ESC+CR = bytes 27,13) for multi-line input.
+			// Strip the ESC, pass CR to readline, record LastTerminator=27.
+			var filtered []byte
+			for i := 0; i < len(data); i++ {
+				b := data[i]
+				if p.sawESC {
+					p.sawESC = false
+					if b == 13 {
+						// Alt+Enter: ESC was already dropped, pass CR through.
+						p.LastTerminator = 27
+						filtered = append(filtered, 13)
+						continue
+					}
+					// Not Alt+Enter — ESC was start of another sequence, pass both.
+					filtered = append(filtered, 27, b)
+					continue
+				}
+				if b == 27 && !p.pasting {
+					// Could be start of Alt+Enter or other escape sequence.
+					// Check if next byte is CR (same chunk).
+					if i+1 < len(data) && data[i+1] == 13 {
+						// Alt+Enter: skip ESC, next iteration handles CR.
+						p.LastTerminator = 27
+						filtered = append(filtered, 13)
+						i++ // skip the CR too, we already added it
+						continue
+					}
+					// ESC at end of chunk — remember it for next Read.
+					if i == len(data)-1 {
+						p.sawESC = true
+						continue
+					}
+					// ESC followed by something else — pass through.
+					filtered = append(filtered, b)
+					continue
+				}
+				if b == 13 {
+					p.LastTerminator = 13
+				}
+				filtered = append(filtered, b)
+			}
+			result = append(result, filtered...)
 			return result
 		}
 

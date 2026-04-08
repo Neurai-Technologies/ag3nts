@@ -171,18 +171,14 @@ func toolWebResearch(deps RoutingDeps) ToolExecutor {
 			return "", fmt.Errorf("start gemini: %w", err)
 		}
 
-		// Drain events: publish tool/init/complete for TUI visibility,
-		// capture message content silently.
+		// Drain events: capture content for tool result AND publish to TUI for real-time display.
 		var research strings.Builder
 		for event := range sess.Events() {
 			switch event.Kind {
 			case agent.EventMessage, agent.EventProgress:
 				research.WriteString(event.Content)
-			case agent.EventToolUse, agent.EventInit:
 				publishEvent(deps.Bus, event)
-			case agent.EventComplete:
-				publishEvent(deps.Bus, event)
-			case agent.EventError:
+			case agent.EventToolUse, agent.EventInit, agent.EventComplete, agent.EventError:
 				publishEvent(deps.Bus, event)
 			}
 		}
@@ -239,6 +235,7 @@ func toolCodeTask(deps RoutingDeps) ToolExecutor {
 			switch event.Kind {
 			case agent.EventMessage, agent.EventProgress:
 				output.WriteString(event.Content)
+				publishEvent(deps.Bus, event)
 			case agent.EventToolUse, agent.EventInit, agent.EventComplete, agent.EventError:
 				publishEvent(deps.Bus, event)
 			}
@@ -285,6 +282,7 @@ func toolImplement(deps RoutingDeps) ToolExecutor {
 			switch event.Kind {
 			case agent.EventMessage, agent.EventProgress:
 				output.WriteString(event.Content)
+				publishEvent(deps.Bus, event)
 			case agent.EventToolUse, agent.EventInit, agent.EventComplete, agent.EventError:
 				publishEvent(deps.Bus, event)
 			}

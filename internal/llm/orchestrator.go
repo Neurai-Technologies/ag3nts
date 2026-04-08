@@ -17,12 +17,12 @@ import (
 type PermissionFunc func(tool, action string) bool
 
 type OrchestratorConfig struct {
-	Endpoint      string // Ollama endpoint (default: http://localhost:11434)
-	HeadModel     string // Gemma 4 31B (with thinking mode)
-	ModelsPath    string // Path to Ollama models directory (for OLLAMA_MODELS env)
-	SystemPrompt  string // System prompt for head model (optional override)
-	WorkDir       string // Working directory for file operations
-	MaxContext    int    // Context window limit in tokens (default: 256000)
+	Endpoint      string         // Ollama endpoint (default: http://localhost:11434)
+	HeadModel     string         // Gemma 4 31B (with thinking mode)
+	ModelsPath    string         // Path to Ollama models directory (for OLLAMA_MODELS env)
+	SystemPrompt  string         // System prompt for head model (optional override)
+	WorkDir       string         // Working directory for file operations
+	MaxContext    int            // Context window limit in tokens (default: 256000)
 	AskPermission PermissionFunc // callback to ask user for permission (nil = auto-approve)
 }
 
@@ -137,15 +137,22 @@ func NewLocalOrchestrator(
 	loop.RegisterTools(sysDefs, sysExecs)
 
 	// Register routing tools.
+	// Use a closure that reads loop.askPermission at call time, not construction time.
+	// This allows SetPermission (called after TUI init) to take effect for routing tools.
 	routeDeps := RoutingDeps{
-		Client:        client,
-		Models:        models,
-		Registry:      registry,
-		Bus:           eventBus,
-		Conversation:  conversation,
-		Memory:        memory,
-		AskPermission: cfg.AskPermission,
-		WorkDir:       cfg.WorkDir,
+		Client:       client,
+		Models:       models,
+		Registry:     registry,
+		Bus:          eventBus,
+		Conversation: conversation,
+		Memory:       memory,
+		AskPermission: func(tool, action string) bool {
+			if loop.askPermission != nil {
+				return loop.askPermission(tool, action)
+			}
+			return true // auto-approve if no permission func set yet
+		},
+		WorkDir: cfg.WorkDir,
 	}
 	routeDefs, routeExecs := RegisterRoutingTools(routeDeps)
 	loop.RegisterTools(routeDefs, routeExecs)
@@ -281,12 +288,28 @@ func (lo *LocalOrchestrator) ConversationLen() int {
 	return lo.conversation.Len()
 }
 
+// ExportConversation returns the full conversation as plain text.
+func (lo *LocalOrchestrator) ExportConversation() string {
+	messages := lo.conversation.Messages()
+	var sb strings.Builder
+
+	for _, msg := range messages {
+		sb.WriteString("[")
+		sb.WriteString(msg.Role)
+		sb.WriteString("]: ")
+		sb.WriteString(msg.Content)
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
+}
+
 // CompactResult holds before/after metrics from a /compact operation.
 type CompactResult struct {
-	BeforeTokens    int
-	AfterTokens     int
-	BeforeMessages  int
-	AfterMessages   int
+	BeforeTokens   int
+	AfterTokens    int
+	BeforeMessages int
+	AfterMessages  int
 }
 
 // Compact manually triggers conversation summarization and returns metrics.
