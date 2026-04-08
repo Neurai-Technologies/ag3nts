@@ -143,7 +143,6 @@ func runOrchestrate() error {
 			Endpoint:      cfg.LLM.Endpoint,
 			ModelsPath:    cfg.LLM.ModelsPath,
 			HeadModel:     cfg.LLM.HeadModel,
-			ReasonerModel: cfg.LLM.ReasonerModel,
 			SystemPrompt:  cfg.LLM.SystemPrompt,
 			WorkDir:       workDir,
 			MaxContext:     cfg.LLM.MaxContext,

@@ -1,7 +1,6 @@
 package llm
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -165,18 +164,11 @@ func (c *OllamaClient) StreamChat(ctx context.Context, req ChatRequest, onChunk 
 	var fullContent string
 	var toolCalls []ToolCall
 	var finalResp ChatResponse
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
-
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-
+	decoder := json.NewDecoder(resp.Body)
+	for decoder.More() {
 		var chunk ChatResponse
-		if err := json.Unmarshal(line, &chunk); err != nil {
-			continue
+		if err := decoder.Decode(&chunk); err != nil {
+			return Message{}, ChatResponse{}, fmt.Errorf("decode stream chunk: %w", err)
 		}
 
 		if chunk.Message.Content != "" {
@@ -198,15 +190,15 @@ func (c *OllamaClient) StreamChat(ctx context.Context, req ChatRequest, onChunk 
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		return Message{}, ChatResponse{}, fmt.Errorf("read stream: %w", err)
-	}
-
 	// Build the complete assistant message.
 	msg := Message{
 		Role:      RoleAssistant,
 		Content:   fullContent,
 		ToolCalls: toolCalls,
+	}
+
+	if !finalResp.Done {
+		return Message{}, ChatResponse{}, fmt.Errorf("stream ended without done signal (partial content: %d bytes)", len(fullContent))
 	}
 
 	return msg, finalResp, nil

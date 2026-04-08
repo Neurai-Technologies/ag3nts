@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/rohanrgit/ag3nts/internal/agent"
@@ -24,8 +25,9 @@ type AgentLoop struct {
 	bus          *bus.Bus
 	tools        map[string]ToolExecutor
 	toolDefs     []ToolDef
-	headModel    string
-	memory       *Memory // auto-store tool results as findings
+	headModel    string // full model name for API (e.g. "gemma4:31b")
+	headDisplay  string // short name for display (e.g. "gemma4")
+	memory       *Memory
 }
 
 // NewAgentLoop creates the agent loop.
@@ -35,7 +37,14 @@ func NewAgentLoop(
 	models *ModelManager,
 	eventBus *bus.Bus,
 	headModel string,
+	memory *Memory,
 ) *AgentLoop {
+	// Strip tag for display name: "gemma4:31b" → "gemma4"
+	display := headModel
+	if idx := strings.Index(headModel, ":"); idx > 0 {
+		display = headModel[:idx]
+	}
+
 	return &AgentLoop{
 		client:       client,
 		conversation: conversation,
@@ -43,6 +52,8 @@ func NewAgentLoop(
 		bus:          eventBus,
 		tools:        make(map[string]ToolExecutor),
 		headModel:    headModel,
+		headDisplay:  display,
+		memory:       memory,
 	}
 }
 
@@ -109,6 +120,12 @@ func (al *AgentLoop) Run(ctx context.Context, userMessage string) error {
 			return nil
 		}
 
+		// Flush any streamed text so the user sees intermediate narration
+		// (e.g. "I will now search for...") before tool execution starts.
+		if msg.Content != "" {
+			al.emitFlush()
+		}
+
 		// Process tool calls.
 		for _, tc := range msg.ToolCalls {
 			toolName := tc.Function.Name
@@ -143,13 +160,18 @@ func (al *AgentLoop) Run(ctx context.Context, userMessage string) error {
 				result = result[:maxOutputSize] + "\n[TRUNCATED]"
 			}
 
+			// Show brief tool result summary in TUI.
+			resultPreview := result
+			if len(resultPreview) > 200 {
+				resultPreview = resultPreview[:197] + "..."
+			}
+			al.emitToolResult(toolName, resultPreview)
+
 			// Auto-store routing tool results in memory (already distilled).
 			// System tool results are raw — they'll be stored when the head
 			// model synthesizes findings via the explicit store() tool.
 			if al.memory != nil && err == nil {
 				switch toolName {
-				case "deep_reason":
-					al.memory.Store("gemma4", "finding", result)
 				case "web_research":
 					al.memory.Store("gemini", "finding", result)
 				case "code_task":
@@ -173,9 +195,9 @@ func (al *AgentLoop) Run(ctx context.Context, userMessage string) error {
 
 // emitProgress publishes streaming text to the bus.
 func (al *AgentLoop) emitProgress(content string) {
-	al.bus.Publish("system", "qwen3.5", agent.AgentEvent{
+	al.bus.Publish("system", al.headDisplay, agent.AgentEvent{
 		Kind:      agent.EventProgress,
-		Agent:     "qwen3.5",
+		Agent:     al.headDisplay,
 		Content:   content,
 		Timestamp: time.Now(),
 	})
@@ -188,9 +210,9 @@ func (al *AgentLoop) emitToolUse(tc ToolCall) {
 	if args := formatToolArgs(tc); args != "" {
 		content += ": " + args
 	}
-	al.bus.Publish("system", "qwen3.5", agent.AgentEvent{
+	al.bus.Publish("system", al.headDisplay, agent.AgentEvent{
 		Kind:      agent.EventToolUse,
-		Agent:     "qwen3.5",
+		Agent:     al.headDisplay,
 		Content:   content,
 		Timestamp: time.Now(),
 	})
@@ -198,9 +220,9 @@ func (al *AgentLoop) emitToolUse(tc ToolCall) {
 
 // emitComplete publishes a completion event with usage stats.
 func (al *AgentLoop) emitComplete(resp ChatResponse) {
-	al.bus.Publish("system", "qwen3.5", agent.AgentEvent{
+	al.bus.Publish("system", al.headDisplay, agent.AgentEvent{
 		Kind:  agent.EventComplete,
-		Agent: "qwen3.5",
+		Agent: al.headDisplay,
 		Usage: &agent.TokenUsage{
 			InputTokens:  resp.PromptEvalCount,
 			OutputTokens: resp.EvalCount,
@@ -211,12 +233,35 @@ func (al *AgentLoop) emitComplete(resp ChatResponse) {
 
 // emitError publishes an error event.
 func (al *AgentLoop) emitError(content string) {
-	al.bus.Publish("system", "qwen3.5", agent.AgentEvent{
+	al.bus.Publish("system", al.headDisplay, agent.AgentEvent{
 		Kind:      agent.EventError,
-		Agent:     "qwen3.5",
+		Agent:     al.headDisplay,
 		Content:   content,
 		Timestamp: time.Now(),
 	})
+}
+
+// emitToolResult publishes a brief summary of a tool's output.
+func (al *AgentLoop) emitToolResult(toolName, preview string) {
+	al.bus.Publish("system", al.headDisplay, agent.AgentEvent{
+		Kind:      agent.EventProgress,
+		Agent:     al.headDisplay + "[result]",
+		Content:   toolName + ": " + preview,
+		Timestamp: time.Now(),
+	})
+}
+
+// emitFlush triggers a flush of the streamed text in the TUI.
+// Uses EventMessage which the TUI renders immediately (unlike EventProgress which buffers).
+func (al *AgentLoop) emitFlush() {
+	al.bus.Publish("system", al.headDisplay, agent.AgentEvent{
+		Kind:      agent.EventMessage,
+		Agent:     al.headDisplay,
+		Content:   "", // empty content — the TUI will flush the buffer and render
+		Timestamp: time.Now(),
+	})
+	// Small delay to let the TUI process the flush.
+	time.Sleep(50 * time.Millisecond)
 }
 
 // emitSystem publishes a system info event.

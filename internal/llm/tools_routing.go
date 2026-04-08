@@ -28,21 +28,6 @@ func RegisterRoutingTools(deps RoutingDeps) ([]ToolDef, map[string]ToolExecutor)
 		{
 			Type: "function",
 			Function: ToolFunction{
-				Name:        "deep_reason",
-				Description: "Delegate to Gemma 4 31B for deep reasoning, planning, evaluation, architecture decisions, or complex mathematical/logical analysis. Use when you need to think harder about a problem.",
-				Parameters: ToolFunctionParams{
-					Type: "object",
-					Properties: map[string]ToolParamProp{
-						"question": {Type: "string", Description: "The question or problem to reason about"},
-						"context":  {Type: "string", Description: "Additional context to include (optional)"},
-					},
-					Required: []string{"question"},
-				},
-			},
-		},
-		{
-			Type: "function",
-			Function: ToolFunction{
 				Name:        "recall",
 				Description: "Retrieve relevant context from long-term memory. Use when you need information from earlier in the conversation, previous tool results, or past decisions. Memory persists across sessions and stores distilled findings, not raw data.",
 				Parameters: ToolFunctionParams{
@@ -115,7 +100,6 @@ func RegisterRoutingTools(deps RoutingDeps) ([]ToolDef, map[string]ToolExecutor)
 	}
 
 	executors := map[string]ToolExecutor{
-		"deep_reason":  toolDeepReason(deps),
 		"recall":       toolRecall(deps),
 		"store":        toolStore(deps),
 		"web_research": toolWebResearch(deps),
@@ -126,55 +110,7 @@ func RegisterRoutingTools(deps RoutingDeps) ([]ToolDef, map[string]ToolExecutor)
 	return defs, executors
 }
 
-// toolDeepReason calls Gemma 4 31B for planning/evaluation/reasoning.
-// Automatically includes recent conversation context so Gemma has the
-// same information as the head model (no need to re-read files).
-func toolDeepReason(deps RoutingDeps) ToolExecutor {
-	return func(args map[string]any) (string, error) {
-		question, _ := args["question"].(string)
-		if question == "" {
-			return "", fmt.Errorf("question is required")
-		}
-		extra, _ := args["context"].(string)
-
-		// Build context from recent conversation if not explicitly provided.
-		if extra == "" && deps.Conversation != nil {
-			extra = recentContext(deps.Conversation, 8000)
-		}
-
-		prompt := question
-		if extra != "" {
-			prompt = "Context from the conversation so far:\n\n" + extra + "\n\n---\n\nQuestion:\n" + question
-		}
-
-		publishProgress(deps.Bus, "gemma4", "Loading Gemma 4 for deep reasoning...")
-
-		if err := deps.Models.EnsureLoaded(context.Background(), ModelReasoner); err != nil {
-			return "", fmt.Errorf("load reasoner: %w", err)
-		}
-
-		publishProgress(deps.Bus, "gemma4", "Reasoning...")
-
-		msg, resp, err := deps.Client.Chat(context.Background(), ChatRequest{
-			Model: deps.Models.ModelName(ModelReasoner),
-			Messages: []Message{
-				{Role: RoleSystem, Content: "You are a deep reasoning specialist. Provide thorough, well-structured analysis. Consider trade-offs, edge cases, and alternatives. The context below contains file contents and conversation history — use it directly, do not ask for more information."},
-				{Role: RoleUser, Content: prompt},
-			},
-			Options: &ModelOptions{
-				NumCtx: deps.Models.Config(ModelReasoner).ContextLen,
-			},
-		})
-		if err != nil {
-			return "", fmt.Errorf("deep_reason: %w", err)
-		}
-
-		publishComplete(deps.Bus, "gemma4", resp.EvalCount)
-		return msg.Content, nil
-	}
-}
-
-// toolRecall retrieves relevant context from Scout's long-term memory.
+// toolRecall retrieves relevant context from long-term memory.
 func toolRecall(deps RoutingDeps) ToolExecutor {
 	return func(args map[string]any) (string, error) {
 		query, _ := args["query"].(string)
@@ -360,32 +296,3 @@ func publishEvent(b *bus.Bus, event agent.AgentEvent) {
 	b.Publish("system", event.Agent, event)
 }
 
-// recentContext extracts the last N chars of conversation as context
-// for secondary models, so they have the same information as the head.
-func recentContext(cm *ConversationManager, maxChars int) string {
-	msgs := cm.Messages()
-	var sb strings.Builder
-
-	// Walk backwards through messages, collecting content.
-	for i := len(msgs) - 1; i >= 0; i-- {
-		msg := msgs[i]
-		if msg.Role == RoleSystem {
-			continue // skip system prompts
-		}
-
-		entry := fmt.Sprintf("[%s]: %s\n", msg.Role, msg.Content)
-
-		// Include tool call info.
-		for _, tc := range msg.ToolCalls {
-			entry += fmt.Sprintf("[tool_call]: %s\n", tc.Function.Name)
-		}
-
-		if sb.Len()+len(entry) > maxChars {
-			break
-		}
-		// Prepend (we're walking backwards).
-		sb.WriteString(entry)
-	}
-
-	return sb.String()
-}

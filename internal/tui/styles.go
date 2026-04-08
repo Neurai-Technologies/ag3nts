@@ -39,6 +39,8 @@ func agentColor(name string) color.Color {
 		return colorGemma
 	case "llama4-scout":
 		return colorLlama
+	case "ag3nts":
+		return colorSystem
 	case "error":
 		return colorError
 	case "system":

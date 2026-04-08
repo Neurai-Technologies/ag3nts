@@ -105,7 +105,7 @@ func (m *Memory) Recall(query string) string {
 		for _, qt := range queryTerms {
 			tf := float64(termFreq[qt])
 			if tf > 0 {
-				idf := math.Log(numDocs / float64(df[qt]+1))
+				idf := math.Log(1 + numDocs/float64(df[qt]))
 				score += tf * idf
 			}
 		}

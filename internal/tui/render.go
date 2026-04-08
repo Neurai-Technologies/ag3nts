@@ -157,7 +157,6 @@ var toolIcons = map[string]string{
 	"google_web_search": "🌐 ",
 	"save_memory":       "💾 ",
 	"cli_help":          "❓ ",
-	"deep_reason":       "🧠 ",
 	"recall":            "🔍 ",
 	"store":             "💾 ",
 	"web_research":      "🌐 ",

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/rohanrgit/ag3nts/internal/agent"
@@ -13,34 +14,49 @@ import (
 // OrchestratorConfig holds configuration for the local LLM orchestrator.
 type OrchestratorConfig struct {
 	Endpoint      string // Ollama endpoint (default: http://localhost:11434)
-	HeadModel     string // Qwen 3.5 122B model name in Ollama
-	ReasonerModel string // Gemma 4 31B model name
+	HeadModel     string // Gemma 4 31B (with thinking mode)
 	ModelsPath    string // Path to Ollama models directory (for OLLAMA_MODELS env)
 	SystemPrompt  string // System prompt for head model (optional override)
 	WorkDir       string // Working directory for file operations
 	MaxContext    int    // Context window limit in tokens (default: 256000)
 }
 
-const defaultSystemPrompt = `You are the head orchestrator of ag3nts, a multi-agent AI system running locally. You manage conversations with the user and dispatch work to specialized agents via tool calls.
+const defaultSystemPrompt = `<|think|>
+You are Gemma 4 31B, running locally via Ollama on the user's Mac Studio (M3 Ultra, 256GB RAM). You are the head orchestrator of ag3nts, a multi-agent AI system.
 
-You are highly capable — handle most tasks directly. Only delegate when genuinely needed:
+When asked what model you are, say "Gemma 4 31B running locally via Ollama with thinking enabled." Never claim to be Claude, GPT, Qwen, or any other model.
+
+The ag3nts system architecture:
+- Head orchestrator: You (Gemma 4 31B dense, local via Ollama, 256K context, thinking enabled)
+- Web research: Gemini CLI (Google, subprocess, searches the internet)
+- Complex coding: Claude Code (Anthropic, subprocess, multi-file edits)
+- Implementation: Codex CLI (OpenAI, subprocess, focused single-file tasks)
+- Memory: Go-native persistent storage with TF-IDF search (survives across sessions)
+
+You have thinking mode enabled — use it for complex reasoning. You don't need to delegate reasoning to another model. Handle most tasks directly, only delegate for internet access and complex coding.
 
 Tools available:
 - read_file, write_file, run_command, search_files: Direct filesystem and shell access.
-- deep_reason: Delegate to Gemma 4 31B for complex reasoning, evaluation, architecture decisions.
-- recall: Retrieve relevant context from long-term memory. Use when you need information from earlier in the conversation or past findings. Memory persists across sessions.
-- store: Save an important finding, decision, or summary to long-term memory. Use after completing analysis or making decisions. Store the distilled insight, not raw data.
+- recall: Retrieve relevant context from long-term memory. Memory persists across sessions.
+- store: Save an important finding, decision, or summary to long-term memory. Store distilled insights, not raw data.
 - web_research: Delegate to Gemini CLI for current information from the internet.
 - code_task: Delegate to Claude Code for complex multi-file coding tasks.
 - implement: Delegate to Codex CLI for focused implementation tasks.
 
 Guidelines:
-- For simple questions, answer directly without tools.
+- For simple questions about yourself or the system, answer directly from this prompt — don't read files.
 - Always explain briefly what you're doing before calling a tool.
-- After receiving tool results, synthesize and present them clearly.
-- After completing significant analysis, use store() to save key findings to long-term memory.
+- IMPORTANT: Always present your findings, analysis, and results IN FULL to the user before storing them. Never just say "I stored it" — show the complete content first, then store. The user needs to see everything.
+- After presenting findings, use store() to save key distilled insights to long-term memory.
 - Use recall() when you need context from earlier in the session or past decisions.
-- Be concise and direct. The user is a developer — no hand-holding.`
+- Be concise and direct. The user is a developer — no hand-holding.
+
+Output formatting:
+- Use markdown formatting in your responses: **bold** for key terms, *italic* for emphasis, headers with ## for sections.
+- Use tables where comparing options or listing structured data.
+- Use bullet lists for findings, numbered lists for steps.
+- Use code blocks with language tags for code snippets.
+- Separate major sections with --- horizontal rules.`
 
 // LocalOrchestrator wraps the agent loop, conversation, and model management
 // into a single entry point for the TUI.
@@ -81,18 +97,12 @@ func NewLocalOrchestrator(
 		return nil, fmt.Errorf("create ollama client: %w", err)
 	}
 
-	// Configure models (Head + Reasoner only — Scout removed from active config).
+	// Single model: Gemma 4 31B is both head and reasoner (thinking mode enabled).
 	modelConfigs := map[ModelRole]*ModelConfig{
 		ModelHead: {
 			Name:       cfg.HeadModel,
 			Role:       ModelHead,
 			ContextLen: cfg.MaxContext,
-			KeepAlive:  -1,
-		},
-		ModelReasoner: {
-			Name:       cfg.ReasonerModel,
-			Role:       ModelReasoner,
-			ContextLen: 128000,
 			KeepAlive:  -1,
 		},
 	}
@@ -108,8 +118,7 @@ func NewLocalOrchestrator(
 	memory := NewMemory(persistPath)
 
 	// Create agent loop.
-	loop := NewAgentLoop(client, conversation, models, eventBus, cfg.HeadModel)
-	loop.memory = memory // auto-store findings after tool calls
+	loop := NewAgentLoop(client, conversation, models, eventBus, cfg.HeadModel, memory)
 
 	// Register system tools.
 	sysDefs, sysExecs := RegisterSystemTools(cfg.WorkDir)
@@ -228,6 +237,15 @@ func (lo *LocalOrchestrator) IsRunning() bool {
 	lo.mu.Lock()
 	defer lo.mu.Unlock()
 	return lo.running
+}
+
+// HeadModelName returns the display name of the head model (without tag).
+func (lo *LocalOrchestrator) HeadModelName() string {
+	name := lo.models.ModelName(ModelHead)
+	if idx := strings.Index(name, ":"); idx > 0 {
+		return name[:idx]
+	}
+	return name
 }
 
 // ModelStatus returns a human-readable status of all managed models and memory.
