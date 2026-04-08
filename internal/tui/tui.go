@@ -158,6 +158,32 @@ func (a *App) printLines(source, content string) {
 	}
 }
 
+// printDiff shows a git diff with red/green coloring.
+func (a *App) printDiff(diff string) {
+	addStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#81C784")) // green
+	delStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#EF5350")) // red
+	headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#42A5F5")).Bold(true) // blue bold
+
+	a.println("")
+	for _, line := range strings.Split(diff, "\n") {
+		switch {
+		case strings.HasPrefix(line, "+++ ") || strings.HasPrefix(line, "--- "):
+			a.println(headerStyle.Render(line))
+		case strings.HasPrefix(line, "+"):
+			a.println(addStyle.Render(line))
+		case strings.HasPrefix(line, "-"):
+			a.println(delStyle.Render(line))
+		case strings.HasPrefix(line, "@@"):
+			a.println(dimStyle.Render(line))
+		case strings.HasPrefix(line, "diff "):
+			a.println(headerStyle.Render(line))
+		default:
+			a.println(dimStyle.Render(line))
+		}
+	}
+	a.println("")
+}
+
 // --- Status line (printed after each response) ---
 
 func (a *App) printStatusLine() {
@@ -319,6 +345,11 @@ func (a *App) handleInput(ctx context.Context, input string) {
 		}
 		a.waitForCompletion()
 		time.Sleep(200 * time.Millisecond)
+		elapsed := time.Since(a.spinStart).Round(time.Second)
+		tokIn := atomic.LoadInt64(&a.totalTokenIn)
+		tokOut := atomic.LoadInt64(&a.totalTokenOut)
+		a.println(lipgloss.NewStyle().Foreground(lipgloss.Color("#81C784")).Bold(true).Render("✓") +
+			dimStyle.Render(fmt.Sprintf(" complete (%s · ↑%s ↓%s)", formatDuration(elapsed), formatTokens(tokIn), formatTokens(tokOut))))
 		a.printStatusLine()
 		return
 	}
@@ -452,6 +483,13 @@ func (a *App) handleSlash(_ context.Context, input string) {
 			a.printLine("ag3nts", "Usage: /local status | /local reset")
 		}
 
+	case "/memory":
+		if a.localOrch == nil {
+			a.printLine("ag3nts", "Local LLM not configured.")
+			return
+		}
+		a.printLines("ag3nts", a.localOrch.MemoryDump())
+
 	case "/agents":
 		var lines []string
 		for _, ag := range a.orch.Agents().List() {
@@ -522,8 +560,13 @@ func (a *App) handleEvent(event bus.Event) {
 
 	case agent.EventProgress:
 		if agentEvt.Content != "" {
-			if strings.HasSuffix(agentEvt.Agent, "[result]") {
+			if strings.HasSuffix(agentEvt.Agent, "[diff]") {
+				a.stopSpinner()
+				a.printDiff(agentEvt.Content)
+				a.startSpinner("processing...")
+			} else if strings.HasSuffix(agentEvt.Agent, "[result]") {
 				a.printLine(agentEvt.Agent, dimStyle.Render(agentEvt.Content))
+				a.startSpinner("processing...")
 			} else {
 				a.stream.Append(agentEvt.Agent, agentEvt.Content)
 				a.addTokens(len(agentEvt.Content))
@@ -533,10 +576,28 @@ func (a *App) handleEvent(event bus.Event) {
 	case agent.EventToolUse:
 		a.flushAgent(agentEvt.Agent)
 		a.printLine(agentEvt.Agent, formatToolLine(agentEvt.Content))
-		a.startSpinner("working...")
+		// Contextual spinner based on tool type.
+		switch {
+		case strings.Contains(agentEvt.Content, "web_research"):
+			a.startSpinner("researching (gemini)...")
+		case strings.Contains(agentEvt.Content, "code_task"):
+			a.startSpinner("coding (claude)...")
+		case strings.Contains(agentEvt.Content, "implement"):
+			a.startSpinner("implementing (codex)...")
+		case strings.Contains(agentEvt.Content, "recall"):
+			a.startSpinner("searching memory...")
+		case strings.Contains(agentEvt.Content, "store"):
+			a.startSpinner("storing to memory...")
+		case strings.Contains(agentEvt.Content, "read_file"):
+			a.startSpinner("reading file...")
+		case strings.Contains(agentEvt.Content, "run_command"):
+			a.startSpinner("running command...")
+		default:
+			a.startSpinner("working...")
+		}
 
 	case agent.EventReasoning:
-		a.startSpinner("thinking...")
+		a.startSpinner("reasoning...")
 
 	case agent.EventError:
 		a.flushAgent(agentEvt.Agent)
@@ -548,7 +609,7 @@ func (a *App) handleEvent(event bus.Event) {
 	case agent.EventInit:
 		a.updateTitle()
 		a.printLine("ag3nts", fmt.Sprintf("[%s] connected", agentEvt.Agent))
-		a.startSpinner("waiting for response...")
+		a.startSpinner("waiting for " + agentEvt.Agent + "...")
 
 	case agent.EventComplete:
 		a.updateTitle()
@@ -563,8 +624,13 @@ func (a *App) handleEvent(event bus.Event) {
 			a.printLine("ag3nts", fmt.Sprintf("[%s] done — %d in / %d out tokens%s",
 				agentEvt.Agent, agentEvt.Usage.InputTokens, agentEvt.Usage.OutputTokens, cost))
 		}
-		if a.localOrch != nil && a.localOrch.IsRunning() && agentEvt.Agent != a.headModel() {
-			a.startSpinner("synthesizing...")
+		// If the orchestrator is still running, show what's happening next.
+		if a.localOrch != nil && a.localOrch.IsRunning() {
+			if agentEvt.Agent != a.headModel() {
+				a.startSpinner("synthesizing results...")
+			} else {
+				a.startSpinner("processing...")
+			}
 		}
 	}
 }

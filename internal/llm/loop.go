@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -167,6 +168,11 @@ func (al *AgentLoop) Run(ctx context.Context, userMessage string) error {
 			}
 			al.emitToolResult(toolName, resultPreview)
 
+			// Show git diff after file-modifying tools.
+			if toolName == "implement" || toolName == "code_task" || toolName == "write_file" {
+				al.emitDiff()
+			}
+
 			// Auto-store routing tool results in memory (already distilled).
 			// System tool results are raw — they'll be stored when the head
 			// model synthesizes findings via the explicit store() tool.
@@ -262,6 +268,41 @@ func (al *AgentLoop) emitFlush() {
 	})
 	// Small delay to let the TUI process the flush.
 	time.Sleep(50 * time.Millisecond)
+}
+
+// emitDiff runs git diff --stat and git diff and publishes the output.
+func (al *AgentLoop) emitDiff() {
+	// Run git diff --stat for a summary.
+	statCmd := exec.Command("git", "diff", "--stat")
+	statOut, err := statCmd.Output()
+	if err != nil || len(statOut) == 0 {
+		return // no changes or not a git repo
+	}
+
+	// Emit the stat summary.
+	al.bus.Publish("system", al.headDisplay, agent.AgentEvent{
+		Kind:      agent.EventProgress,
+		Agent:     "ag3nts[diff]",
+		Content:   strings.TrimSpace(string(statOut)),
+		Timestamp: time.Now(),
+	})
+
+	// Run git diff for actual changes (truncated).
+	diffCmd := exec.Command("git", "diff")
+	diffOut, err := diffCmd.Output()
+	if err != nil || len(diffOut) == 0 {
+		return
+	}
+	diff := string(diffOut)
+	if len(diff) > 2000 {
+		diff = diff[:2000] + "\n... (truncated)"
+	}
+	al.bus.Publish("system", al.headDisplay, agent.AgentEvent{
+		Kind:      agent.EventProgress,
+		Agent:     "ag3nts[diff]",
+		Content:   diff,
+		Timestamp: time.Now(),
+	})
 }
 
 // emitSystem publishes a system info event.

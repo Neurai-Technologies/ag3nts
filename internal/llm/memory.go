@@ -164,6 +164,26 @@ func (m *Memory) Summary() string {
 		len(m.entries), totalChars/4, strings.Join(parts, ", "))
 }
 
+// FullDump returns all memory entries with Source, Category, and Content.
+func (m *Memory) FullDump() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if len(m.entries) == 0 {
+		return "Memory: empty"
+	}
+
+	var sb strings.Builder
+	for i, e := range m.entries {
+		sb.WriteString(fmt.Sprintf(
+			"Entry %d\nSource: %s\nCategory: %s\nContent: %s\n\n",
+			i+1, e.Source, e.Category, e.Content,
+		))
+	}
+
+	return strings.TrimSpace(sb.String())
+}
+
 // Len returns the number of stored entries.
 func (m *Memory) Len() int {
 	m.mu.Lock()

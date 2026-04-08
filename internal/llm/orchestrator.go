@@ -56,7 +56,12 @@ Output formatting:
 - Use tables where comparing options or listing structured data.
 - Use bullet lists for findings, numbered lists for steps.
 - Use code blocks with language tags for code snippets.
-- Separate major sections with --- horizontal rules.`
+- Separate major sections with --- horizontal rules.
+
+Git commits:
+- When the user asks you to commit and push, always include these co-author lines at the end of the commit message:
+  Co-Authored-By: ag3nts (Gemma 4 + Codex + Claude + Gemini) <ag3nts@local>
+  Include only the agents that actually contributed to the changes in that commit.`
 
 // LocalOrchestrator wraps the agent loop, conversation, and model management
 // into a single entry point for the TUI.
@@ -260,4 +265,9 @@ func (lo *LocalOrchestrator) ModelStatus(ctx context.Context) string {
 // ConversationLen returns the number of messages in the conversation.
 func (lo *LocalOrchestrator) ConversationLen() int {
 	return lo.conversation.Len()
+}
+
+// MemoryDump returns all persisted in-memory entries in full detail.
+func (lo *LocalOrchestrator) MemoryDump() string {
+	return lo.memory.FullDump()
 }
