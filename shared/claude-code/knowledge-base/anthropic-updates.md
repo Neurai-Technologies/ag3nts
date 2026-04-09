@@ -1,5 +1,60 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-04-09
+
+### Summary
+- Sources scanned: 4 (anthropic.com/news, /research, /engineering, docs.anthropic.com)
+- New findings: 3
+- Actionable integrations: 1
+
+### Findings
+
+#### Claude Mythos Preview + Project Glasswing
+- **Source**: https://www.anthropic.com/glasswing / https://techcrunch.com/2026/04/07/anthropic-mythos-ai-model-preview-security/
+- **Published**: April 7, 2026
+- **Category**: Model / Safety
+- **What Changed**: Anthropic announced Claude Mythos Preview — its most capable model to date — alongside Project Glasswing, a restricted defensive-security initiative. Mythos Preview autonomously found thousands of zero-day vulnerabilities across every major OS and browser, including a 17-year-old FreeBSD remote code execution flaw. Access is limited to 12+ Glasswing launch partners (Amazon/AWS, Apple, Broadcom, Cisco, CrowdStrike, Google, JPMorganChase, Linux Foundation, Microsoft, NVIDIA, Palo Alto Networks) and ~40 critical infrastructure organizations. Anthropic is providing $100M in usage credits and $4M in donations to open-source security orgs. When available via API, pricing is $25/$125 per million input/output tokens — roughly 3–5× Opus 4.6.
+- **Impact on ag3nts**: The `security-engineer` agent (currently Opus 4.6) is the primary candidate for a Mythos upgrade once the model reaches general availability. Mythos's autonomous vulnerability discovery capability directly exceeds what Opus 4.6 delivers in OWASP audits and threat modeling. However, the pricing premium means it should only be invoked for high-value security gates, not routine per-commit audits. The current `security-engineer` dual-mode (Stage 4 threat model + Stage 6 OWASP audit) pattern maps well onto Mythos's strengths when it becomes API-accessible.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — add `mythos` to the model column note for `security-engineer` as a future upgrade path: "Upgrade to Mythos once GA for autonomous vuln discovery" 
+  - [ ] Monitor `https://www.anthropic.com/glasswing` for API GA announcement; when available, update `security-engineer` agent frontmatter from `model: opus` to `model: mythos`
+- **Priority**: Medium — not yet generally available; monitor Project Glasswing rollout. High priority when API access opens.
+
+---
+
+#### Claude Code Subscription: Third-Party Tool Pricing Policy
+- **Source**: https://techcrunch.com/2026/04/04/anthropic-says-claude-code-subscribers-will-need-to-pay-extra-for-openclaw-support/
+- **Published**: April 4, 2026 (missed in April 6 scan)
+- **Category**: Tooling
+- **What Changed**: Effective April 4, Claude Pro/Max subscribers can no longer use their plan limits to power external third-party harnesses (e.g., OpenClaw). Such usage is now billed pay-as-you-go separately. Anthropic cited compute costs of $1,000–$5,000/month against $200 subscriptions. The policy will extend to all third-party harnesses over time; API-key-based access is unaffected.
+- **Impact on ag3nts**: The ag3nts system uses direct API key access (`ANTHROPIC_API_KEY`) for all scripted and automated runs (`--bare -p` pattern). This is unaffected by the subscription policy change. However, if anyone in this workflow uses a Claude Max subscription to drive ag3nts tooling via a third-party harness (e.g., routing through OpenClaw), they need to migrate to direct API key usage. The `settings.json` auto-mode classifier and hook infrastructure run natively through the CLI, not through subscription plans — no changes required.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — add note under "Scripted / Automated Runs": "Always use `ANTHROPIC_API_KEY` for automated runs; subscription plan limits no longer cover third-party harness usage (April 2026 policy)."
+- **Priority**: Low — no change needed for existing ag3nts setup; note added for future-proofing
+
+---
+
+#### Introducing Anthropic Labs
+- **Source**: https://www.anthropic.com/news/introducing-anthropic-labs
+- **Published**: Recent (exact date unclear from search; post-April 2026)
+- **Category**: Tooling / Agent (organizational)
+- **What Changed**: Anthropic formalized "Anthropic Labs" as an internal incubator for experimental products at the frontier of Claude's capabilities. Mike Krieger (Instagram co-founder, ex-CPO at Anthropic) joined Labs to work alongside Ben Mann. Labs is responsible for products that start as research previews and graduate to mainstream offerings — Claude Code, MCP (100M monthly downloads), Skills, Cowork, and Claude Code Channels all originated in Labs.
+- **Impact on ag3nts**: Signals where to watch for upcoming features: Labs previews become the stable APIs and CLI features that ag3nts integrates. The trajectory (Claude Code → GA, MCP → industry standard) suggests Labs projects are high-quality adoption candidates within 6–12 months of research preview. No immediate config changes needed; informational for planning future integrations.
+- **Proposed Changes**: None
+- **Priority**: Low — organizational/informational; no code changes
+
+---
+
+### Recommendations
+
+Top 1 change to make now:
+
+1. **`shared/ag3nts.md`** — Add the API-key note under "Scripted / Automated Runs" to clarify that subscription limits no longer cover third-party harnesses (April 2026 policy). One-line addition, no risk.
+
+Note: Claude Mythos Preview is the highest-impact finding but requires no immediate changes — it is not yet generally available. Watch `anthropic.com/glasswing` for API GA.
+
+---
+
 ## Latest Scan: 2026-04-06
 
 ### Summary
