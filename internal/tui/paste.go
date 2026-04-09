@@ -57,12 +57,17 @@ func (p *PasteReader) Read(out []byte) (int, error) {
 		return n, err
 	}
 
-	data := out[:n]
+	data := make([]byte, n)
+	copy(data, out[:n])
 
 	// Check for paste start/end sequences and process.
 	result := p.process(data)
-	copy(out, result)
-	return len(result), err
+
+	// Never report more bytes than the output buffer can hold.
+	// This prevents readline from reading past the buffer boundary
+	// on large pastes where process() output exceeds the read size.
+	copied := copy(out, result)
+	return copied, err
 }
 
 func (p *PasteReader) process(data []byte) []byte {
