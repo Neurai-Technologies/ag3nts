@@ -66,6 +66,7 @@ func ParseCodex(line []byte, agentName, sessionID, taskID string) *AgentEvent {
 				InputTokens:  ce.Usage.InputTokens,
 				OutputTokens: ce.Usage.OutputTokens,
 				CachedTokens: ce.Usage.CachedInputTokens,
+				TotalCost:    estimateCodexCost(ce.Usage.InputTokens, ce.Usage.OutputTokens),
 			}
 		}
 
@@ -89,6 +90,18 @@ func ParseCodex(line []byte, agentName, sessionID, taskID string) *AgentEvent {
 	}
 
 	return &base
+}
+
+// codexPricing: USD per million tokens [input, output].
+// Codex uses OpenAI models — pricing based on codex/o4-mini defaults.
+// Source: https://openai.com/pricing (as of 2025)
+var codexPricing = [2]float64{1.10, 4.40} // o4-mini
+
+// estimateCodexCost estimates USD cost from token counts.
+func estimateCodexCost(inputTokens, outputTokens int) float64 {
+	inCost := float64(inputTokens) / 1_000_000 * codexPricing[0]
+	outCost := float64(outputTokens) / 1_000_000 * codexPricing[1]
+	return inCost + outCost
 }
 
 // mapCodexItem maps a Codex item type to the appropriate AgentEvent kind.

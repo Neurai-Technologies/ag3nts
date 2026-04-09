@@ -96,6 +96,7 @@ func ParseGemini(line []byte, agentName, sessionID, taskID string) *AgentEvent {
 				InputTokens:  ge.Stats.InputTokens,
 				OutputTokens: ge.Stats.OutputTokens,
 				CachedTokens: ge.Stats.Cached,
+				TotalCost:    estimateGeminiCost(ge.Stats.InputTokens, ge.Stats.OutputTokens, ge.Model),
 			}
 		}
 
@@ -162,4 +163,29 @@ func joinParts(parts []string) string {
 		result += ", " + p
 	}
 	return result
+}
+
+// geminiPricing maps model prefixes to USD per million tokens [input, output].
+// Source: https://ai.google.dev/pricing (as of 2025)
+var geminiPricing = map[string][2]float64{
+	"gemini-2.5-pro":   {1.25, 10.0},
+	"gemini-2.5-flash": {0.15, 0.60},
+	"gemini-2.0-flash": {0.10, 0.40},
+	"gemini-1.5-pro":   {1.25, 5.00},
+	"gemini-1.5-flash": {0.075, 0.30},
+}
+
+// estimateGeminiCost estimates USD cost from token counts and model name.
+// Falls back to gemini-2.5-flash pricing if model is unknown.
+func estimateGeminiCost(inputTokens, outputTokens int, model string) float64 {
+	prices := geminiPricing["gemini-2.5-flash"] // default
+	for prefix, p := range geminiPricing {
+		if len(model) >= len(prefix) && model[:len(prefix)] == prefix {
+			prices = p
+			break
+		}
+	}
+	inCost := float64(inputTokens) / 1_000_000 * prices[0]
+	outCost := float64(outputTokens) / 1_000_000 * prices[1]
+	return inCost + outCost
 }

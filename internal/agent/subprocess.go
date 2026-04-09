@@ -196,16 +196,22 @@ func (a *SubprocessAgent) Start(ctx context.Context, prompt string, opts *StartO
 		status := StatusStopped
 		if err != nil {
 			status = StatusFailed
-			errMsg := fmt.Sprintf("Process exited: %v", err)
-			if stderrContent != "" {
-				errMsg += "\nstderr: " + stderrContent
+			exitCode := 1
+			if cmd.ProcessState != nil {
+				exitCode = cmd.ProcessState.ExitCode()
 			}
+			agentErr := ClassifyError(a.name, exitCode, stderrContent)
 			session.Emit(AgentEvent{
 				Kind:      EventError,
 				Agent:     a.name,
 				SessionID: sessionID,
 				TaskID:    opts.TaskID,
-				Content:   errMsg,
+				Content:   agentErr.Error(),
+				Metadata: map[string]any{
+					"error_type": agentErr.Type.String(),
+					"retryable":  agentErr.Retryable,
+					"exit_code":  exitCode,
+				},
 				Timestamp: time.Now(),
 			})
 		}

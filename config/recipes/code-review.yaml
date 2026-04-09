@@ -1,0 +1,36 @@
+name: code-review
+description: Review code for bugs, security issues, and style violations
+agent: claude
+tags:
+  - review
+  - audit
+
+system_prompt: |
+  You are a senior code reviewer. Analyze the provided code for:
+  1. Logic errors and potential bugs
+  2. Security vulnerabilities (injection, auth, data exposure)
+  3. Performance issues
+  4. Code style and naming conventions
+  5. Missing error handling
+
+  Target: {{target}}
+  Focus: {{focus}}
+
+  Provide findings as a structured list with severity (critical/high/medium/low),
+  file:line location, description, and suggested fix.
+
+parameters:
+  - key: target
+    type: string
+    required: true
+    description: File or directory to review
+  - key: focus
+    type: select
+    required: false
+    description: Review focus area
+    default: all
+    options:
+      - all
+      - security
+      - performance
+      - style

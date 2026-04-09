@@ -6,17 +6,26 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/rohanrgit/ag3nts/internal/agent"
 	"github.com/rohanrgit/ag3nts/internal/llm"
+	"github.com/rohanrgit/ag3nts/internal/logging"
 	"github.com/rohanrgit/ag3nts/internal/orchestrator"
 	"github.com/rohanrgit/ag3nts/internal/router"
+	"github.com/rohanrgit/ag3nts/internal/scheduler"
+	"github.com/rohanrgit/ag3nts/internal/security"
+	"github.com/rohanrgit/ag3nts/internal/store"
 	"github.com/rohanrgit/ag3nts/internal/tui"
 )
 
-var primaryFlag string
+var (
+	primaryFlag string
+	resumeFlag  string
+	forkFlag    string
+)
 
 var orchestrateCmd = &cobra.Command{
 	Use:   "orchestrate",
@@ -25,8 +34,10 @@ var orchestrateCmd = &cobra.Command{
 multiple AI agents simultaneously. Chat with your primary agent, dispatch
 tasks to others, and watch them work in parallel.
 
-  ag3nts orchestrate                 # use config defaults
-  ag3nts orchestrate --primary gemini  # start with Gemini as primary`,
+  ag3nts orchestrate                       # use config defaults
+  ag3nts orchestrate --primary gemini      # start with Gemini as primary
+  ag3nts orchestrate --resume <session-id> # resume a previous session
+  ag3nts orchestrate --fork <session-id>   # fork from a previous session`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runOrchestrate()
 	},
@@ -34,6 +45,8 @@ tasks to others, and watch them work in parallel.
 
 func init() {
 	orchestrateCmd.Flags().StringVar(&primaryFlag, "primary", "", "override the primary agent")
+	orchestrateCmd.Flags().StringVar(&resumeFlag, "resume", "", "resume a previous session by ID")
+	orchestrateCmd.Flags().StringVar(&forkFlag, "fork", "", "fork from a previous session (new session, same context)")
 	rootCmd.AddCommand(orchestrateCmd)
 }
 
@@ -104,12 +117,123 @@ func runOrchestrate() error {
 		maxConc = 3
 	}
 
+	// Open SQLite store for structured persistence.
+	var storeDB *store.DB
+	sessionID := fmt.Sprintf("%s_%d", time.Now().Format("20060102"), time.Now().UnixNano()%10000)
+	if layout != nil {
+		dbPath := layout.State + "/ag3nts.db"
+		db, err := store.Open(store.Config{Path: dbPath})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "⚠ SQLite unavailable: %v (falling back to JSON)\n", err)
+		} else {
+			storeDB = db
+			defer storeDB.Close()
+
+			switch {
+			case resumeFlag != "":
+				// Resume: reuse existing session.
+				sess, err := storeDB.GetSession(resumeFlag)
+				if err != nil || sess == nil {
+					return fmt.Errorf("session %q not found", resumeFlag)
+				}
+				sessionID = sess.ID
+				if sess.PrimaryAgent != "" {
+					primary = sess.PrimaryAgent
+				}
+				_ = storeDB.UpdateSessionStatus(sessionID, "active")
+				fmt.Fprintf(os.Stderr, "✓ Resuming session %s\n", sessionID)
+
+			case forkFlag != "":
+				// Fork: create new session, inherit context from source.
+				srcSess, err := storeDB.GetSession(forkFlag)
+				if err != nil || srcSess == nil {
+					return fmt.Errorf("session %q not found for fork", forkFlag)
+				}
+				wd, _ := os.Getwd()
+				_ = storeDB.CreateSession(&store.SessionRecord{
+					ID:           sessionID,
+					Name:         "fork of " + srcSess.ID,
+					WorkingDir:   wd,
+					PrimaryAgent: primary,
+					Status:       "active",
+				})
+				// Copy completed tasks as context reference.
+				srcTasks, _ := storeDB.ListTasks(forkFlag)
+				for _, t := range srcTasks {
+					if t.Status == "completed" && t.ResultOutput != "" {
+						_ = storeDB.CreateTask(&store.TaskRecord{
+							ID:           fmt.Sprintf("fork_%s_%d", t.ID, time.Now().UnixNano()%10000),
+							SessionID:    sessionID,
+							Agent:        t.Agent,
+							Type:         t.Type,
+							Description:  "[forked] " + t.Description,
+							Status:       "completed",
+							ResultOutput: t.ResultOutput,
+							InputTokens:  t.InputTokens,
+							OutputTokens: t.OutputTokens,
+							CostUSD:      t.CostUSD,
+						})
+					}
+				}
+				fmt.Fprintf(os.Stderr, "✓ Forked from session %s → %s\n", forkFlag, sessionID)
+
+			default:
+				// New session.
+				wd, _ := os.Getwd()
+				_ = storeDB.CreateSession(&store.SessionRecord{
+					ID:           sessionID,
+					Name:         "orchestrate",
+					WorkingDir:   wd,
+					PrimaryAgent: primary,
+					Status:       "active",
+				})
+			}
+		}
+	}
+
+	// Create structured logger if enabled.
+	var logger *logging.Logger
+	if cfg.Logging.Enabled && layout != nil {
+		logsDir := layout.State + "/logs"
+		moduleLevels := make(map[string]logging.Level)
+		for mod, lvl := range cfg.Logging.ModuleLevels {
+			moduleLevels[mod] = logging.ParseLevel(lvl)
+		}
+		l, err := logging.Open(logsDir, sessionID, logging.ParseLevel(cfg.Logging.Level), moduleLevels)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "⚠ Logging unavailable: %v\n", err)
+		} else {
+			logger = l
+			defer logger.Close()
+		}
+	}
+
+	// Create memory store if SQLite is available.
+	var memoryStore *store.MemoryStore
+	if storeDB != nil {
+		memoryStore = store.NewMemoryStore(storeDB)
+	}
+
+	// Create security reviewer if enabled.
+	var reviewer *security.Reviewer
+	if cfg.Security.Enabled {
+		blockOnCritical := cfg.Security.BlockOnCritical
+		// Pattern-only by default. LLM review requires an agent to be configured.
+		reviewer = security.NewReviewer(nil, blockOnCritical)
+		fmt.Fprintf(os.Stderr, "✓ Security review enabled (pattern filter, block_on_critical=%v)\n", blockOnCritical)
+	}
+
 	// Create orchestrator.
 	orch, err := orchestrator.New(orchestrator.Config{
 		Primary:        primary,
 		MaxConcurrency: maxConc,
 		PersistDir:     persistDir,
 		Routes:         routes,
+		StoreDB:        storeDB,
+		SessionID:      sessionID,
+		Reviewer:       reviewer,
+		Logger:         logger,
+		Memory:         memoryStore,
 	}, registry)
 	if err != nil {
 		return fmt.Errorf("create orchestrator: %w", err)
@@ -137,6 +261,18 @@ func runOrchestrate() error {
 	if err := orch.Start(ctx); err != nil {
 		return fmt.Errorf("start orchestrator: %w", err)
 	}
+
+	// Start background scheduler if SQLite is available.
+	if storeDB != nil {
+		recipeLoader := buildRecipeLoader()
+		sched := scheduler.New(storeDB, recipeLoader, orch, logger)
+		if err := sched.Start(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "⚠ Scheduler unavailable: %v\n", err)
+		} else {
+			defer sched.Stop()
+		}
+	}
+
 	if cfg.LLM.Enabled {
 		workDir := layout.Base
 		lo, err := llm.NewLocalOrchestrator(llm.OrchestratorConfig{

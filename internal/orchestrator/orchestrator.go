@@ -12,7 +12,10 @@ import (
 
 	"github.com/rohanrgit/ag3nts/internal/agent"
 	"github.com/rohanrgit/ag3nts/internal/bus"
+	"github.com/rohanrgit/ag3nts/internal/logging"
 	"github.com/rohanrgit/ag3nts/internal/router"
+	"github.com/rohanrgit/ag3nts/internal/security"
+	"github.com/rohanrgit/ag3nts/internal/store"
 	"github.com/rohanrgit/ag3nts/internal/task"
 )
 
@@ -25,6 +28,12 @@ type Config struct {
 	MaxConcurrency int            // max parallel agent executions
 	PersistDir     string         // directory for task/result persistence
 	Routes         []router.Route // routing rules
+	StoreDB        *store.DB             // SQLite store (nil = JSON-only fallback)
+	SessionID      string               // current session identifier for SQLite
+	Reviewer       *security.Reviewer   // pre-dispatch security reviewer (nil = disabled)
+	Logger         *logging.Logger      // structured logger (nil = disabled)
+	Compactor      *Compactor           // context compactor (nil = disabled)
+	Memory         *store.MemoryStore   // cross-agent memory (nil = disabled)
 }
 
 // Orchestrator coordinates agent dispatch, task management, and message flow.
@@ -33,7 +42,13 @@ type Orchestrator struct {
 	router  *router.Router
 	queue   *task.Queue
 	store   *Store
-	bus     *bus.Bus
+	storeDB  *store.DB          // SQLite persistence (nil = disabled)
+	sessID   string             // current session ID for SQLite
+	reviewer *security.Reviewer // pre-dispatch security review (nil = disabled)
+	logger    *logging.Logger   // structured session logger (nil = disabled)
+	compactor *Compactor        // progressive context compaction (nil = disabled)
+	memory    *store.MemoryStore // cross-agent memory (nil = disabled)
+	bus       *bus.Bus
 	primary string
 	maxConc int
 
@@ -41,6 +56,7 @@ type Orchestrator struct {
 	running    map[string]*agent.Session // taskID → active session
 	mainSess   *agent.Session            // primary agent interactive session
 	directSess map[string]*agent.Session // agentName → direct send session (for resume)
+	retryCount map[string]int            // taskID → retry attempts so far
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -71,17 +87,29 @@ func New(cfg Config, agents *agent.Registry) (*Orchestrator, error) {
 		router:     r,
 		queue:      task.NewQueue(taskDir),
 		store:      NewStore(resultDir),
+		storeDB:    cfg.StoreDB,
+		sessID:     cfg.SessionID,
+		reviewer:   cfg.Reviewer,
+		logger:     cfg.Logger,
+		compactor:  cfg.Compactor,
+		memory:     cfg.Memory,
 		bus:        bus.New(),
 		primary:    cfg.Primary,
 		maxConc:    maxConc,
 		running:    make(map[string]*agent.Session),
 		directSess: make(map[string]*agent.Session),
+		retryCount: make(map[string]int),
 	}, nil
 }
 
 // Bus returns the event bus for external consumers to subscribe to events.
 func (o *Orchestrator) Bus() *bus.Bus {
 	return o.bus
+}
+
+// StoreDB returns the SQLite store, or nil if not configured.
+func (o *Orchestrator) StoreDB() *store.DB {
+	return o.storeDB
 }
 
 // Start begins the orchestrator dispatch loop in a background goroutine.
@@ -458,8 +486,46 @@ func (o *Orchestrator) dispatchReady() {
 			continue
 		}
 
+		// Pre-dispatch security review.
+		if o.reviewer != nil {
+			review := o.reviewer.Review(o.ctx, t.Description, "")
+			if review.Decision == security.ReviewBlock {
+				_ = o.queue.Update(t.ID, task.StatusFailed, &task.Result{
+					Error: fmt.Sprintf("security blocked: %s", review.Explanation),
+				})
+				o.publish(agent.AgentEvent{
+					Kind:      agent.EventError,
+					Agent:     "security",
+					TaskID:    t.ID,
+					Content:   fmt.Sprintf("BLOCKED: %s", review.Explanation),
+					Timestamp: time.Now(),
+				})
+				if o.logger != nil {
+					o.logger.LogAgentWith(logging.LevelWarn, "security", "", t.ID,
+						"task blocked by security review", map[string]any{"explanation": review.Explanation})
+				}
+				continue
+			}
+		}
+
 		// Mark as running.
 		_ = o.queue.Update(t.ID, task.StatusRunning, nil)
+		if o.storeDB != nil {
+			_ = o.storeDB.CreateTask(&store.TaskRecord{
+				ID:          t.ID,
+				SessionID:   o.sessID,
+				Agent:       agentName,
+				Type:        t.Type,
+				Description: t.Description,
+				Status:      "running",
+				DependsOn:   t.DependsOn,
+				ContextFrom: t.ContextFrom,
+			})
+		}
+		if o.logger != nil {
+			o.logger.LogAgentWith(logging.LevelInfo, "orchestrator", agentName, t.ID,
+				"dispatching task", map[string]any{"type": t.Type, "description_len": len(t.Description)})
+		}
 
 		// Build context from referenced task results.
 		contextStr := o.buildContext(t.ContextFrom)
@@ -523,6 +589,42 @@ func (o *Orchestrator) executeTask(t *task.Task, a agent.Agent, contextStr strin
 	if sess.Status == agent.StatusFailed {
 		status = task.StatusFailed
 		errStr = "agent session failed"
+
+		// Check if the error is retryable.
+		if lastErr := findLastError(events); lastErr != nil {
+			if retryable, _ := lastErr.Metadata["retryable"].(bool); retryable {
+				errTypeStr, _ := lastErr.Metadata["error_type"].(string)
+				errType := parseErrorType(errTypeStr)
+				cfg := agent.DefaultRetryConfig(errType)
+
+				o.mu.Lock()
+				attempts := o.retryCount[t.ID]
+				o.mu.Unlock()
+
+				if cfg.MaxAttempts > 0 && attempts < cfg.MaxAttempts {
+					backoff := cfg.Backoff(attempts)
+					o.publish(agent.AgentEvent{
+						Kind:      agent.EventProgress,
+						Agent:     "orchestrator",
+						TaskID:    t.ID,
+						Content:   fmt.Sprintf("retrying in %s (attempt %d/%d, %s)", backoff.Round(time.Second), attempts+1, cfg.MaxAttempts, errTypeStr),
+						Timestamp: time.Now(),
+					})
+					if o.logger != nil {
+						o.logger.LogAgentWith(logging.LevelWarn, "orchestrator", a.Name(), t.ID,
+							fmt.Sprintf("retrying task (attempt %d/%d, %s)", attempts+1, cfg.MaxAttempts, errTypeStr),
+							map[string]any{"backoff_ms": backoff.Milliseconds()})
+					}
+					time.Sleep(backoff)
+					o.mu.Lock()
+					o.retryCount[t.ID] = attempts + 1
+					delete(o.running, t.ID)
+					o.mu.Unlock()
+					_ = o.queue.Update(t.ID, task.StatusPending, nil)
+					return // will be re-dispatched by dispatchLoop
+				}
+			}
+		}
 	}
 
 	result := &task.Result{
@@ -533,7 +635,35 @@ func (o *Orchestrator) executeTask(t *task.Task, a agent.Agent, contextStr strin
 		Error:    errStr,
 	}
 
+	// Persist to SQLite BEFORE queue update — queue update signals completion
+	// to waiters, so SQLite must be written first to avoid read-before-write races.
+	if o.storeDB != nil {
+		var tokens store.TokenRecord
+		var costUSD float64
+		if usage != nil {
+			tokens = store.TokenRecord{
+				InputTokens:  usage.InputTokens,
+				OutputTokens: usage.OutputTokens,
+				CachedTokens: usage.CachedTokens,
+				CostUSD:      usage.TotalCost,
+			}
+			costUSD = usage.TotalCost
+		}
+		_ = o.storeDB.UpdateTaskResult(t.ID, a.Name(), output.String(), errStr, tokens, duration.Milliseconds())
+		_ = o.storeDB.AddTokenUsage(o.sessID, tokens.InputTokens, tokens.OutputTokens, tokens.CachedTokens, costUSD)
+	}
+
 	_ = o.queue.Update(t.ID, status, result)
+
+	// Log task completion.
+	if o.logger != nil {
+		logLevel := logging.LevelInfo
+		if status == task.StatusFailed {
+			logLevel = logging.LevelError
+		}
+		o.logger.LogAgentWith(logLevel, "orchestrator", a.Name(), t.ID, "task "+status.String(),
+			map[string]any{"duration_ms": duration.Milliseconds(), "error": errStr})
+	}
 
 	// Save result to context store for downstream tasks.
 	o.store.SaveResult(t.ID, result)
@@ -543,17 +673,33 @@ func (o *Orchestrator) executeTask(t *task.Task, a agent.Agent, contextStr strin
 	o.mu.Unlock()
 }
 
-// buildContext assembles context from completed task results.
+// buildContext assembles context from cross-agent memory and completed task results.
 // SR-12: Truncates individual results at 100KB.
 func (o *Orchestrator) buildContext(taskIDs []string) string {
-	if len(taskIDs) == 0 {
-		return ""
-	}
-
 	const maxResultSize = 100 * 1024   // SR-12: 100KB per result
 	const maxTotalContext = 512 * 1024 // M-1 fix: 512KB total context cap
 
 	var parts []string
+
+	// Prepend relevant memories if available.
+	if o.memory != nil {
+		wd := ""
+		if o.storeDB != nil {
+			if sess, _ := o.storeDB.GetSession(o.sessID); sess != nil {
+				wd = sess.WorkingDir
+			}
+		}
+		if memCtx := o.memory.InjectRelevant(wd, ""); memCtx != "" {
+			parts = append(parts, memCtx)
+		}
+	}
+
+	if len(taskIDs) == 0 {
+		if len(parts) == 0 {
+			return ""
+		}
+		return strings.Join(parts, "\n\n")
+	}
 	var totalSize int
 	for _, id := range taskIDs {
 		result := o.store.GetResult(id)
@@ -575,7 +721,14 @@ func (o *Orchestrator) buildContext(taskIDs []string) string {
 	if len(parts) == 0 {
 		return ""
 	}
-	return strings.Join(parts, "\n\n")
+	assembled := strings.Join(parts, "\n\n")
+
+	// Run through compactor if available.
+	if o.compactor != nil {
+		assembled = o.compactor.CheckAndCompact(o.ctx, assembled)
+	}
+
+	return assembled
 }
 
 // Cancel stops the active session for a given agent.
@@ -643,4 +796,36 @@ func (o *Orchestrator) publish(event agent.AgentEvent) {
 
 	// Publish on the global system topic.
 	o.bus.Publish("system", event.Agent, event)
+}
+
+// findLastError returns the last EventError from an event slice, or nil.
+func findLastError(events []agent.AgentEvent) *agent.AgentEvent {
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].Kind == agent.EventError {
+			return &events[i]
+		}
+	}
+	return nil
+}
+
+// parseErrorType converts a string back to an ErrorType.
+func parseErrorType(s string) agent.ErrorType {
+	switch s {
+	case "auth_failed":
+		return agent.ErrAuthFailed
+	case "rate_limited":
+		return agent.ErrRateLimited
+	case "context_exceeded":
+		return agent.ErrContextExceeded
+	case "crashed":
+		return agent.ErrCrashed
+	case "timed_out":
+		return agent.ErrTimedOut
+	case "network_error":
+		return agent.ErrNetworkError
+	case "security_blocked":
+		return agent.ErrSecurityBlocked
+	default:
+		return agent.ErrUnknown
+	}
 }

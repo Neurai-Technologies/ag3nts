@@ -25,6 +25,7 @@ import (
 	"github.com/rohanrgit/ag3nts/internal/config"
 	"github.com/rohanrgit/ag3nts/internal/llm"
 	"github.com/rohanrgit/ag3nts/internal/orchestrator"
+	"github.com/rohanrgit/ag3nts/internal/recipe"
 	"github.com/rohanrgit/ag3nts/internal/router"
 	"github.com/rohanrgit/ag3nts/internal/task"
 )
@@ -68,8 +69,9 @@ type App struct {
 	sessionStart  time.Time
 	totalTokenIn  int64
 	totalTokenOut int64
-	agentTokens   map[string][2]int64
+	agentTokens   map[string][3]int64 // [input, output, cost_microdollars]
 	agentTokensMu sync.RWMutex
+	totalCostUSD  float64
 }
 
 // newSlashCompleter creates a tab-completion handler for slash commands.
@@ -85,6 +87,8 @@ func newSlashCompleter() *readline.PrefixCompleter {
 		readline.PcItem("/status"),
 		readline.PcItem("/reload"),
 		readline.PcItem("/cost"),
+		readline.PcItem("/recipe"),
+		readline.PcItem("/schedule"),
 		readline.PcItem("/memory"),
 		readline.PcItem("/local",
 			readline.PcItem("status"),
@@ -110,7 +114,7 @@ func New(orch *orchestrator.Orchestrator, localOrch *llm.LocalOrchestrator, conf
 		stream:      newStreamBuffer(),
 		permCh:      make(chan PermissionRequest),
 		lastTool:    make(map[string]string),
-		agentTokens: make(map[string][2]int64),
+		agentTokens: make(map[string][3]int64),
 	}
 }
 
@@ -435,6 +439,13 @@ func (a *App) printStatusLine() {
 		parts = append(parts, fmt.Sprintf("↑%s ↓%s", formatTokens(tokIn), formatTokens(tokOut)))
 	}
 
+	a.agentTokensMu.RLock()
+	cost := a.totalCostUSD
+	a.agentTokensMu.RUnlock()
+	if cost > 0 {
+		parts = append(parts, fmt.Sprintf("$%.4f", cost))
+	}
+
 	elapsed := time.Since(a.sessionStart).Round(time.Second)
 	parts = append(parts, formatDuration(elapsed))
 
@@ -717,6 +728,8 @@ func (a *App) handleSlash(ctx context.Context, input string) {
 			"  /status   — show overview",
 			"  /reload   — reload config and apply hot settings",
 			"  /cost    — show session cost breakdown",
+			"  /recipe   — list or run a recipe (/recipe <name> [key=val...])",
+			"  /schedule — list background schedules",
 			"  /quit     — exit",
 			"Errors are prefixed with a red ✘ icon.",
 		}
@@ -857,15 +870,150 @@ func (a *App) handleSlash(ctx context.Context, input string) {
 		sort.Strings(agentNames)
 		for _, name := range agentNames {
 			tokens := a.agentTokens[name]
-			lines = append(lines, fmt.Sprintf("%s: ↑%s ↓%s", name, formatTokens(tokens[0]), formatTokens(tokens[1])))
+			costUSD := float64(tokens[2]) / 1_000_000
+			if costUSD > 0 {
+				lines = append(lines, fmt.Sprintf("  %s: ↑%s ↓%s ($%.4f)", name, formatTokens(tokens[0]), formatTokens(tokens[1]), costUSD))
+			} else {
+				lines = append(lines, fmt.Sprintf("  %s: ↑%s ↓%s", name, formatTokens(tokens[0]), formatTokens(tokens[1])))
+			}
 		}
+		totalCost := a.totalCostUSD
 		a.agentTokensMu.RUnlock()
 
+		if totalCost > 0 {
+			lines = append(lines, fmt.Sprintf("Session Cost: $%.4f", totalCost))
+		}
+
 		a.printLines("ag3nts", strings.Join(lines, "\n"))
+
+	case "/recipe":
+		recipeArgs := ""
+		if len(parts) > 1 {
+			recipeArgs = strings.Join(parts[1:], " ")
+		}
+		a.handleRecipe(ctx, recipeArgs)
+
+	case "/schedule":
+		a.handleSchedule()
 
 	default:
 		a.printError("error", fmt.Sprintf("Unknown: %s (try /help)", cmd))
 	}
+}
+
+// handleRecipe lists or runs a recipe.
+// Usage: /recipe (list all) or /recipe <name> [key=val ...]
+func (a *App) handleRecipe(ctx context.Context, args string) {
+	// Build recipe loader from config paths.
+	var searchPaths []string
+	a.cfgMu.RLock()
+	currentCfg := a.currentCfg
+	a.cfgMu.RUnlock()
+
+	configDir := filepath.Dir(a.configPath)
+	searchPaths = append(searchPaths, filepath.Join(configDir, "recipes"))
+	if currentCfg != nil && currentCfg.Workflows.Active != "" {
+		searchPaths = append(searchPaths, filepath.Join(configDir, "workflows", currentCfg.Workflows.Active, "recipes"))
+	}
+	loader := recipe.NewLoader(searchPaths...)
+
+	if args == "" {
+		// List recipes.
+		recipes := loader.List()
+		if len(recipes) == 0 {
+			a.printLine("ag3nts", "No recipes found. Add .yaml files to config/recipes/")
+			return
+		}
+		var lines []string
+		for _, r := range recipes {
+			agentStr := r.Agent
+			if agentStr == "" {
+				agentStr = "any"
+			}
+			lines = append(lines, fmt.Sprintf("  %-18s %-8s %s", r.Name, agentStr, r.Description))
+		}
+		a.printLines("ag3nts", "Recipes:\n"+strings.Join(lines, "\n"))
+		return
+	}
+
+	// Parse: /recipe <name> [key=val ...]
+	parts := strings.Fields(args)
+	name := parts[0]
+	params := make(map[string]string)
+	for _, p := range parts[1:] {
+		kv := strings.SplitN(p, "=", 2)
+		if len(kv) == 2 {
+			params[kv[0]] = kv[1]
+		}
+	}
+
+	r, err := loader.Get(name)
+	if err != nil {
+		a.printError("recipe", err.Error())
+		return
+	}
+	if err := r.Validate(); err != nil {
+		a.printError("recipe", err.Error())
+		return
+	}
+
+	prompt, err := r.RenderPrompt(params)
+	if err != nil {
+		a.printError("recipe", err.Error())
+		return
+	}
+
+	// Dispatch as a task through the orchestrator.
+	t := &task.Task{
+		ID:          fmt.Sprintf("R%d", time.Now().UnixNano()%100000),
+		Description: prompt,
+		Type:        r.TaskType(),
+		Agent:       r.Agent,
+		Status:      task.StatusPending,
+	}
+	if err := a.orch.CreateTask(t); err != nil {
+		a.printError("recipe", fmt.Sprintf("dispatch failed: %v", err))
+		return
+	}
+	a.printLine("ag3nts", fmt.Sprintf("Recipe %q dispatched as task %s → %s", r.Name, t.ID, r.Agent))
+}
+
+// handleSchedule lists background schedules.
+func (a *App) handleSchedule() {
+	db := a.orch.StoreDB()
+	if db == nil {
+		a.printLine("ag3nts", "Schedules require SQLite (not available).")
+		return
+	}
+
+	schedules, err := db.ListSchedules()
+	if err != nil {
+		a.printError("schedule", err.Error())
+		return
+	}
+	if len(schedules) == 0 {
+		a.printLine("ag3nts", "No schedules. Use 'ag3nts schedule add' to create one.")
+		return
+	}
+
+	var lines []string
+	for _, s := range schedules {
+		enabled := "on"
+		if !s.Enabled {
+			enabled = "off"
+		}
+		lastRun := "never"
+		if !s.LastRun.IsZero() {
+			lastRun = s.LastRun.Format("01-02 15:04")
+		}
+		nextRun := "—"
+		if !s.NextRun.IsZero() {
+			nextRun = s.NextRun.Format("01-02 15:04")
+		}
+		lines = append(lines, fmt.Sprintf("  %-16s %-4s %-15s recipe=%-12s last=%s next=%s",
+			s.ID, enabled, s.Cron, s.Recipe, lastRun, nextRun))
+	}
+	a.printLines("ag3nts", "Schedules:\n"+strings.Join(lines, "\n"))
 }
 
 // --- Event handling ---
@@ -1047,11 +1195,14 @@ func (a *App) handleEvent(event bus.Event) {
 			out := int64(agentEvt.Usage.OutputTokens)
 			atomic.AddInt64(&a.totalTokenIn, in)
 			atomic.AddInt64(&a.totalTokenOut, out)
+			costMicro := int64(agentEvt.Usage.TotalCost * 1_000_000) // store as microdollars for atomic int ops
 			a.agentTokensMu.Lock()
 			tokens := a.agentTokens[agentEvt.Agent]
 			tokens[0] += in
 			tokens[1] += out
+			tokens[2] += costMicro
 			a.agentTokens[agentEvt.Agent] = tokens
+			a.totalCostUSD += agentEvt.Usage.TotalCost
 			a.agentTokensMu.Unlock()
 			cost := ""
 			if agentEvt.Usage.TotalCost > 0 {

@@ -26,6 +26,33 @@ type Config struct {
 	Agents       map[string]AgentConfig   `toml:"agents"`
 	Routing      RoutingConfig            `toml:"routing"`
 	LLM          LLMConfig                `toml:"llm"`
+	Security     SecurityConfig           `toml:"security"`
+	Logging      LoggingConfig            `toml:"logging"`
+	ToolSets     map[string]ToolSetConfig `toml:"toolsets"`
+}
+
+// ToolSetConfig defines a dynamically registered tool-set in ag3nts.toml.
+type ToolSetConfig struct {
+	Type        string   `toml:"type"`        // "mcp", "builtin", "script"
+	Command     string   `toml:"command"`     // binary to run
+	Args        []string `toml:"args"`        // arguments
+	Description string   `toml:"description"`
+}
+
+// LoggingConfig holds structured logging settings.
+type LoggingConfig struct {
+	Enabled      bool              `toml:"enabled"`       // master switch (default: true)
+	Level        string            `toml:"level"`         // default level: debug, info, warn, error
+	ModuleLevels map[string]string `toml:"module_levels"` // per-module overrides
+}
+
+// SecurityConfig holds pre-dispatch security review settings.
+type SecurityConfig struct {
+	Enabled         bool   `toml:"enabled"`          // master switch (default: false)
+	PatternFilter   bool   `toml:"pattern_filter"`   // regex pre-filter (default: true when enabled)
+	LLMReview       bool   `toml:"llm_review"`       // LLM-based review (default: false)
+	ReviewModel     string `toml:"review_model"`     // model/agent for LLM review (e.g. "haiku")
+	BlockOnCritical bool   `toml:"block_on_critical"` // auto-block Critical threats (default: true)
 }
 
 // LLMConfig holds settings for the local LLM orchestrator (Ollama).
@@ -115,19 +142,31 @@ func Load(path string) (*Config, error) {
 }
 
 // Save writes the config to the given path with owner-only permissions (SR-7).
+// Uses atomic write (write to .tmp, rename) to prevent corruption if the
+// process crashes mid-write.
 func (c *Config) Save(path string) error {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	tmpPath := path + ".tmp"
+	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {
-		return fmt.Errorf("create config file: %w", err)
+		return fmt.Errorf("create temp config file: %w", err)
 	}
-	defer f.Close()
 
 	enc := toml.NewEncoder(f)
 	if err := enc.Encode(c); err != nil {
+		f.Close()
+		os.Remove(tmpPath)
 		return fmt.Errorf("encode config: %w", err)
 	}
-	// Ensure owner-only permissions on existing files
-	_ = os.Chmod(path, 0600)
+	if err := f.Close(); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("close temp config: %w", err)
+	}
+
+	// Atomic rename replaces the config file.
+	if err := os.Rename(tmpPath, path); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("atomic rename config: %w", err)
+	}
 	return nil
 }
 
@@ -147,7 +186,25 @@ func Default() *Config {
 			MaxConcurrency: 3,
 			PersistSessions: true,
 		},
-		Agents: make(map[string]AgentConfig),
+		Agents:   make(map[string]AgentConfig),
+		ToolSets: make(map[string]ToolSetConfig),
+		Security: SecurityConfig{
+			Enabled:         true,
+			PatternFilter:   true,
+			LLMReview:       false,
+			BlockOnCritical: true,
+		},
+		Logging: LoggingConfig{
+			Enabled: true,
+			Level:   "info",
+			ModuleLevels: map[string]string{
+				"orchestrator": "info",
+				"router":       "warn",
+				"agent":        "info",
+				"bus":          "warn",
+				"security":     "info",
+			},
+		},
 		LLM: LLMConfig{
 			Enabled:       false,
 			Endpoint:      "http://localhost:11434",
