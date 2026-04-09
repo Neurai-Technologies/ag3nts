@@ -53,7 +53,8 @@ type App struct {
 	rl         *readline.Instance
 	mu         sync.Mutex
 	active     string
-	permCh     chan PermissionRequest // tools send permission requests here
+	permCh       chan PermissionRequest // tools send permission requests here
+	allowedTools map[string]bool       // tools approved via "always allow"
 	lastTool   map[string]string      // last tool use line by agent (for formatting tool results)
 
 	// Spinner.
@@ -112,7 +113,8 @@ func New(orch *orchestrator.Orchestrator, localOrch *llm.LocalOrchestrator, conf
 		currentCfg:  currentCfg,
 		eventCh:     orch.Bus().Subscribe(512, "system"),
 		stream:      newStreamBuffer(),
-		permCh:      make(chan PermissionRequest),
+		permCh:       make(chan PermissionRequest),
+		allowedTools: make(map[string]bool),
 		lastTool:    make(map[string]string),
 		agentTokens: make(map[string][3]int64),
 	}
@@ -1048,31 +1050,46 @@ func (a *App) eventLoop(ctx context.Context) {
 }
 
 // handlePermission asks the user to approve or deny a tool action.
+// Offers Claude Code-style options: allow once, always allow, or deny.
 func (a *App) handlePermission(req PermissionRequest) {
+	// Auto-approve if this tool was previously set to "always allow".
+	if a.allowedTools[req.Tool] {
+		a.println(dimStyle.Render(fmt.Sprintf("  ✓ Auto-approved: %s", req.Tool)))
+		req.Reply <- true
+		return
+	}
+
 	a.stopSpinner()
-	// Show the permission prompt.
+
 	promptStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FFD54F")).Bold(true)
+	greenStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#81C784"))
 	a.println("")
 	a.println(promptStyle.Render("⚠ Permission required"))
 	a.println(fmt.Sprintf("  Tool:   %s", req.Tool))
 	a.println(fmt.Sprintf("  Action: %s", req.Action))
-	fmt.Print(dimStyle.Render("  Allow? [y/n] "))
+	a.println(dimStyle.Render("  1) Allow once"))
+	a.println(dimStyle.Render("  2) Always allow " + req.Tool))
+	a.println(dimStyle.Render("  3) Deny"))
+	fmt.Print(dimStyle.Render("  Choice [1/2/3]: "))
 
-	// Read a single character response.
 	var response string
 	fmt.Scanln(&response)
-	response = strings.ToLower(strings.TrimSpace(response))
+	response = strings.TrimSpace(response)
 
-	approved := response == "y" || response == "yes"
-	if approved {
-		a.println(lipgloss.NewStyle().Foreground(lipgloss.Color("#81C784")).Render("  ✓ Approved"))
-	} else {
+	switch response {
+	case "1", "y", "yes":
+		a.println(greenStyle.Render("  ✓ Approved"))
+		req.Reply <- true
+	case "2":
+		a.allowedTools[req.Tool] = true
+		a.println(greenStyle.Render("  ✓ Always allowed: " + req.Tool))
+		req.Reply <- true
+	default:
 		a.println(errorStyle.Render("  ✘ Denied"))
+		req.Reply <- false
 	}
 	a.println("")
 	a.startSpinner(a.headModel() + " processing...")
-
-	req.Reply <- approved
 }
 
 // GetPermissionFunc returns a function that tools can call to request permission.
