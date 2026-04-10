@@ -1,5 +1,105 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-04-10
+
+### Summary
+- Sources scanned: 4 (anthropic.com/news, /research, /engineering, docs.anthropic.com)
+- New findings: 6
+- Actionable integrations: 3
+
+### Findings
+
+#### New Agent Capabilities API — MCP Connector, Files API, Code Execution, 1-Hour Caching
+- **Source**: https://www.anthropic.com/news/agent-capabilities-api
+- **Published**: Recent (April 2026, beta)
+- **Category**: API / Agent
+- **What Changed**: Anthropic announced four new beta capabilities on the Anthropic API: (1) **Code execution tool** — agents can run code for advanced data analysis; (2) **MCP connector** — connect Claude to any remote MCP server without writing client code; API handles connection management, tool discovery, and error handling automatically; (3) **Files API** — persistent file storage and retrieval across agent sessions; (4) **Extended prompt caching** — new 1-hour TTL option (up from 5-minute standard), reducing costs up to 90% and latency up to 85% for long prompts.
+- **Impact on ag3nts**: 
+  - **MCP connector**: If ag3nts ever integrates remote MCP servers (e.g., for security CVE databases, web search), the connector eliminates the need for custom client code. Relevant to `security-engineer` (CVEs) and `accessibility-auditor` (WCAG refs).
+  - **Files API**: Could enable agent-to-agent persistent state sharing across REPAIR pipeline stages — architecture documents from Stage 4 could persist as Files API objects for Stage 5/6 to read.
+  - **1-hour TTL caching**: The `security-engineer` and `code-reviewer` agents share large system prompts on every commit hook invocation. Extended TTL caching could materially reduce per-commit API costs.
+  - **Code execution tool**: The `software-architect` agent could use server-side code execution for analysis tasks.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — add note under "Scripted / Automated Runs" that extended TTL prompt caching (1-hour) is available and recommended for hook-invoked agents that share large, stable system prompts
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add Agent Capabilities API docs link as a reference for MCP connector, Files API, Code Execution tool
+- **Priority**: High — the MCP connector and 1-hour TTL caching are directly applicable to the current ag3nts hook infrastructure; Files API is a strong candidate once a scripted pipeline is built
+
+---
+
+#### Claude Agent SDK — Renamed from Claude Code SDK
+- **Source**: https://www.anthropic.com/engineering/building-agents-with-the-claude-agent-sdk
+- **Published**: April 2026
+- **Category**: Tooling / Agent
+- **What Changed**: Anthropic renamed the "Claude Code SDK" to the **Claude Agent SDK** to reflect its broader use beyond coding tasks. Same underlying infrastructure that powers Claude Code. Key features: subagents for delegating specialized tasks, hooks that trigger at specific pipeline points, and background tasks for long-running processes. Apple Xcode 26.3 now ships with a native Claude Agent SDK integration (subagents, background tasks, plugins — all without leaving the IDE).
+- **Impact on ag3nts**: 
+  - The ag3nts system uses Claude Code as its execution harness. The SDK rename means any internal documentation or external references to "Claude Code SDK" should be updated to "Claude Agent SDK."
+  - The Xcode integration is informational for Rohan (primary stack is VS Code, not Xcode); no config change needed.
+  - The confirmation that hooks and subagents are first-class SDK features validates the existing hook architecture in `shared/claude-code/hooks/`.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — update any references from "Claude Code SDK" to "Claude Agent SDK" if present (scan for the term; likely none in current config)
+- **Priority**: Low — rename only; no behavior change; scan existing docs for old name
+
+---
+
+#### Scaling Managed Agents — Decoupling Brain from Hands
+- **Source**: https://www.anthropic.com/engineering/managed-agents
+- **Published**: April 2026
+- **Category**: Agent
+- **What Changed**: Anthropic engineering published architecture details for their Managed Agents system. Key innovation: decoupling the "brain" (stateless Claude inference harness) from "hands" (compute containers with tools/terminal access). Containers are provisioned on-demand only when needed, not held for the duration of a session. Results: p50 time-to-first-token dropped ~60%, p95 dropped >90%. Supports scaling to many parallel brains and multi-environment (VPC-isolated) hands.
+- **Impact on ag3nts**: Directly relevant to the REPAIR pipeline's RepairBoss orchestration and the `code-reviewer` multi-agent dispatch pattern. The brain/hands decoupling mirrors how the pre-commit hooks work — Claude (brain) invokes shell scripts (hands) only when a commit event occurs. The article's multi-environment patterns are relevant if ag3nts ever needs to run specialist agents against isolated environments (e.g., security-engineer in a sandboxed container).
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add "Scaling Managed Agents: Decoupling the brain from the hands" engineering post as a reference link
+- **Priority**: Medium — architectural reference; validate current REPAIR pipeline design against these patterns; add as reference
+
+---
+
+#### Next-Generation Constitutional Classifiers
+- **Source**: https://www.anthropic.com/research/next-generation-constitutional-classifiers
+- **Published**: April 2026
+- **Category**: Safety
+- **What Changed**: Anthropic published the next generation of Constitutional Classifiers, its defense against universal jailbreaks. Key upgrade: replaced separate input/output classifiers with a single "exchange" classifier that monitors outputs in context of their inputs — making surreptitious linking attacks visible. In human red teaming, the exchange classifier cut successful jailbreaking attempts by more than half vs. the first generation (which already reduced jailbreak success from 86% to 4.4%). Total additional compute cost: ~1%.
+- **Impact on ag3nts**: The `security-engineer` and `code-reviewer` agents receive untrusted content (user code, diffs) which could theoretically contain adversarial prompt injections. The Constitutional Classifier upgrade means Anthropic's base model defense against jailbreaks is significantly stronger — the ag3nts agents' exposure to adversarial input in diffs is partially mitigated at the API level. No config changes required; informational for the threat model.
+- **Proposed Changes**: None — informational; reduces concern about adversarial content in diffs reaching agent processing
+- **Priority**: Low — positive safety development; no action needed
+
+---
+
+#### Token-Saving Updates — Cache-Aware ITPM Limits
+- **Source**: https://www.anthropic.com/news/token-saving-updates
+- **Published**: April 2026
+- **Category**: API
+- **What Changed**: Prompt cache read tokens no longer count against Input Tokens Per Minute (ITPM) rate limits for Claude 3.7 Sonnet (and by extension, newer models). Additionally, prompt caching simplified: Claude now automatically reads from the longest previously cached prefix without requiring manual tracking of which segments to cache. Also: token-efficient tool use available for 3.7 Sonnet.
+- **Impact on ag3nts**: The pre-commit hook chain invokes `security-engineer` and `code-reviewer` on every commit. If these agents cache their large system prompts, ITPM limits no longer penalize cache-read tokens. This is especially relevant in burst scenarios where multiple commits happen in quick succession. The simplified auto-prefix caching means no changes needed in agent definitions to benefit.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — add note under hook-invoked agents that prompt cache reads are ITPM-exempt; encourage system prompt caching in agent definitions for high-frequency agents
+- **Priority**: Medium — cost/throughput optimization; passive benefit from simplified caching; document for awareness
+
+---
+
+#### Research: AI Assistance Reduces Coding Skill Formation
+- **Source**: https://www.anthropic.com/research/AI-assistance-coding-skills
+- **Published**: April 2026
+- **Category**: Safety / Agent (alignment)
+- **What Changed**: Anthropic published a randomized controlled trial (n=52 junior developers) examining the effect of AI assistance on skill development. Key finding: participants using AI assistance scored 17% lower (~2 letter grades) on a knowledge quiz covering concepts used immediately before — despite finishing tasks faster. The productivity improvement was not statistically significant. Participants without AI assistance improved debugging skills through error resolution.
+- **Impact on ag3nts**: Reinforces the `reality-checker` agent's "NEEDS WORK" default and the Interaction Rules principle of preserving user agency (already logged from the Disempowerment Patterns research in the April 6 scan). The implication for ag3nts is that agents should surface explanations of changes made, not just silently apply them — enabling the developer to learn from the correction rather than skip it. The `code-reviewer` currently outputs confidence scores and findings; this research supports keeping that explicit rather than collapsing to auto-fix.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — reinforce note in Interaction Rules that agents should explain changes, not just make them; surface root cause analysis to preserve developer skill formation (complements the disempowerment research note already proposed April 6)
+- **Priority**: Low — safety/alignment informational; existing practices already aligned; minor doc reinforcement
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **`shared/claude-code/knowledge-base/repos.md`** — Add two new reference links: (a) "New capabilities for building agents on the Anthropic API" (`anthropic.com/news/agent-capabilities-api`) for MCP connector/Files API/Code Execution reference; (b) "Scaling Managed Agents: Decoupling the brain from the hands" (`anthropic.com/engineering/managed-agents`) for architecture reference. Both are directly relevant to ag3nts design patterns.
+
+2. **`shared/ag3nts.md`** — Add note under "Scripted / Automated Runs" that (a) prompt cache reads are ITPM-exempt (cache heavily for hook-invoked agents), and (b) extended 1-hour TTL prompt caching is available in beta for agents with large, stable system prompts.
+
+3. **Monitor the Agent Capabilities API beta** — MCP connector (remote MCP without client code) is the highest-impact near-term capability for `security-engineer` (CVE feeds) and `accessibility-auditor` (WCAG references). Track GA announcement; when stable, evaluate replacing any manual MCP client code with the API-managed connector.
+
+---
+
 ## Latest Scan: 2026-04-09
 
 ### Summary
