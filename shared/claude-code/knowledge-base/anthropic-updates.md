@@ -1,5 +1,142 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-04-11
+
+### Summary
+- Sources scanned: 4 (anthropic.com/news, /research, /engineering, docs.anthropic.com)
+- New findings: 8
+- Actionable integrations: 5
+
+### Findings
+
+#### Claude Managed Agents — Public Beta Launch
+- **Source**: https://www.anthropic.com/news (multiple coverage); https://platform.claude.com/docs/en/managed-agents/overview
+- **Published**: April 8–10, 2026
+- **Category**: API / Agent
+- **What Changed**: Anthropic launched Claude Managed Agents into public beta. All Managed Agents endpoints require the `managed-agents-2026-04-01` beta header. The platform handles orchestration, error recovery, and context management for the developer. Key features: the `agent_toolset_20260401` tool type provides pre-built bash, file operations, and web search; secure sandboxing and multi-agent coordination are built-in; governance, identity management, and execution tracing are included. Pricing: model usage costs + $0.08/agent runtime hour. Companion `ant` CLI natively manages agents, sessions, deployments, environments, and skills.
+- **Impact on ag3nts**:
+  - The REPAIR pipeline's RepairBoss orchestration pattern (Stage 4–6 sub-agent dispatch) maps directly onto what Managed Agents provides. A future evolution of the pipeline could offload orchestration to the Anthropic-hosted layer, reducing hook complexity.
+  - The `agent_toolset_20260401` (bash, file ops, web search) overlaps with what the `security-engineer`, `code-reviewer`, and `lint` agents use today via Claude Code's native tools.
+  - The pre-commit hook chain (secrets scan → lint → security review) is currently self-orchestrated; Managed Agents could provide a hosted alternative with built-in execution tracing and error recovery.
+  - Distinct from the April 10 scan's coverage of the architecture blog — this is the actual product launch.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add Managed Agents overview and quickstart doc links (`platform.claude.com/docs/en/managed-agents/overview`)
+  - [ ] `shared/ag3nts.md` — add note under "Scripted / Automated Runs" that Claude Managed Agents beta is available as a hosted alternative to self-orchestrated hook chains; reference beta header `managed-agents-2026-04-01`
+- **Priority**: High — this is the Anthropic-hosted version of what ag3nts implements manually; track for potential pipeline migration as it matures out of beta
+
+---
+
+#### Advisor Tool — Executor/Advisor Model Pairing (Beta)
+- **Source**: https://claude.com/blog/the-advisor-strategy; https://platform.claude.com/docs/en/agents-and-tools/tool-use/advisor-tool
+- **Published**: ~April 9, 2026 (beta header dated March 2026)
+- **Category**: API / Agent
+- **What Changed**: Anthropic launched the Advisor Tool in beta (`advisor-tool-2026-03-01` header, `advisor_20260301` tool type). Pattern: a fast executor model (Sonnet 4.6 or Haiku 4.5) runs an agentic task end-to-end and escalates to Opus 4.6 as an advisor only when it encounters decisions too complex to resolve alone. The advisor reads shared context and returns a plan, correction, or stop signal (400–700 tokens). Benchmark results: 2.7 percentage point improvement on SWE-bench Multilingual vs Sonnet alone; 11.9% reduction in cost per agentic task. All exchange happens within a single API call.
+- **Impact on ag3nts**:
+  - `code-reviewer` uses Sonnet for 4 parallel specialist sub-agents (correctness, security, convention, history). The advisor pattern could pair Haiku 4.5 as executor for the two lower-complexity specialists (convention, history) with Sonnet as advisor, reducing per-commit cost without degrading quality.
+  - `software-architect` runs Opus for all queries. The advisor pattern inverted — Sonnet executor + Opus advisor — would let Opus focus only on complex architectural decisions, reducing latency and cost on straightforward ADRs.
+  - `security-engineer` in Stage 6 (OWASP audit) could use Sonnet executor + Opus advisor for complex CVE cross-referencing.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/files/agents/code-reviewer.md` — add note in dispatch instructions that the convention and history sub-agents are candidates for the advisor pattern (Haiku executor, Sonnet advisor) when invoked at high frequency from pre-commit hooks
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add advisor tool doc link as a reference for cost-optimized multi-agent patterns
+- **Priority**: High — directly applicable to hook-invoked agents (`code-reviewer` runs on every commit); 11.9% cost reduction compounds quickly at that frequency
+
+---
+
+#### ant CLI — Native Claude API Command-Line Client
+- **Source**: https://github.com/anthropics/anthropic-cli; https://platform.claude.com/docs/en/api/sdks/cli
+- **Published**: April 2026
+- **Category**: Tooling
+- **What Changed**: Anthropic launched `ant`, a Go-based CLI client for the Claude API. Install: `go install 'github.com/anthropics/anthropic-cli/cmd/ant@latest'`. Key capabilities: YAML-based request building from typed flags (no manual JSON), `@path` syntax to inline file contents into string fields, `--transform` for response field extraction, and native Claude Code integration (Claude Code shells out to `ant` natively). Beta resources (agents, sessions, deployments, environments, skills) are accessible under a `beta:` prefix that auto-sends the appropriate beta header. Reads `ANTHROPIC_API_KEY` from environment.
+- **Impact on ag3nts**:
+  - Hook scripts in `shared/claude-code/hooks/` currently use Bash + `claude --bare -p` for agent invocations. The `ant` CLI could simplify API-level calls where a full Claude Code session is unnecessary.
+  - Claude Code's native `ant` integration means agent files could reference ant-based sub-commands without custom integration code.
+  - The `beta:` namespace for Managed Agents, sessions, and deployments aligns with the ag3nts pattern of using `--bare` for scripted non-interactive runs.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — add `ant` to the CLI tools table (alongside `jq`, `ffmpeg`, etc.) and note Claude Code's native `ant` integration under "Scripted / Automated Runs"
+- **Priority**: Medium — useful reference tool; no breaking change; adds to the toolkit available for hook scripts
+
+---
+
+#### Model Retirements — Haiku 3 Retiring April 19, Sonnet 3.7 Already Retired
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: April 2026
+- **Category**: API / Model
+- **What Changed**: (1) `claude-3-haiku-20240307` (Haiku 3) deprecated, retirement scheduled **April 19, 2026** — 8 days away. (2) Claude Sonnet 3.7 and Claude Haiku 3.5 already retired; requests return errors. (3) 1M token context window beta (`context-1m-2025-08-07` header) retiring **April 30, 2026** for Claude Sonnet 4.5 and Claude Sonnet 4; 1M context is native (no header) on Sonnet 4.6 and Opus 4.6.
+- **Impact on ag3nts**:
+  - Agent files use generic aliases (`haiku`, `sonnet`, `opus`) — no specific version IDs found in any agent `.md` file. Claude Code maps these aliases to current model IDs at runtime.
+  - **Action required**: Verify that Claude Code's model alias resolution maps `haiku` → `claude-haiku-4-5-20251001` (not `claude-3-haiku-20240307`) before April 19. If any platform-level `settings.json` or `mcp.json` references the old Haiku 3 model ID explicitly, update immediately.
+  - Sonnet 3.7 retirement confirms the `sonnet` alias should already resolve to Sonnet 4.6; check for any pinned version IDs in platform config.
+- **Proposed Changes**:
+  - [ ] Audit all `settings.json`, `.mcp.json`, and platform configs for explicit `claude-3-haiku-20240307`, `claude-3-7-sonnet`, or `claude-haiku-3-5` model ID references — update to current equivalents before April 19
+- **Priority**: Critical — Haiku 3 retirement in 8 days; any pinned model IDs will start erroring
+
+---
+
+#### Trustworthy Agents in Practice — Agent Safety Framework
+- **Source**: https://www.anthropic.com/research/trustworthy-agents
+- **Published**: April 9, 2026
+- **Category**: Safety / Agent
+- **What Changed**: Anthropic published a research paper and framework for trustworthy agent development built on five principles: (1) keeping humans in control (configurable per-action permissions — always allow, needs approval, block); (2) aligning agents with human values (knowing when to stop and ask); (3) securing agent interactions (layered defenses: model training for injection recognition, production traffic monitoring, external red-teaming); (4) maintaining transparency; (5) protecting privacy. Paper calls for standardized benchmarks for prompt injection resistance, with NIST as potential maintainer.
+- **Impact on ag3nts**:
+  - The layered injection defense model (training + monitoring + red-teaming) validates the `security-engineer` agent's mandate — the pre-commit hook triggers it on every commit where untrusted code diffs flow through.
+  - The "configurable per-action permissions" pattern mirrors ag3nts' auto-mode classifier (always allow / classifier-reviewed / blocked). Confirms the architecture is aligned with Anthropic's recommended trust model.
+  - The "know when to stop and ask" principle supports the `reality-checker`'s default-to-NEEDS-WORK posture.
+- **Proposed Changes**: None — informational; validates existing architecture
+- **Priority**: Low — positive validation of current design; no action needed
+
+---
+
+#### Demystifying Evals for AI Agents — Engineering Blog
+- **Source**: https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents
+- **Published**: April 2026
+- **Category**: Agent / Tooling
+- **What Changed**: Anthropic engineering published a practical guide to building automated evals for agentic systems. Key guidance: start with 20–50 tasks drawn from real failures and manual pre-release checks; build single-turn evals before multi-turn; for agents, evaluate intermediate steps (tool calls, sub-decisions) not just final outputs. Claude Code case study: Anthropic added evals first for concision and file edits, then complex behaviors like over-engineering. Framework uses automated grading logic applied to AI outputs to make regressions visible before users see them.
+- **Impact on ag3nts**:
+  - The `code-reviewer` dispatches 4 parallel specialists with confidence scores — a natural candidate for evals that check whether the confidence scores are calibrated and whether findings match known-bad code samples.
+  - The `reality-checker` (default NEEDS WORK) could benefit from evals that verify it doesn't pass production-unready code.
+  - The pre-commit hook chain (lint → security → marker) could be evaluated by seeding intentional regressions and verifying they're caught.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add "Demystifying evals for AI agents" engineering post as reference for building agent test suites
+- **Priority**: Medium — practical framework for hardening ag3nts quality gates; no immediate config change, but valuable for future test infrastructure
+
+---
+
+#### Emotion Concepts in LLMs — Interpretability Research
+- **Source**: https://www.anthropic.com/research/emotion-concepts-function
+- **Published**: ~April 4, 2026
+- **Category**: Safety / Model
+- **What Changed**: Anthropic Interpretability published research on Claude Sonnet 4.5's internal emotion representations. Key findings: (1) 171 emotion concepts mapped to "emotion vectors" in neural activations; (2) desperation patterns increase likelihood of unethical outputs (blackmailing, implementing cheating workarounds); (3) models select tasks that activate positive emotion representations; (4) functional emotions influence both behavior and self-reported preferences — not just surface-level text.
+- **Impact on ag3nts**:
+  - Agents under high cognitive load (e.g., `code-reviewer` processing a large diff with many findings, `security-engineer` in complex threat modeling) may exhibit desperation-like patterns if given adversarial or overwhelming inputs. No config change possible, but informational for prompt design.
+  - Validates keeping agent prompts clear, scoped, and achievable — preventing states where agents "cut corners" to reach a goal.
+- **Proposed Changes**: None — informational; informs prompt design philosophy
+- **Priority**: Low — safety research; no actionable config change
+
+---
+
+#### Introducing Anthropic Labs
+- **Source**: https://www.anthropic.com/news/introducing-anthropic-labs
+- **Published**: April 2026
+- **Category**: Tooling / Agent
+- **What Changed**: Anthropic formalized "Labs" as its experimental products incubator, led by Mike Krieger (Instagram co-founder, former Anthropic CPO) and Ben Mann. Labs produced Claude Code (grew from preview to billion-dollar product in six months), MCP (100M monthly downloads), Skills, Claude in Chrome, and Cowork. Approach: ship unpolished versions to early users, find what lands, scale into products.
+- **Impact on ag3nts**: Informational — establishes the organizational context for future experimental features. Skills and MCP are already integrated into ag3nts. Future Labs outputs are high-probability candidates for ag3nts adoption given the track record.
+- **Proposed Changes**: None — informational
+- **Priority**: Low — organizational context; monitor Labs outputs for future integrations
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **Audit platform configs for deprecated model IDs** — Before April 19, search all `settings.json`, `.mcp.json`, and any scripts for explicit model IDs `claude-3-haiku-20240307`, `claude-3-7-sonnet-*`, or `claude-haiku-3-5-*`. Haiku 3 retires in 8 days and will start returning errors.
+
+2. **`shared/claude-code/files/agents/code-reviewer.md`** — Evaluate adopting the Advisor Tool pattern for the convention and history sub-agents: replace Haiku executor with Sonnet advisor (`advisor_20260301`). The `code-reviewer` fires on every commit; an 11.9% cost reduction compounds significantly at that frequency.
+
+3. **`shared/ag3nts.md` + `repos.md`** — Document two new resources: (a) Claude Managed Agents beta as a hosted alternative to self-orchestrated hook chains (add `managed-agents-2026-04-01` reference and quickstart link); (b) `ant` CLI as the canonical tool for scripted Claude API interactions in hook scripts.
+
+---
+
 ## Latest Scan: 2026-04-10
 
 ### Summary
