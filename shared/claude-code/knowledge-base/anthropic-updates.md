@@ -1,5 +1,37 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-04-12
+
+### Summary
+- Sources scanned: 4 (anthropic.com/news, /research, /engineering, docs.anthropic.com)
+- New findings: 1
+- Actionable integrations: 1
+
+### Findings
+
+#### Advanced Tool Use on the Claude Developer Platform — Tool Search, Programmatic Tool Calling, Tool Use Examples
+- **Source**: https://www.anthropic.com/engineering/advanced-tool-use
+- **Published**: April 9, 2026 (missed in April 9–11 scans)
+- **Category**: API / Tooling
+- **What Changed**: Anthropic introduced three new beta capabilities for tool use: (1) **Tool Search Tool** — Claude dynamically searches a tool library on-demand rather than loading all definitions upfront. In large-library scenarios, this preserves 191,300 tokens vs. 122,800 (85% reduction). Accuracy improvements on MCP evaluations: Opus 4 from 49%→74%; Opus 4.5 from 79.5%→88.1%. The tool catalog is indexed and retained beyond the API call per standard retention policy. (2) **Programmatic Tool Calling (PTC)** — Claude writes code that calls multiple tools sequentially or conditionally, processes their outputs, and controls exactly what enters its context window. Eliminates multiple round-trips and prevents context flooding with intermediate results. Used in production by Claude for Excel (reading/modifying thousands-of-row spreadsheets). (3) **Tool Use Examples** — Exemplar calls embedded in tool definitions help Claude learn correct invocation patterns beyond schema alone. Native Claude Code support tracked in `anthropics/claude-code#12836`.
+- **Impact on ag3nts**:
+  - **`security-engineer` + `accessibility-auditor`**: Both agents reference large external tool libraries (CVE feeds, WCAG references). Tool Search's 85% token reduction would materially cut per-invocation cost for these agents without changing their output quality.
+  - **REPAIR pipeline (Stages 4–6)**: Programmatic Tool Calling maps directly onto multi-step orchestration — `software-architect` (Stage 4) and `security-engineer` (Stage 6) make multiple tool calls per session. PTC lets them batch those calls in code rather than making individual round-trips, reducing both latency and context bloat.
+  - **`code-reviewer` parallel dispatch**: The 4 specialist sub-agents each interact with tools. Tool Use Examples in their definitions would reduce malformed tool calls on first invocation.
+  - **Claude Code native support**: Once `anthropics/claude-code#12836` merges, Tool Search and PTC betas become available in Claude Code's hook chain without any API plumbing changes.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add Tool Search Tool docs (`platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool`) and Programmatic Tool Calling docs (`platform.claude.com/docs/en/agents-and-tools/tool-use/programmatic-tool-calling`) as references
+  - [ ] Monitor `anthropics/claude-code#12836` for native Claude Code support; when merged, evaluate enabling Tool Search for `security-engineer` and `code-reviewer` agent invocations
+- **Priority**: High — 85% token reduction on tool-heavy agents is directly applicable to hook-invoked agents that fire on every commit; PTC's code-based orchestration aligns with the REPAIR pipeline's multi-step patterns
+
+### Recommendations
+
+Top change to make now:
+
+1. **`shared/claude-code/knowledge-base/repos.md`** — Add Tool Search Tool and Programmatic Tool Calling doc links as references. Both are immediately relevant to the `security-engineer` (CVE tools), `accessibility-auditor` (WCAG tools), and `code-reviewer` (parallel specialist dispatch). Track `anthropics/claude-code#12836` for Claude Code native support — when merged, these betas become available in the hook chain with zero API plumbing.
+
+---
+
 ## Latest Scan: 2026-04-11
 
 ### Summary
