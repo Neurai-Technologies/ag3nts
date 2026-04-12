@@ -1099,25 +1099,20 @@ func (a *App) handleRecipe(ctx context.Context, args string) {
 		return
 	}
 
-	prompt, err := r.RenderPrompt(params)
+	// Dispatch via orchestrator.RunRecipe — handles single + multi-task
+	// recipes uniformly, expands DAG, adds all tasks to the queue, and
+	// sets up the evaluator loop if present.
+	runID, err := a.orch.RunRecipe(r, params)
 	if err != nil {
-		a.printError("recipe", err.Error())
-		return
-	}
-
-	// Dispatch as a task through the orchestrator.
-	t := &task.Task{
-		ID:          fmt.Sprintf("R%d", time.Now().UnixNano()%100000),
-		Description: prompt,
-		Type:        r.TaskType(),
-		Agent:       r.Agent,
-		Status:      task.StatusPending,
-	}
-	if err := a.orch.CreateTask(t); err != nil {
 		a.printError("recipe", fmt.Sprintf("dispatch failed: %v", err))
 		return
 	}
-	a.printLine("ag3nts", fmt.Sprintf("Recipe %q dispatched as task %s → %s", r.Name, t.ID, r.Agent))
+
+	if r.IsMultiTask() {
+		a.printLine("ag3nts", fmt.Sprintf("Recipe %q dispatched (run=%s, %d sub-tasks)", r.Name, runID, len(r.Tasks)))
+	} else {
+		a.printLine("ag3nts", fmt.Sprintf("Recipe %q dispatched as task %s → %s", r.Name, runID, r.Agent))
+	}
 }
 
 // handleSchedule lists background schedules.

@@ -39,7 +39,11 @@ var recipeListCmd = &cobra.Command{
 			if agent == "" {
 				agent = "any"
 			}
-			fmt.Printf("  %-20s %-8s %s\n", r.Name, agent, r.Description)
+			kind := "single"
+			if r.IsMultiTask() {
+				kind = fmt.Sprintf("multi(%d)", len(r.Tasks))
+			}
+			fmt.Printf("  %-20s %-10s %-8s %s\n", r.Name, kind, agent, r.Description)
 		}
 		return nil
 	},
@@ -47,7 +51,7 @@ var recipeListCmd = &cobra.Command{
 
 var recipeRunCmd = &cobra.Command{
 	Use:   "run <name>",
-	Short: "Execute a recipe",
+	Short: "Show recipe dispatch plan (run it from the orchestrator TUI)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
@@ -71,18 +75,40 @@ var recipeRunCmd = &cobra.Command{
 			params[parts[0]] = parts[1]
 		}
 
-		// Render the prompt.
-		prompt, err := r.RenderPrompt(params)
-		if err != nil {
-			return err
+		fmt.Printf("Recipe: %s\n", r.Name)
+
+		if r.IsMultiTask() {
+			fmt.Printf("Kind:   multi-task (%d sub-tasks)\n", len(r.Tasks))
+			fmt.Println()
+			fmt.Println("Sub-tasks (in expansion order):")
+			for i, st := range r.Tasks {
+				ag := st.Agent
+				if ag == "" {
+					ag = "auto"
+				}
+				evalMark := ""
+				if st.EvaluatorOf != "" {
+					evalMark = fmt.Sprintf(" [evaluator-of: %s]", st.EvaluatorOf)
+				}
+				deps := ""
+				if len(st.DependsOn) > 0 {
+					deps = fmt.Sprintf(" (depends: %s)", strings.Join(st.DependsOn, ", "))
+				}
+				fmt.Printf("  %d. %-12s %-10s%s%s\n", i+1, st.ID, ag, deps, evalMark)
+			}
+		} else {
+			fmt.Printf("Kind:   single-task\n")
+			fmt.Printf("Agent:  %s\n", r.Agent)
+			if r.Model != "" {
+				fmt.Printf("Model:  %s\n", r.Model)
+			}
+			prompt, err := r.RenderPrompt(params)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Prompt: %s\n", truncateStr(prompt, 200))
 		}
 
-		fmt.Printf("Recipe:  %s\n", r.Name)
-		fmt.Printf("Agent:   %s\n", r.Agent)
-		if r.Model != "" {
-			fmt.Printf("Model:   %s\n", r.Model)
-		}
-		fmt.Printf("Prompt:  %s\n", truncateStr(prompt, 200))
 		fmt.Println()
 		fmt.Println("Run this recipe inside the orchestrator TUI with:")
 		fmt.Printf("  /recipe %s", name)

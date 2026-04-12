@@ -16,6 +16,7 @@ import (
 	"github.com/rohanrgit/ag3nts/internal/llm"
 	"github.com/rohanrgit/ag3nts/internal/logging"
 	"github.com/rohanrgit/ag3nts/internal/orchestrator"
+	"github.com/rohanrgit/ag3nts/internal/paths"
 	"github.com/rohanrgit/ag3nts/internal/router"
 	"github.com/rohanrgit/ag3nts/internal/scheduler"
 	"github.com/rohanrgit/ag3nts/internal/security"
@@ -264,6 +265,7 @@ func runOrchestrate() error {
 		Logger:         logger,
 		Memory:         memoryStore,
 		Context:        rollingCtx,
+		BaseDir:        baseDirOrEmpty(layout),
 	}, registry)
 	if err != nil {
 		return fmt.Errorf("create orchestrator: %w", err)
@@ -379,4 +381,12 @@ func loadRoutes() []router.Route {
 		{Pattern: "implement|fix|refactor|code", Agent: "codex", Fallback: "claude", Priority: 2},
 		{Pattern: "review|audit|security", Agent: "claude", Priority: 3},
 	}
+}
+
+// baseDirOrEmpty returns the project root for recipe file: resolution.
+func baseDirOrEmpty(layout *paths.Layout) string {
+	if layout == nil {
+		return ""
+	}
+	return layout.Base
 }

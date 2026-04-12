@@ -14,6 +14,7 @@ import (
 	"github.com/rohanrgit/ag3nts/internal/bus"
 	m3m0ry "github.com/rohanrgit/ag3nts/internal/context"
 	"github.com/rohanrgit/ag3nts/internal/logging"
+	"github.com/rohanrgit/ag3nts/internal/recipe"
 	"github.com/rohanrgit/ag3nts/internal/router"
 	"github.com/rohanrgit/ag3nts/internal/security"
 	"github.com/rohanrgit/ag3nts/internal/store"
@@ -36,6 +37,7 @@ type Config struct {
 	Compactor      *Compactor            // context compactor (nil = disabled)
 	Memory         *store.MemoryStore    // cross-agent memory (nil = disabled)
 	Context        *m3m0ry.RollingStore  // rolling context window (nil = disabled)
+	BaseDir        string                // project root for recipe file: resolution
 }
 
 // Orchestrator coordinates agent dispatch, task management, and message flow.
@@ -52,6 +54,7 @@ type Orchestrator struct {
 	memory    *store.MemoryStore  // cross-agent memory (nil = disabled)
 	rollingCtx *m3m0ry.RollingStore // rolling context window (nil = disabled)
 	recorder  *m3m0ry.Recorder    // bus recorder feeding rollingCtx
+	baseDir   string              // project root for recipe file: resolution
 	bus       *bus.Bus
 	primary string
 	maxConc int
@@ -98,6 +101,7 @@ func New(cfg Config, agents *agent.Registry) (*Orchestrator, error) {
 		compactor:  cfg.Compactor,
 		memory:     cfg.Memory,
 		rollingCtx: cfg.Context,
+		baseDir:    cfg.BaseDir,
 		bus:        bus.New(),
 		primary:    cfg.Primary,
 		maxConc:    maxConc,
@@ -378,6 +382,63 @@ func (o *Orchestrator) CreateTask(t *task.Task) error {
 		t.ID = fmt.Sprintf("T%d", time.Now().UnixNano())
 	}
 	return o.queue.Add(t)
+}
+
+// RunRecipe dispatches a recipe. Single-task recipes create one task via
+// Resolve; multi-task recipes expand into a DAG via Expand and add all
+// tasks to the queue under a shared run ID.
+//
+// Returns the run ID (the prefix used for expanded task IDs). For
+// single-task recipes, the run ID equals the generated task ID.
+func (o *Orchestrator) RunRecipe(r *recipe.Recipe, params map[string]string) (string, error) {
+	if r == nil {
+		return "", fmt.Errorf("nil recipe")
+	}
+
+	if !r.IsMultiTask() {
+		// Single-task path — preserves existing behavior.
+		t, err := r.Resolve(params)
+		if err != nil {
+			return "", err
+		}
+		if err := o.CreateTask(t); err != nil {
+			return "", err
+		}
+		return t.ID, nil
+	}
+
+	// Multi-task path.
+	runID := fmt.Sprintf("R%d", time.Now().UnixNano()%1_000_000_000)
+	tasks, err := r.Expand(recipe.ExpansionContext{
+		RecipeRunID: runID,
+		Params:      params,
+		BaseDir:     o.baseDir,
+	})
+	if err != nil {
+		return "", fmt.Errorf("expand recipe: %w", err)
+	}
+
+	for _, t := range tasks {
+		if err := o.queue.Add(t); err != nil {
+			return runID, fmt.Errorf("add task %s: %w", t.ID, err)
+		}
+	}
+
+	// Record the recipe start in m3m0ry if enabled.
+	if o.rollingCtx != nil {
+		_ = o.rollingCtx.Append(&m3m0ry.Chunk{
+			SessionID: o.sessID,
+			Kind:      "recipe_start",
+			Content:   fmt.Sprintf("run=%s recipe=%s tasks=%d", runID, r.Name, len(tasks)),
+			CreatedAt: time.Now(),
+		})
+	}
+
+	if o.logger != nil {
+		o.logger.Infof("orchestrator", "started recipe run %s (%s) with %d tasks", runID, r.Name, len(tasks))
+	}
+
+	return runID, nil
 }
 
 // SetPrimary changes the primary agent. Existing sessions are not affected.
@@ -699,6 +760,12 @@ func (o *Orchestrator) executeTask(t *task.Task, a agent.Agent, contextStr strin
 			Content:   result.Output,
 			CreatedAt: time.Now(),
 		})
+	}
+
+	// If this was an evaluator task, process its verdict and spawn retries
+	// (or terminate the loop). No-op for non-evaluator tasks.
+	if status == task.StatusCompleted {
+		o.handleEvaluatorCompletion(t, result)
 	}
 
 	o.mu.Lock()
