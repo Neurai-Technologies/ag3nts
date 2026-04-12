@@ -2,7 +2,7 @@ package store
 
 import "fmt"
 
-const currentSchemaVersion = 3
+const currentSchemaVersion = 4
 
 // schema defines the DDL for all tables at schema version 1.
 const schema = `
@@ -87,6 +87,22 @@ CREATE TABLE IF NOT EXISTS schedules (
     next_run    TEXT,
     created_at  TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS context_chunks (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id  TEXT NOT NULL,
+    task_id     TEXT NOT NULL DEFAULT '',
+    agent       TEXT NOT NULL DEFAULT '',
+    kind        TEXT NOT NULL DEFAULT '',
+    content     TEXT NOT NULL,
+    token_count INTEGER NOT NULL DEFAULT 0,
+    keywords    TEXT NOT NULL DEFAULT '',
+    seq         INTEGER NOT NULL,
+    created_at  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_context_session_seq ON context_chunks(session_id, seq);
+CREATE INDEX IF NOT EXISTS idx_context_created ON context_chunks(created_at);
 `
 
 // migrate runs idempotent schema migrations.
@@ -157,6 +173,28 @@ func (d *DB) migrate() error {
 		`)
 		if err != nil {
 			return fmt.Errorf("migrate v3 (schedules table): %w", err)
+		}
+	}
+
+	if version < 4 {
+		_, err = d.db.Exec(`
+			CREATE TABLE IF NOT EXISTS context_chunks (
+				id          INTEGER PRIMARY KEY AUTOINCREMENT,
+				session_id  TEXT NOT NULL,
+				task_id     TEXT NOT NULL DEFAULT '',
+				agent       TEXT NOT NULL DEFAULT '',
+				kind        TEXT NOT NULL DEFAULT '',
+				content     TEXT NOT NULL,
+				token_count INTEGER NOT NULL DEFAULT 0,
+				keywords    TEXT NOT NULL DEFAULT '',
+				seq         INTEGER NOT NULL,
+				created_at  TEXT NOT NULL
+			);
+			CREATE INDEX IF NOT EXISTS idx_context_session_seq ON context_chunks(session_id, seq);
+			CREATE INDEX IF NOT EXISTS idx_context_created ON context_chunks(created_at);
+		`)
+		if err != nil {
+			return fmt.Errorf("migrate v4 (context_chunks table): %w", err)
 		}
 	}
 

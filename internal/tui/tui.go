@@ -90,6 +90,11 @@ func newSlashCompleter() *readline.PrefixCompleter {
 		readline.PcItem("/cost"),
 		readline.PcItem("/recipe"),
 		readline.PcItem("/schedule"),
+		readline.PcItem("/m3m0ry",
+			readline.PcItem("stats"),
+			readline.PcItem("search"),
+			readline.PcItem("tail"),
+		),
 		readline.PcItem("/memory"),
 		readline.PcItem("/local",
 			readline.PcItem("status"),
@@ -732,6 +737,7 @@ func (a *App) handleSlash(ctx context.Context, input string) {
 			"  /cost    — show session cost breakdown",
 			"  /recipe   — list or run a recipe (/recipe <name> [key=val...])",
 			"  /schedule — list background schedules",
+			"  /m3m0ry   — rolling context (/m3m0ry stats | search <q> | tail [n])",
 			"  /quit     — exit",
 			"Errors are prefixed with a red ✘ icon.",
 		}
@@ -898,9 +904,143 @@ func (a *App) handleSlash(ctx context.Context, input string) {
 	case "/schedule":
 		a.handleSchedule()
 
+	case "/m3m0ry":
+		m3Args := ""
+		if len(parts) > 1 {
+			m3Args = strings.Join(parts[1:], " ")
+		}
+		a.handleM3m0ry(m3Args)
+
 	default:
 		a.printError("error", fmt.Sprintf("Unknown: %s (try /help)", cmd))
 	}
+}
+
+// handleM3m0ry exposes rolling context operations.
+// Usage:
+//
+//	/m3m0ry stats
+//	/m3m0ry search <query>
+//	/m3m0ry tail [n]
+func (a *App) handleM3m0ry(args string) {
+	rs := a.orch.RollingContext()
+	if rs == nil {
+		a.printLine("ag3nts", "m3m0ry is not enabled")
+		return
+	}
+
+	subParts := strings.Fields(args)
+	if len(subParts) == 0 {
+		a.printLine("ag3nts", "Usage: /m3m0ry stats | search <query> | tail [n]")
+		return
+	}
+
+	sub := subParts[0]
+	rest := strings.TrimSpace(strings.TrimPrefix(args, sub))
+
+	switch sub {
+	case "stats":
+		stats, err := rs.Stats()
+		if err != nil {
+			a.printError("m3m0ry", err.Error())
+			return
+		}
+		lines := []string{
+			fmt.Sprintf("Total tokens: %d", stats.TotalTokens),
+			fmt.Sprintf("Chunk count:  %d", stats.ChunkCount),
+			fmt.Sprintf("Max seq:      %d", stats.MaxSeq),
+			fmt.Sprintf("JSONL path:   %s", stats.JSONLPath),
+			fmt.Sprintf("JSONL size:   %s", formatBytes(stats.JSONLBytes)),
+		}
+		a.printLines("ag3nts", strings.Join(lines, "\n"))
+
+	case "search":
+		if rest == "" {
+			a.printLine("ag3nts", "Usage: /m3m0ry search <query>")
+			return
+		}
+		chunks, err := rs.Retrieve(rest, time.Now())
+		if err != nil {
+			a.printError("m3m0ry", err.Error())
+			return
+		}
+		if len(chunks) == 0 {
+			a.printLine("ag3nts", "no matches")
+			return
+		}
+		var out []string
+		for i, c := range chunks {
+			if i >= 10 {
+				break
+			}
+			preview := c.Content
+			if len(preview) > 200 {
+				preview = preview[:200] + "..."
+			}
+			tag := c.TaskID
+			if tag == "" {
+				tag = c.Kind
+			}
+			out = append(out, fmt.Sprintf("  [%s %s] %s", tag, c.Agent, preview))
+		}
+		a.printLines("ag3nts", "Matches:\n"+strings.Join(out, "\n"))
+
+	case "tail":
+		n := 10
+		if rest != "" {
+			if v, err := strconv.Atoi(rest); err == nil && v > 0 {
+				n = v
+			}
+		}
+		db := a.orch.StoreDB()
+		if db == nil {
+			a.printLine("ag3nts", "SQLite not available")
+			return
+		}
+		// Use the orchestrator's session ID indirectly via recent rows.
+		stats, _ := rs.Stats()
+		startSeq := stats.MaxSeq - int64(n)
+		if startSeq < 0 {
+			startSeq = 0
+		}
+		// We don't have a direct API to list by session from here —
+		// use the Retrieve with empty query (recency-only) to get recent items.
+		chunks, _ := rs.Retrieve("", time.Now())
+		if len(chunks) > n {
+			chunks = chunks[:n]
+		}
+		if len(chunks) == 0 {
+			a.printLine("ag3nts", "m3m0ry is empty")
+			return
+		}
+		var lines []string
+		for _, c := range chunks {
+			ts := c.CreatedAt.Format("15:04:05")
+			preview := c.Content
+			if len(preview) > 120 {
+				preview = preview[:120] + "..."
+			}
+			lines = append(lines, fmt.Sprintf("  %s [%s] %s", ts, c.Kind, preview))
+		}
+		a.printLines("ag3nts", "Recent chunks:\n"+strings.Join(lines, "\n"))
+
+	default:
+		a.printLine("ag3nts", "Usage: /m3m0ry stats | search <query> | tail [n]")
+	}
+}
+
+// formatBytes returns a human-readable byte size.
+func formatBytes(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
 // handleRecipe lists or runs a recipe.

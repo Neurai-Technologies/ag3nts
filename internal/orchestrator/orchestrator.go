@@ -12,6 +12,7 @@ import (
 
 	"github.com/rohanrgit/ag3nts/internal/agent"
 	"github.com/rohanrgit/ag3nts/internal/bus"
+	m3m0ry "github.com/rohanrgit/ag3nts/internal/context"
 	"github.com/rohanrgit/ag3nts/internal/logging"
 	"github.com/rohanrgit/ag3nts/internal/router"
 	"github.com/rohanrgit/ag3nts/internal/security"
@@ -30,10 +31,11 @@ type Config struct {
 	Routes         []router.Route // routing rules
 	StoreDB        *store.DB             // SQLite store (nil = JSON-only fallback)
 	SessionID      string               // current session identifier for SQLite
-	Reviewer       *security.Reviewer   // pre-dispatch security reviewer (nil = disabled)
-	Logger         *logging.Logger      // structured logger (nil = disabled)
-	Compactor      *Compactor           // context compactor (nil = disabled)
-	Memory         *store.MemoryStore   // cross-agent memory (nil = disabled)
+	Reviewer       *security.Reviewer    // pre-dispatch security reviewer (nil = disabled)
+	Logger         *logging.Logger       // structured logger (nil = disabled)
+	Compactor      *Compactor            // context compactor (nil = disabled)
+	Memory         *store.MemoryStore    // cross-agent memory (nil = disabled)
+	Context        *m3m0ry.RollingStore  // rolling context window (nil = disabled)
 }
 
 // Orchestrator coordinates agent dispatch, task management, and message flow.
@@ -46,8 +48,10 @@ type Orchestrator struct {
 	sessID   string             // current session ID for SQLite
 	reviewer *security.Reviewer // pre-dispatch security review (nil = disabled)
 	logger    *logging.Logger   // structured session logger (nil = disabled)
-	compactor *Compactor        // progressive context compaction (nil = disabled)
-	memory    *store.MemoryStore // cross-agent memory (nil = disabled)
+	compactor *Compactor          // progressive context compaction (nil = disabled)
+	memory    *store.MemoryStore  // cross-agent memory (nil = disabled)
+	rollingCtx *m3m0ry.RollingStore // rolling context window (nil = disabled)
+	recorder  *m3m0ry.Recorder    // bus recorder feeding rollingCtx
 	bus       *bus.Bus
 	primary string
 	maxConc int
@@ -93,6 +97,7 @@ func New(cfg Config, agents *agent.Registry) (*Orchestrator, error) {
 		logger:     cfg.Logger,
 		compactor:  cfg.Compactor,
 		memory:     cfg.Memory,
+		rollingCtx: cfg.Context,
 		bus:        bus.New(),
 		primary:    cfg.Primary,
 		maxConc:    maxConc,
@@ -112,6 +117,11 @@ func (o *Orchestrator) StoreDB() *store.DB {
 	return o.storeDB
 }
 
+// RollingContext returns the rolling context store (m3m0ry), or nil if not configured.
+func (o *Orchestrator) RollingContext() *m3m0ry.RollingStore {
+	return o.rollingCtx
+}
+
 // Start begins the orchestrator dispatch loop in a background goroutine.
 func (o *Orchestrator) Start(ctx context.Context) error {
 	o.ctx, o.cancel = context.WithCancel(ctx)
@@ -119,6 +129,12 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 	// Restore persisted tasks if any.
 	if err := o.queue.Load(); err != nil {
 		return fmt.Errorf("load tasks: %w", err)
+	}
+
+	// Start rolling context recorder if configured.
+	if o.rollingCtx != nil {
+		o.recorder = m3m0ry.NewRecorder(o.rollingCtx, o.bus)
+		o.recorder.Start(o.ctx)
 	}
 
 	// Start the dispatch loop.
@@ -158,6 +174,11 @@ func (o *Orchestrator) Stop() error {
 		if a != nil {
 			_ = a.Stop(mainSess)
 		}
+	}
+
+	// Stop the rolling context recorder before closing the bus.
+	if o.recorder != nil {
+		o.recorder.Stop()
 	}
 
 	// Close the event bus.
@@ -668,6 +689,18 @@ func (o *Orchestrator) executeTask(t *task.Task, a agent.Agent, contextStr strin
 	// Save result to context store for downstream tasks.
 	o.store.SaveResult(t.ID, result)
 
+	// Append task result to rolling context window if enabled.
+	if o.rollingCtx != nil && result.Output != "" {
+		_ = o.rollingCtx.Append(&m3m0ry.Chunk{
+			SessionID: o.sessID,
+			TaskID:    t.ID,
+			Agent:     a.Name(),
+			Kind:      "task_result",
+			Content:   result.Output,
+			CreatedAt: time.Now(),
+		})
+	}
+
 	o.mu.Lock()
 	delete(o.running, t.ID)
 	o.mu.Unlock()
@@ -691,6 +724,23 @@ func (o *Orchestrator) buildContext(taskIDs []string) string {
 		}
 		if memCtx := o.memory.InjectRelevant(wd, ""); memCtx != "" {
 			parts = append(parts, memCtx)
+		}
+	}
+
+	// Inject relevant chunks from the rolling context window (m3m0ry).
+	// Query is derived from the concatenated descriptions of referenced tasks.
+	if o.rollingCtx != nil && len(taskIDs) > 0 {
+		var descriptions []string
+		for _, id := range taskIDs {
+			if t := o.queue.Get(id); t != nil {
+				descriptions = append(descriptions, t.Description)
+			}
+		}
+		if len(descriptions) > 0 {
+			query := strings.Join(descriptions, " ")
+			if rendered := o.rollingCtx.RenderRelevant(query); rendered != "" {
+				parts = append(parts, rendered)
+			}
 		}
 	}
 

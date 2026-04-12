@@ -90,7 +90,7 @@ func TestIntegration_SingleTask(t *testing.T) {
 	waitForTask(t, orch, "t-single", 5*time.Second)
 
 	// Verify task completed in queue.
-	queued := orch.queue.Get("t-single")
+	queued := orch.queue.GetSnapshot("t-single")
 	if queued == nil {
 		t.Fatal("task not found in queue")
 	}
@@ -137,8 +137,8 @@ func TestIntegration_DAGExecution(t *testing.T) {
 	waitForTask(t, orch, "t-research", 5*time.Second)
 	waitForTask(t, orch, "t-review", 5*time.Second)
 
-	t1 := orch.queue.Get("t-research")
-	t2 := orch.queue.Get("t-review")
+	t1 := orch.queue.GetSnapshot("t-research")
+	t2 := orch.queue.GetSnapshot("t-review")
 	if t1.Status != task.StatusCompleted {
 		t.Errorf("t-research status = %v, want completed", t1.Status)
 	}
@@ -168,7 +168,7 @@ func TestIntegration_SecurityBlock(t *testing.T) {
 
 	waitForTask(t, orch, "t-malicious", 5*time.Second)
 
-	queued := orch.queue.Get("t-malicious")
+	queued := orch.queue.GetSnapshot("t-malicious")
 	if queued.Status != task.StatusFailed {
 		t.Errorf("status = %v, want failed (security blocked)", queued.Status)
 	}
@@ -264,12 +264,13 @@ func TestIntegration_TokenTracking(t *testing.T) {
 }
 
 // waitForTask polls the queue until the task reaches a terminal state or timeout.
+// Uses Queue.GetStatus for race-free reads.
 func waitForTask(t *testing.T, orch *Orchestrator, taskID string, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		queued := orch.queue.Get(taskID)
-		if queued != nil && (queued.Status == task.StatusCompleted || queued.Status == task.StatusFailed) {
+		status, ok := orch.queue.GetStatus(taskID)
+		if ok && (status == task.StatusCompleted || status == task.StatusFailed) {
 			return
 		}
 		time.Sleep(100 * time.Millisecond)

@@ -29,6 +29,18 @@ type Config struct {
 	Security     SecurityConfig           `toml:"security"`
 	Logging      LoggingConfig            `toml:"logging"`
 	ToolSets     map[string]ToolSetConfig `toml:"toolsets"`
+	Context      ContextConfig            `toml:"context"`
+}
+
+// ContextConfig holds rolling context window (m3m0ry) settings.
+type ContextConfig struct {
+	Enabled         bool    `toml:"enabled"`           // master switch (default: true)
+	MaxTokens       int     `toml:"max_tokens"`        // rolling window budget (default 10M)
+	MaxChunkTokens  int     `toml:"max_chunk_tokens"`  // truncate per-chunk (default 4000)
+	JSONLPath       string  `toml:"jsonl_path"`        // relative to state dir or absolute
+	EvictHeadroom   float64 `toml:"evict_headroom"`    // fraction to reserve after eviction (default 0.10)
+	RetrievalLimit  int     `toml:"retrieval_limit"`   // max chunks per retrieval (default 40)
+	RetrievalBudget int     `toml:"retrieval_budget"`  // max tokens per retrieval (default 50000)
 }
 
 // ToolSetConfig defines a dynamically registered tool-set in ag3nts.toml.
@@ -203,7 +215,17 @@ func Default() *Config {
 				"agent":        "info",
 				"bus":          "warn",
 				"security":     "info",
+				"m3m0ry":       "info",
 			},
+		},
+		Context: ContextConfig{
+			Enabled:         true,
+			MaxTokens:       10_000_000,
+			MaxChunkTokens:  4000,
+			JSONLPath:       "m3m0ry.jsonl",
+			EvictHeadroom:   0.10,
+			RetrievalLimit:  40,
+			RetrievalBudget: 50_000,
 		},
 		LLM: LLMConfig{
 			Enabled:       false,

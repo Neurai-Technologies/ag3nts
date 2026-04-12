@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/rohanrgit/ag3nts/internal/agent"
+	m3m0ry "github.com/rohanrgit/ag3nts/internal/context"
 	"github.com/rohanrgit/ag3nts/internal/llm"
 	"github.com/rohanrgit/ag3nts/internal/logging"
 	"github.com/rohanrgit/ag3nts/internal/orchestrator"
@@ -214,6 +216,33 @@ func runOrchestrate() error {
 		memoryStore = store.NewMemoryStore(storeDB)
 	}
 
+	// Create rolling context store (m3m0ry) if enabled and SQLite is available.
+	var rollingCtx *m3m0ry.RollingStore
+	if cfg.Context.Enabled && storeDB != nil && layout != nil {
+		jsonlPath := cfg.Context.JSONLPath
+		if jsonlPath == "" {
+			jsonlPath = "m3m0ry.jsonl"
+		}
+		if !filepath.IsAbs(jsonlPath) {
+			jsonlPath = filepath.Join(layout.State, jsonlPath)
+		}
+		rs, err := m3m0ry.Open(m3m0ry.Config{
+			Enabled:         true,
+			MaxTokens:       cfg.Context.MaxTokens,
+			MaxChunkTokens:  cfg.Context.MaxChunkTokens,
+			JSONLPath:       jsonlPath,
+			EvictHeadroom:   cfg.Context.EvictHeadroom,
+			RetrievalLimit:  cfg.Context.RetrievalLimit,
+			RetrievalBudget: cfg.Context.RetrievalBudget,
+		}, storeDB, sessionID, logger)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "⚠ m3m0ry unavailable: %v\n", err)
+		} else {
+			rollingCtx = rs
+			defer rollingCtx.Close()
+		}
+	}
+
 	// Create security reviewer if enabled.
 	var reviewer *security.Reviewer
 	if cfg.Security.Enabled {
@@ -234,6 +263,7 @@ func runOrchestrate() error {
 		Reviewer:       reviewer,
 		Logger:         logger,
 		Memory:         memoryStore,
+		Context:        rollingCtx,
 	}, registry)
 	if err != nil {
 		return fmt.Errorf("create orchestrator: %w", err)

@@ -125,10 +125,39 @@ func (q *Queue) Add(t *Task) error {
 }
 
 // Get returns the task with the given ID, or nil if not found.
+//
+// NOTE: The returned pointer references a task that may be mutated
+// concurrently. Callers should not read mutable fields (Status, Result)
+// without synchronization. Use GetStatus or GetSnapshot instead.
 func (q *Queue) Get(id string) *Task {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 	return q.tasks[id]
+}
+
+// GetStatus returns the current status of a task under the queue lock.
+// Returns StatusPending and false if the task does not exist.
+func (q *Queue) GetStatus(id string) (Status, bool) {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+	t, ok := q.tasks[id]
+	if !ok {
+		return StatusPending, false
+	}
+	return t.Status, true
+}
+
+// GetSnapshot returns a value copy of the task, safe to read from any
+// goroutine. Returns nil if the task does not exist.
+func (q *Queue) GetSnapshot(id string) *Task {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+	t, ok := q.tasks[id]
+	if !ok {
+		return nil
+	}
+	snapshot := *t
+	return &snapshot
 }
 
 // List returns all tasks in insertion order.
