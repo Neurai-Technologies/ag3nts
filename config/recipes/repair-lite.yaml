@@ -1,0 +1,80 @@
+name: repair-lite
+description: >
+  Lightweight 4-stage REPAIR pipeline (research -> plan -> implement -> review)
+  for smoke tests and quick iterations. Skips Discovery, Evaluate, and
+  Architecture stages. Same evaluator loop on the Review stage.
+
+tags:
+  - repair
+  - lite
+
+parameters:
+  - key: objective
+    type: string
+    required: true
+    description: What to build or fix
+
+tasks:
+  - id: research
+    agent: gemini
+    type: repair.research
+    description: Quick research
+    prompt_template: |
+      You are the research stage of a lightweight REPAIR pipeline.
+      Investigate the following objective and return a concise summary
+      (under 500 words) of relevant approaches, libraries, and gotchas.
+
+      Objective: {{objective}}
+    timeout: 10m
+
+  - id: plan
+    agent: claude
+    type: repair.plan
+    description: Short implementation plan
+    depends_on:
+      - research
+    context_from:
+      - research
+    prompt_template: |
+      You are the plan stage. Based on the research above, produce a
+      concise implementation plan with 3-5 numbered steps. Each step
+      should be directly actionable by an implementation agent.
+
+      Objective: {{objective}}
+    timeout: 10m
+
+  - id: implement
+    agent: codex
+    type: repair.implement
+    description: Write the code
+    depends_on:
+      - plan
+    context_from:
+      - plan
+    prompt_template: |
+      You are the implementation stage. Write code that implements the
+      plan above. Provide runnable code with file paths and imports.
+
+      Objective: {{objective}}
+    timeout: 20m
+
+  - id: review
+    agent: claude
+    type: repair.review
+    description: Adversarial review
+    depends_on:
+      - implement
+    context_from:
+      - implement
+    evaluator_of: implement
+    evaluator_retries: 2
+    prompt_template: |
+      You are the adversarial reviewer. Review the implementation above.
+      Your FIRST line must be exactly one of:
+        ACCEPT: <one-line summary>
+        REJECT: <one-line reason>
+      Subsequent lines may contain detailed feedback. Only ACCEPT if the
+      code runs, matches the plan, and handles obvious edge cases.
+
+      Objective: {{objective}}
+    timeout: 10m

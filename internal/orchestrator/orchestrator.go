@@ -609,6 +609,19 @@ func (o *Orchestrator) dispatchReady() {
 				"dispatching task", map[string]any{"type": t.Type, "description_len": len(t.Description)})
 		}
 
+		// Record repair stage start marker in m3m0ry for cross-run searchability.
+		if o.rollingCtx != nil && strings.HasPrefix(t.Type, "repair.") {
+			stage := strings.TrimPrefix(t.Type, "repair.")
+			_ = o.rollingCtx.Append(&m3m0ry.Chunk{
+				SessionID: o.sessID,
+				TaskID:    t.ID,
+				Agent:     agentName,
+				Kind:      "repair_stage_start",
+				Content:   fmt.Sprintf("stage=%s task=%s agent=%s", stage, t.ID, agentName),
+				CreatedAt: time.Now(),
+			})
+		}
+
 		// Build context from referenced task results.
 		contextStr := o.buildContext(t.ContextFrom)
 
@@ -758,6 +771,19 @@ func (o *Orchestrator) executeTask(t *task.Task, a agent.Agent, contextStr strin
 			Agent:     a.Name(),
 			Kind:      "task_result",
 			Content:   result.Output,
+			CreatedAt: time.Now(),
+		})
+	}
+
+	// Record repair stage end marker for cross-run searchability.
+	if o.rollingCtx != nil && strings.HasPrefix(t.Type, "repair.") {
+		stage := strings.TrimPrefix(t.Type, "repair.")
+		_ = o.rollingCtx.Append(&m3m0ry.Chunk{
+			SessionID: o.sessID,
+			TaskID:    t.ID,
+			Agent:     a.Name(),
+			Kind:      "repair_stage_end",
+			Content:   fmt.Sprintf("stage=%s task=%s status=%s duration_ms=%d", stage, t.ID, status, duration.Milliseconds()),
 			CreatedAt: time.Now(),
 		})
 	}

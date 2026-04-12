@@ -1,0 +1,160 @@
+name: repair
+description: >
+  Full REPAIR pipeline — Discovery -> Research -> Evaluate -> Plan -> Architecture
+  -> Implement (evaluator loop with Review). Each stage routed to the best-suited
+  agent. Output from each stage flows to downstream stages via ContextFrom and
+  m3m0ry rolling context.
+
+tags:
+  - repair
+  - pipeline
+  - build
+
+parameters:
+  - key: objective
+    type: string
+    required: true
+    description: What to build, fix, or research
+  - key: motivation
+    type: string
+    required: false
+    default: unspecified
+    description: Why this work matters (optional context)
+  - key: assumptions
+    type: string
+    required: false
+    default: none listed
+    description: Known constraints or assumptions
+
+tasks:
+  # Stage 0: Discovery — local coordinator restates the brief.
+  # No delegation needed — this is just framing.
+  - id: discovery
+    type: repair.discovery
+    description: Discovery brief (restatement)
+    prompt_template: |
+      You are the REPAIR pipeline coordinator for ag3nts. Restate the user
+      objective as a Discovery Brief in markdown with sections:
+
+      ## Objective
+      {{objective}}
+
+      ## Motivation
+      {{motivation}}
+
+      ## Assumptions
+      {{assumptions}}
+
+      ## Constraints
+      (List any implied constraints from the objective)
+
+      ## Open Questions
+      (List 1-3 critical questions the downstream stages need answered)
+
+      Keep it under 300 words. This brief seeds the entire pipeline.
+    timeout: 2m
+
+  # Stage 1: Research — Gemini (strong web search + large context).
+  - id: research
+    agent: gemini
+    type: repair.research
+    description: Deep research on the objective
+    depends_on:
+      - discovery
+    context_from:
+      - discovery
+    prompt_template: |
+      {{#include:config/recipes/repair-prefixes/research-prefix.md}}
+
+      {{#include:shared/claude-code/files/pipeline/research.md}}
+
+      Target objective: {{objective}}
+    timeout: 15m
+
+  # Stage 2: Evaluate — Claude Opus (trade-off analysis, scoring).
+  - id: evaluate
+    agent: claude
+    model: opus
+    type: repair.evaluate
+    description: Evaluate candidate approaches
+    depends_on:
+      - research
+    context_from:
+      - discovery
+      - research
+    prompt_template: |
+      {{#include:config/recipes/repair-prefixes/evaluate-prefix.md}}
+
+      {{#include:shared/claude-code/files/pipeline/evaluate.md}}
+    timeout: 15m
+
+  # Stage 3: Plan — Claude Opus (structured Days -> Phases -> Steps).
+  - id: plan
+    agent: claude
+    model: opus
+    type: repair.plan
+    description: Build detailed implementation plan
+    depends_on:
+      - evaluate
+    context_from:
+      - discovery
+      - research
+      - evaluate
+    prompt_template: |
+      {{#include:config/recipes/repair-prefixes/plan-prefix.md}}
+
+      {{#include:shared/claude-code/files/pipeline/plan.md}}
+    timeout: 15m
+
+  # Stage 4: Architecture — Claude Opus (system design, ADRs).
+  - id: architecture
+    agent: claude
+    model: opus
+    type: repair.architecture
+    description: System design and component boundaries
+    depends_on:
+      - plan
+    context_from:
+      - plan
+      - research
+    prompt_template: |
+      {{#include:config/recipes/repair-prefixes/architecture-prefix.md}}
+
+      {{#include:shared/claude-code/files/pipeline/architecture.md}}
+    timeout: 20m
+
+  # Stage 5: Implement — Codex (focused implementation).
+  - id: implement
+    agent: codex
+    type: repair.implement
+    description: Write code per architecture
+    depends_on:
+      - architecture
+    context_from:
+      - plan
+      - architecture
+    prompt_template: |
+      {{#include:config/recipes/repair-prefixes/implement-prefix.md}}
+
+      {{#include:shared/claude-code/files/pipeline/implement.md}}
+    timeout: 30m
+
+  # Stage 6: Review — Claude Opus (adversarial evaluator).
+  # Spawns retry tasks if REJECT, terminates on ACCEPT or after 3 retries.
+  - id: review
+    agent: claude
+    model: opus
+    type: repair.review
+    description: Adversarial review of implementation
+    depends_on:
+      - implement
+    context_from:
+      - architecture
+      - implement
+    evaluator_of: implement
+    evaluator_retries: 3
+    prompt_template: |
+      {{#include:config/recipes/repair-prefixes/review-prefix.md}}
+
+      {{#include:shared/claude-code/files/pipeline/review.md}}
+    timeout: 15m
