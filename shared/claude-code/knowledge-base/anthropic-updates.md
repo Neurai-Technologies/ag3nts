@@ -1,5 +1,67 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-04-13
+
+### Summary
+- Sources scanned: 4 (anthropic.com/news, /research, /engineering, docs.anthropic.com)
+- New findings: 3
+- Actionable integrations: 1
+
+### Findings
+
+#### 2026 Agentic Coding Trends Report
+- **Source**: https://resources.anthropic.com/2026-agentic-coding-trends-report
+- **Published**: April 2026
+- **Category**: Agent
+- **What Changed**: Anthropic published its annual state-of-agentic-coding report identifying 8 trends reshaping software development. Key findings: (1) **Role shift** — engineering roles migrating from hands-on implementation toward agent supervision, system design, and output review. (2) **Multi-agent coordination** — single-agent workflows being replaced by orchestrators delegating to specialized parallel agents. (3) **Extended autonomous sessions** — agents progressing from short one-off tasks to multi-hour continuous runs with error recovery and context maintenance (Rakuten case study: 99.9% accuracy on 12.5M-line codebase in 7 autonomous hours). (4) **Oversight at scale** — developers delegate 0–20% of tasks fully, maintaining active oversight on 80–100% of delegated work. (5) **Security as core design** — embedding security architecture from project inception, not as a post-hoc audit. Anthropic identifies multi-agent coordination, AI-automated review pipelines, and security-from-inception as the top strategic priorities for engineering teams.
+- **Impact on ag3nts**:
+  - **Security-from-inception principle** directly validates the ag3nts pre-commit hook chain (secrets scan → lint → security review before every commit). The report calls this the correct posture — not a bolt-on.
+  - **Multi-agent coordination as dominant pattern** validates `code-reviewer`'s 4-parallel-specialist dispatch and the REPAIR pipeline's RepairBoss orchestration model.
+  - **Extended autonomous sessions** validates the harness design (`--bare -p`, pre-commit gates, review markers) for long-running agentic tasks.
+  - **80–100% human oversight on delegated tasks** confirms ag3nts' philosophy of surfacing findings rather than auto-fixing everything — the `reality-checker` and `code-reviewer` confidence scoring model is aligned with this.
+  - **AI-automated review pipelines** trend is exactly what the `code-reviewer` hook implements; the report validates scaling this pattern.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add 2026 Agentic Coding Trends Report as a reference link
+- **Priority**: Medium — no config changes required; strong architectural validation; add as reference document
+
+---
+
+#### Claude Code v2.1.97 — Focus View + Sandbox Auto-Approval in Auto Mode
+- **Source**: https://github.com/anthropics/claude-code/releases; https://code.claude.com/docs/en/changelog
+- **Published**: April 2026 (v2.1.93–101 cycle)
+- **Category**: Tooling
+- **What Changed**: Claude Code advanced from v2.1.92 (covered in April 4 scan) to v2.1.101 across the remainder of the April cycle. Notable additions not previously logged: (1) **Focus View** (v2.1.97) — toggle with `Ctrl+O` in `NO_FLICKER` mode; displays prompt, one-line tool summary with edit diffstats, and final response only — eliminates noise from intermediate tool calls during long sessions. (2) **Sandbox auto-approval** — in auto mode and bypass-permissions mode, sandbox network access prompts are now auto-approved rather than interrupting the session. `sandbox.network.allowMachLookup` now takes effect on macOS. (3) **Bash and MCP stability** — multiple fixes for Bash command execution in sandboxed environments and MCP tool execution reliability. (4) **Resume and transcript reliability** — improvements to session resume accuracy and transcript fidelity.
+- **Impact on ag3nts**:
+  - **Focus View**: Useful for monitoring long REPAIR pipeline sessions where intermediate tool call noise obscures the final output. No config change; user-activated via `Ctrl+O`.
+  - **Sandbox auto-approval**: The ag3nts `settings.json` configures auto mode (`permissions.defaultMode: "auto"`). Sandbox network prompts that previously required approval in auto mode will now be silently approved — consistent with the existing classifier-based design.
+  - **Bash/MCP stability**: The pre-commit hook scripts in `shared/claude-code/hooks/` run via Bash; stability improvements reduce flaky hook behavior on complex diffs.
+- **Proposed Changes**: None — all improvements are passive or UI-only
+- **Priority**: Low — stability and UX improvements; no action needed
+
+---
+
+#### Effort Parameter GA + `budget_tokens` Deprecated on Opus 4.6 — ag3nts Already Aligned
+- **Source**: https://platform.claude.com/docs/en/build-with-claude/effort; https://docs.anthropic.com/en/release-notes/overview
+- **Published**: April 2026 (GA confirmation)
+- **Category**: API / Model
+- **What Changed**: The `effort` parameter is now generally available on the API (no beta header required) for Opus 4.6 and Sonnet 4.6. `thinking: {type: "adaptive"}` + `effort` (values: `low`, `medium`, `high`, `max`) is the recommended pattern — replacing `thinking: {type: "enabled", budget_tokens: N}` which is deprecated on Opus 4.6 and will be removed in a future model release. Sonnet 4.6 still supports `budget_tokens` but migration is recommended for all new projects.
+- **Impact on ag3nts**:
+  - **No changes required**: `shared/claude-code/settings.json` already has `"effortLevel": "high"` — the system is already using the current recommended pattern.
+  - **Agent definition files** (`software-architect.md`, `security-engineer.md`) contain no explicit `budget_tokens` or `thinking.type` API parameters — they delegate to Claude Code's runtime defaults, which resolve through `effortLevel`.
+  - **Any future custom API code** using the Anthropic SDK should use `effort` not `budget_tokens` for Opus 4.6 calls.
+- **Proposed Changes**: None — ag3nts is already aligned with the current recommended API pattern
+- **Priority**: Low — confirmatory; no action needed for existing config
+
+---
+
+### Recommendations
+
+Top change to make now:
+
+1. **`shared/claude-code/knowledge-base/repos.md`** — Add the 2026 Agentic Coding Trends Report (`resources.anthropic.com/2026-agentic-coding-trends-report`) as a reference link. The report directly validates the ag3nts multi-agent architecture and security-from-inception design — useful reference when evolving the REPAIR pipeline or adding new agents.
+
+---
+
 ## Latest Scan: 2026-04-12
 
 ### Summary
