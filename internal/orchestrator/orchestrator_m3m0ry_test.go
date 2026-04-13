@@ -209,3 +209,140 @@ func truncateForLog(s string, n int) string {
 	}
 	return s[:n] + "..."
 }
+
+// TestM3m0ry_ProgressStreamFallback verifies that agents which only stream
+// content via EventProgress (no EventMessage) still get their final output
+// captured as a task_result chunk. This is the Gemini CLI pattern: delta
+// messages stream in as EventProgress chunks, and the parser never emits a
+// final non-delta EventMessage.
+//
+// Bug #2 from the first live test run: Gemini's research output was visible
+// in the TUI but never persisted to m3m0ry, breaking downstream retrieval.
+func TestM3m0ry_ProgressStreamFallback(t *testing.T) {
+	// Replay agent emits ONLY EventProgress events (no EventMessage) —
+	// simulates Gemini's delta-only output pattern.
+	progressOnlyEvents := []agent.AgentEvent{
+		{Kind: agent.EventInit, Content: "start", Timestamp: time.Now()},
+		{Kind: agent.EventProgress, Content: "Research finding: ", Timestamp: time.Now()},
+		{Kind: agent.EventProgress, Content: "the MCP protocol uses ", Timestamp: time.Now()},
+		{Kind: agent.EventProgress, Content: "JSON-RPC over stdio.", Timestamp: time.Now()},
+		{Kind: agent.EventComplete, Content: "success", Timestamp: time.Now(), Usage: &agent.TokenUsage{
+			InputTokens: 100, OutputTokens: 50,
+		}},
+	}
+
+	orch, db, _ := makeTestOrchWithM3m0ry(t, map[string][]agent.AgentEvent{
+		"claude": progressOnlyEvents,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_ = orch.Start(ctx)
+	defer orch.Stop()
+
+	_ = orch.CreateTask(&task.Task{
+		ID:          "t-progress",
+		Description: "delta-only agent",
+		Type:        "review",
+		Status:      task.StatusPending,
+	})
+
+	waitForTask(t, orch, "t-progress", 5*time.Second)
+	time.Sleep(200 * time.Millisecond)
+
+	// Verify a task_result chunk was appended with the concatenated deltas.
+	chunks, err := db.ListContextChunks("m3m0ry-test", 0, 100)
+	if err != nil {
+		t.Fatalf("list chunks: %v", err)
+	}
+
+	var taskResult *store.ContextChunkRecord
+	for _, c := range chunks {
+		if c.Kind == "task_result" {
+			taskResult = c
+			break
+		}
+	}
+	if taskResult == nil {
+		t.Fatal("expected task_result chunk, got none — progressive fallback didn't fire")
+	}
+
+	// The content should be the concatenation of all three delta chunks.
+	want := "Research finding: the MCP protocol uses JSON-RPC over stdio."
+	if taskResult.Content != want {
+		t.Errorf("task_result content = %q\n                   want %q", taskResult.Content, want)
+	}
+}
+
+// TestM3m0ry_MessagePreferredOverProgress verifies that when an agent emits
+// both EventMessage and EventProgress, the EventMessage content wins. This
+// ensures the fallback only kicks in when needed.
+func TestM3m0ry_MessagePreferredOverProgress(t *testing.T) {
+	events := []agent.AgentEvent{
+		{Kind: agent.EventProgress, Content: "delta chunk", Timestamp: time.Now()},
+		{Kind: agent.EventMessage, Content: "final message content", Timestamp: time.Now()},
+		{Kind: agent.EventComplete, Timestamp: time.Now(), Usage: &agent.TokenUsage{InputTokens: 10}},
+	}
+
+	orch, db, _ := makeTestOrchWithM3m0ry(t, map[string][]agent.AgentEvent{
+		"claude": events,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_ = orch.Start(ctx)
+	defer orch.Stop()
+
+	_ = orch.CreateTask(&task.Task{
+		ID: "t-pref", Description: "test", Type: "review", Status: task.StatusPending,
+	})
+	waitForTask(t, orch, "t-pref", 5*time.Second)
+	time.Sleep(200 * time.Millisecond)
+
+	chunks, _ := db.ListContextChunks("m3m0ry-test", 0, 100)
+	var tr *store.ContextChunkRecord
+	for _, c := range chunks {
+		if c.Kind == "task_result" {
+			tr = c
+			break
+		}
+	}
+	if tr == nil {
+		t.Fatal("expected task_result chunk")
+	}
+	if tr.Content != "final message content" {
+		t.Errorf("task_result = %q, want 'final message content' (EventMessage wins)", tr.Content)
+	}
+}
+
+// TestM3m0ry_SkipsCodexTurnStartedNoise verifies that the "Turn started"
+// status event from Codex is NOT accumulated as progressive content — the
+// fallback shouldn't pollute task results with pure status noise.
+func TestM3m0ry_SkipsCodexTurnStartedNoise(t *testing.T) {
+	events := []agent.AgentEvent{
+		{Kind: agent.EventProgress, Content: "Turn started", Timestamp: time.Now()},
+		{Kind: agent.EventComplete, Timestamp: time.Now(), Usage: &agent.TokenUsage{InputTokens: 10}},
+	}
+
+	orch, db, _ := makeTestOrchWithM3m0ry(t, map[string][]agent.AgentEvent{
+		"claude": events,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_ = orch.Start(ctx)
+	defer orch.Stop()
+
+	_ = orch.CreateTask(&task.Task{
+		ID: "t-noise", Description: "codex noise", Type: "review", Status: task.StatusPending,
+	})
+	waitForTask(t, orch, "t-noise", 5*time.Second)
+	time.Sleep(200 * time.Millisecond)
+
+	chunks, _ := db.ListContextChunks("m3m0ry-test", 0, 100)
+	for _, c := range chunks {
+		if c.Kind == "task_result" {
+			t.Errorf("no task_result should exist; found: %q", c.Content)
+		}
+	}
+}

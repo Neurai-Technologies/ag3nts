@@ -656,6 +656,11 @@ func (o *Orchestrator) executeTask(t *task.Task, a agent.Agent, contextStr strin
 
 	// Collect events until the session closes.
 	var output strings.Builder
+	// progressive accumulates EventProgress content as a fallback for
+	// agents that stream their final response via delta updates without
+	// emitting a non-delta EventMessage (e.g., Gemini CLI). Only used if
+	// output (EventMessage-sourced) is empty at the end.
+	var progressive strings.Builder
 	var events []agent.AgentEvent
 	var usage *agent.TokenUsage
 	start := time.Now()
@@ -669,11 +674,26 @@ func (o *Orchestrator) executeTask(t *task.Task, a agent.Agent, contextStr strin
 		switch event.Kind {
 		case agent.EventMessage:
 			output.WriteString(event.Content)
+		case agent.EventProgress:
+			// Capture streaming delta content for agents that don't emit
+			// a final aggregated EventMessage. Bounded safety check: skip
+			// status-only progress events with trivial content (e.g. Codex
+			// "Turn started") so the fallback doesn't pollute task results.
+			if len(event.Content) > 0 && event.Content != "Turn started" {
+				progressive.WriteString(event.Content)
+			}
 		case agent.EventComplete:
 			if event.Usage != nil {
 				usage = event.Usage
 			}
 		}
+	}
+
+	// Fallback: if no EventMessage content was captured but we saw progressive
+	// deltas, use the accumulated deltas as the task output. Gemini CLI
+	// triggers this path — it streams the response via delta messages.
+	if output.Len() == 0 && progressive.Len() > 0 {
+		output.WriteString(progressive.String())
 	}
 
 	duration := time.Since(start)
