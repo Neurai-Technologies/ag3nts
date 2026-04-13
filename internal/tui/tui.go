@@ -1079,14 +1079,13 @@ func (a *App) handleRecipe(ctx context.Context, args string) {
 	}
 
 	// Parse: /recipe <name> [key=val ...]
-	parts := strings.Fields(args)
-	name := parts[0]
-	params := make(map[string]string)
-	for _, p := range parts[1:] {
-		kv := strings.SplitN(p, "=", 2)
-		if len(kv) == 2 {
-			params[kv[0]] = kv[1]
-		}
+	// Uses recipe.ParseInlineArgs which handles multi-word values so
+	// "/recipe research query=what is MCP protocol" correctly yields
+	// query="what is MCP protocol" instead of query="what".
+	name, params := recipe.ParseInlineArgs(args)
+	if name == "" {
+		a.printLine("ag3nts", "Usage: /recipe <name> [key=val ...]")
+		return
 	}
 
 	r, err := loader.Get(name)
