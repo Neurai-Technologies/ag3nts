@@ -327,6 +327,7 @@ func runOrchestrate() error {
 			SystemPrompt: cfg.LLM.SystemPrompt,
 			WorkDir:      agentWorkDir,
 			MaxContext:   cfg.LLM.MaxContext,
+			Rolling:      rollingCtx,
 		}, registry, orch.Bus())
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "⚠ local LLM unavailable: %v (falling back to CLI agents)\n", err)

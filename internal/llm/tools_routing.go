@@ -8,6 +8,7 @@ import (
 
 	"github.com/rohanrgit/ag3nts/internal/agent"
 	"github.com/rohanrgit/ag3nts/internal/bus"
+	m3m0ry "github.com/rohanrgit/ag3nts/internal/context"
 )
 
 // RoutingDeps holds dependencies for routing tools.
@@ -17,7 +18,8 @@ type RoutingDeps struct {
 	Registry      *agent.Registry
 	Bus           *bus.Bus
 	Conversation  *ConversationManager
-	Memory        *Memory
+	Memory        *Memory              // cross-session curated TF-IDF store (store tool target)
+	Rolling       *m3m0ry.RollingStore // session-scoped rolling context (recall tool target)
 	AskPermission PermissionFunc
 	WorkDir       string
 }
@@ -30,7 +32,7 @@ func RegisterRoutingTools(deps RoutingDeps) ([]ToolDef, map[string]ToolExecutor)
 			Type: "function",
 			Function: ToolFunction{
 				Name:        "recall",
-				Description: "Retrieve relevant context from long-term memory. Use when you need information from earlier in the conversation, previous tool results, or past decisions. Memory persists across sessions and stores distilled findings, not raw data.",
+				Description: "Retrieve relevant context from the current session — recent task results, agent outputs, and tool calls in this conversation. Scoped to this session only; does NOT return data from past sessions. Use when the user refers to 'the last result', 'earlier in this conversation', or anything discussed since ag3nts started.",
 				Parameters: ToolFunctionParams{
 					Type: "object",
 					Properties: map[string]ToolParamProp{
@@ -111,7 +113,11 @@ func RegisterRoutingTools(deps RoutingDeps) ([]ToolDef, map[string]ToolExecutor)
 	return defs, executors
 }
 
-// toolRecall retrieves relevant context from long-term memory.
+// toolRecall retrieves relevant context from the current session's
+// rolling context (m3m0ry). Falls back to the cross-session llm.Memory
+// store only if m3m0ry is disabled, so by default recall is strictly
+// session-scoped — "the last gemini result" refers to THIS session,
+// not something from days ago.
 func toolRecall(deps RoutingDeps) ToolExecutor {
 	return func(args map[string]any) (string, error) {
 		query, _ := args["query"].(string)
@@ -119,10 +125,28 @@ func toolRecall(deps RoutingDeps) ToolExecutor {
 			return "", fmt.Errorf("query is required")
 		}
 
+		// Preferred path: session-scoped rolling context.
+		if deps.Rolling != nil {
+			chunks, err := deps.Rolling.Retrieve(query, time.Now())
+			if err != nil {
+				return "", fmt.Errorf("recall: %w", err)
+			}
+			if len(chunks) == 0 {
+				return "No matching context in this session.", nil
+			}
+			var b strings.Builder
+			for _, c := range chunks {
+				fmt.Fprintf(&b, "[%s] %s %s\n%s\n\n",
+					c.CreatedAt.Local().Format("15:04:05"),
+					c.Agent, c.Kind, c.Content)
+			}
+			return strings.TrimSpace(b.String()), nil
+		}
+
+		// Fallback: old cross-session curated memory.
 		if deps.Memory == nil {
 			return "Memory not available.", nil
 		}
-
 		return deps.Memory.Recall(query), nil
 	}
 }

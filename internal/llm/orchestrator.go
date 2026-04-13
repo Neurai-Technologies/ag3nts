@@ -9,6 +9,7 @@ import (
 
 	"github.com/rohanrgit/ag3nts/internal/agent"
 	"github.com/rohanrgit/ag3nts/internal/bus"
+	m3m0ry "github.com/rohanrgit/ag3nts/internal/context"
 )
 
 // OrchestratorConfig holds configuration for the local LLM orchestrator.
@@ -17,13 +18,14 @@ import (
 type PermissionFunc func(tool, action string) bool
 
 type OrchestratorConfig struct {
-	Endpoint      string         // Ollama endpoint (default: http://localhost:11434)
-	HeadModel     string         // Gemma 4 31B (with thinking mode)
-	ModelsPath    string         // Path to Ollama models directory (for OLLAMA_MODELS env)
-	SystemPrompt  string         // System prompt for head model (optional override)
-	WorkDir       string         // Working directory for file operations
-	MaxContext    int            // Context window limit in tokens (default: 256000)
-	AskPermission PermissionFunc // callback to ask user for permission (nil = auto-approve)
+	Endpoint      string                // Ollama endpoint (default: http://localhost:11434)
+	HeadModel     string                // Gemma 4 31B (with thinking mode)
+	ModelsPath    string                // Path to Ollama models directory (for OLLAMA_MODELS env)
+	SystemPrompt  string                // System prompt for head model (optional override)
+	WorkDir       string                // Working directory for file operations
+	MaxContext    int                   // Context window limit in tokens (default: 256000)
+	AskPermission PermissionFunc        // callback to ask user for permission (nil = auto-approve)
+	Rolling       *m3m0ry.RollingStore  // session-scoped rolling context (nil = recall falls back to llm.Memory)
 }
 
 const defaultSystemPrompt = `<|think|>
@@ -146,6 +148,7 @@ func NewLocalOrchestrator(
 		Bus:          eventBus,
 		Conversation: conversation,
 		Memory:       memory,
+		Rolling:      cfg.Rolling,
 		AskPermission: func(tool, action string) bool {
 			if loop.askPermission != nil {
 				return loop.askPermission(tool, action)
