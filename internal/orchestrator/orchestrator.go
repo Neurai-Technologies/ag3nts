@@ -37,7 +37,8 @@ type Config struct {
 	Compactor      *Compactor            // context compactor (nil = disabled)
 	Memory         *store.MemoryStore    // cross-agent memory (nil = disabled)
 	Context        *m3m0ry.RollingStore  // rolling context window (nil = disabled)
-	BaseDir        string                // project root for recipe file: resolution
+	BaseDir        string                // ag3nts install root for recipe file: resolution
+	AgentWorkDir   string                // cwd pinned for every subprocess agent (user's launch dir)
 }
 
 // Orchestrator coordinates agent dispatch, task management, and message flow.
@@ -54,7 +55,8 @@ type Orchestrator struct {
 	memory    *store.MemoryStore  // cross-agent memory (nil = disabled)
 	rollingCtx *m3m0ry.RollingStore // rolling context window (nil = disabled)
 	recorder  *m3m0ry.Recorder    // bus recorder feeding rollingCtx
-	baseDir   string              // project root for recipe file: resolution
+	baseDir   string              // ag3nts install root for recipe file: resolution
+	agentWorkDir string            // cwd pinned for every subprocess agent dispatch
 	bus       *bus.Bus
 	primary string
 	maxConc int
@@ -100,9 +102,10 @@ func New(cfg Config, agents *agent.Registry) (*Orchestrator, error) {
 		logger:     cfg.Logger,
 		compactor:  cfg.Compactor,
 		memory:     cfg.Memory,
-		rollingCtx: cfg.Context,
-		baseDir:    cfg.BaseDir,
-		bus:        bus.New(),
+		rollingCtx:   cfg.Context,
+		baseDir:      cfg.BaseDir,
+		agentWorkDir: cfg.AgentWorkDir,
+		bus:          bus.New(),
 		primary:    cfg.Primary,
 		maxConc:    maxConc,
 		running:    make(map[string]*agent.Session),
@@ -216,6 +219,7 @@ func (o *Orchestrator) Send(message string) error {
 	newSess, err := a.Start(o.ctx, message, &agent.StartOpts{
 		TaskID:          "_primary",
 		ResumeSessionID: resumeID,
+		WorkDir:         o.agentWorkDir,
 	})
 	if err != nil {
 		return fmt.Errorf("start primary agent: %w", err)
@@ -251,6 +255,7 @@ func (o *Orchestrator) SendTo(agentName string, message string) error {
 	sess, err := a.Start(o.ctx, message, &agent.StartOpts{
 		TaskID:          fmt.Sprintf("_direct-%s-%d", agentName, time.Now().UnixNano()),
 		ResumeSessionID: resumeID,
+		WorkDir:         o.agentWorkDir,
 	})
 	if err != nil {
 		return fmt.Errorf("start %s: %w", agentName, err)
@@ -280,7 +285,8 @@ func (o *Orchestrator) Research(query string) error {
 
 	// Stage 1: Gemini researches (fresh session — no resume).
 	sess, err := gemini.Start(o.ctx, query, &agent.StartOpts{
-		TaskID: fmt.Sprintf("_research-%d", time.Now().UnixNano()),
+		TaskID:  fmt.Sprintf("_research-%d", time.Now().UnixNano()),
+		WorkDir: o.agentWorkDir,
 	})
 	if err != nil {
 		return fmt.Errorf("start gemini research: %w", err)
@@ -321,7 +327,8 @@ func (o *Orchestrator) Research(query string) error {
 						Timestamp: time.Now(),
 					})
 					retrySess, retryErr := gemini.Start(o.ctx, "The previous research was too brief. Please provide a much more detailed and thorough answer with specific details, examples, and steps. Original query: "+query, &agent.StartOpts{
-						TaskID: fmt.Sprintf("_research-retry-%d", time.Now().UnixNano()),
+						TaskID:  fmt.Sprintf("_research-retry-%d", time.Now().UnixNano()),
+						WorkDir: o.agentWorkDir,
 					})
 					if retryErr == nil {
 						var retry strings.Builder
@@ -349,7 +356,8 @@ func (o *Orchestrator) Research(query string) error {
 
 				synthesisPrompt := "IMPORTANT: Do NOT use any tools. Do NOT read files, search, or fetch anything. ONLY synthesize and present the following research findings clearly and concisely. All the information you need is below:\n\n" + researchText
 				newSess, err := claude.Start(o.ctx, synthesisPrompt, &agent.StartOpts{
-					TaskID: "_primary",
+					TaskID:  "_primary",
+					WorkDir: o.agentWorkDir,
 				})
 				if err != nil {
 					o.publish(agent.AgentEvent{
@@ -642,6 +650,7 @@ func (o *Orchestrator) executeTask(t *task.Task, a agent.Agent, contextStr strin
 	sess, err := a.Start(ctx, t.Description, &agent.StartOpts{
 		TaskID:  t.ID,
 		Context: contextStr,
+		WorkDir: o.agentWorkDir,
 	})
 	if err != nil {
 		_ = o.queue.Update(t.ID, task.StatusFailed, &task.Result{

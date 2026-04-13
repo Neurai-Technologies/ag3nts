@@ -165,7 +165,8 @@ func toolWebResearch(deps RoutingDeps) ToolExecutor {
 		publishProgress(deps.Bus, "gemini", "Researching: "+query)
 
 		sess, err := gemini.Start(context.Background(), query, &agent.StartOpts{
-			TaskID: fmt.Sprintf("_research-%d", time.Now().UnixNano()),
+			TaskID:  fmt.Sprintf("_research-%d", time.Now().UnixNano()),
+			WorkDir: deps.WorkDir,
 		})
 		if err != nil {
 			return "", fmt.Errorf("start gemini: %w", err)
@@ -224,7 +225,8 @@ func toolCodeTask(deps RoutingDeps) ToolExecutor {
 		publishProgress(deps.Bus, "claude", "Working on: "+task)
 
 		sess, err := claude.Start(context.Background(), prompt, &agent.StartOpts{
-			TaskID: fmt.Sprintf("_code-%d", time.Now().UnixNano()),
+			TaskID:  fmt.Sprintf("_code-%d", time.Now().UnixNano()),
+			WorkDir: deps.WorkDir,
 		})
 		if err != nil {
 			return "", fmt.Errorf("start claude: %w", err)
@@ -271,7 +273,8 @@ func toolImplement(deps RoutingDeps) ToolExecutor {
 		publishProgress(deps.Bus, "codex", "Implementing: "+task)
 
 		sess, err := codex.Start(context.Background(), task, &agent.StartOpts{
-			TaskID: fmt.Sprintf("_impl-%d", time.Now().UnixNano()),
+			TaskID:  fmt.Sprintf("_impl-%d", time.Now().UnixNano()),
+			WorkDir: deps.WorkDir,
 		})
 		if err != nil {
 			return "", fmt.Errorf("start codex: %w", err)

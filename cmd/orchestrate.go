@@ -115,6 +115,19 @@ func runOrchestrate() error {
 		persistDir = layout.State + "/orchestrator"
 	}
 
+	// Pin the working directory that every subprocess agent (Claude, Gemini,
+	// Codex) runs in. Without this, agents inherit ag3nts' own cwd and may
+	// walk their own heuristics to find a "project", potentially editing
+	// files in unrelated repos. Prefer the user's launch cwd; fall back to
+	// ag3nts install root if Getwd fails.
+	agentWorkDir, gwdErr := os.Getwd()
+	if gwdErr != nil || agentWorkDir == "" {
+		if layout != nil {
+			agentWorkDir = layout.Base
+		}
+	}
+	fmt.Fprintf(os.Stderr, "✓ Agent workdir: %s\n", agentWorkDir)
+
 	maxConc := cfg.Orchestrator.MaxConcurrency
 	if maxConc <= 0 {
 		maxConc = 3
@@ -266,6 +279,7 @@ func runOrchestrate() error {
 		Memory:         memoryStore,
 		Context:        rollingCtx,
 		BaseDir:        baseDirOrEmpty(layout),
+		AgentWorkDir:   agentWorkDir,
 	}, registry)
 	if err != nil {
 		return fmt.Errorf("create orchestrator: %w", err)
@@ -306,13 +320,12 @@ func runOrchestrate() error {
 	}
 
 	if cfg.LLM.Enabled {
-		workDir := layout.Base
 		lo, err := llm.NewLocalOrchestrator(llm.OrchestratorConfig{
 			Endpoint:     cfg.LLM.Endpoint,
 			ModelsPath:   cfg.LLM.ModelsPath,
 			HeadModel:    cfg.LLM.HeadModel,
 			SystemPrompt: cfg.LLM.SystemPrompt,
-			WorkDir:      workDir,
+			WorkDir:      agentWorkDir,
 			MaxContext:   cfg.LLM.MaxContext,
 		}, registry, orch.Bus())
 		if err != nil {
