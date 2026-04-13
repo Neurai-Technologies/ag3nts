@@ -191,6 +191,15 @@ func (lo *LocalOrchestrator) SetPermission(fn PermissionFunc) {
 	lo.loop.askPermission = fn
 }
 
+// SetMessageCallback configures a callback that fires when the agent loop
+// produces an aggregated assistant message. Used by the m3m0ry rolling
+// context to capture the full response content for persistence and retrieval,
+// since streamed EventProgress chunks are not individually suitable for
+// storage.
+func (lo *LocalOrchestrator) SetMessageCallback(fn MessageCallback) {
+	lo.loop.onMessage = fn
+}
+
 // WarmUp loads the head model into VRAM. Call during startup.
 func (lo *LocalOrchestrator) WarmUp(ctx context.Context) error {
 	return lo.models.WarmHead(ctx)

@@ -18,6 +18,13 @@ const (
 	maxToolRepeat = 3
 )
 
+// MessageCallback is invoked when the agent loop produces an aggregated
+// assistant message (either narration before tools or the final response).
+// Used by external systems (e.g. m3m0ry rolling context) to capture the
+// full message content, since the streamed EventProgress chunks are not
+// individually suitable for persistence.
+type MessageCallback func(role, content string)
+
 // AgentLoop manages the iterative send → stream → tool → resend cycle.
 type AgentLoop struct {
 	client       *OllamaClient
@@ -30,6 +37,7 @@ type AgentLoop struct {
 	headDisplay   string // short name for display (e.g. "gemma4")
 	memory        *Memory
 	askPermission PermissionFunc
+	onMessage     MessageCallback // optional: fired on aggregated messages
 }
 
 // NewAgentLoop creates the agent loop.
@@ -115,6 +123,13 @@ func (al *AgentLoop) Run(ctx context.Context, userMessage string) error {
 
 		// Append assistant response to conversation.
 		al.conversation.Append(msg)
+
+		// Fire message callback with the aggregated content for external
+		// capture (m3m0ry). This fires for both final responses and
+		// intermediate narration before tool execution.
+		if al.onMessage != nil && msg.Content != "" {
+			al.onMessage("assistant", msg.Content)
+		}
 
 		// No tool calls — final response. Emit completion and return.
 		if len(msg.ToolCalls) == 0 {

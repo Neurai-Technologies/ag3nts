@@ -319,3 +319,199 @@ func TestAgentLoop_MaxIterationsReached(t *testing.T) {
 		t.Fatalf("tool executor called %d times, want %d", toolCalls, maxIterations)
 	}
 }
+
+// TestAgentLoop_MessageCallbackFiresOnFinalResponse verifies that onMessage
+// is invoked with the aggregated assistant content when the loop produces
+// a final response. This is the mechanism used by m3m0ry to capture local
+// LLM responses, since streamed EventProgress chunks are filtered by the
+// recorder.
+func TestAgentLoop_MessageCallbackFiresOnFinalResponse(t *testing.T) {
+	ollama, ollamaMock := newMockOllamaClient(t, func(call int, _ ChatRequest) []ChatResponse {
+		return []ChatResponse{
+			{
+				Model: "head:test",
+				Message: Message{
+					Role:    RoleAssistant,
+					Content: "Hello! How can I help you today?",
+				},
+			},
+			{Model: "head:test", Done: true, PromptEvalCount: 5, EvalCount: 9},
+		}
+	})
+	defer ollamaMock.Close()
+
+	conversationMock := newMockConversationManager("You are a test assistant.")
+	modelsMock := newMockModelManager("head:test")
+
+	loop := NewAgentLoop(
+		ollama,
+		conversationMock.Instance(),
+		modelsMock.Instance(),
+		bus.New(),
+		"head:test",
+		nil,
+	)
+
+	var capturedRole, capturedContent string
+	var callbackCount int
+	loop.onMessage = func(role, content string) {
+		callbackCount++
+		capturedRole = role
+		capturedContent = content
+	}
+
+	if err := loop.Run(context.Background(), "hi"); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if callbackCount != 1 {
+		t.Errorf("callback called %d times, want 1", callbackCount)
+	}
+	if capturedRole != "assistant" {
+		t.Errorf("role = %q, want assistant", capturedRole)
+	}
+	if capturedContent != "Hello! How can I help you today?" {
+		t.Errorf("content = %q, want 'Hello! How can I help you today?'", capturedContent)
+	}
+}
+
+// TestAgentLoop_MessageCallbackFiresOnIntermediateNarration verifies that
+// onMessage also fires for intermediate narration before tool calls, not
+// just the final response.
+func TestAgentLoop_MessageCallbackFiresOnIntermediateNarration(t *testing.T) {
+	ollama, ollamaMock := newMockOllamaClient(t, func(call int, _ ChatRequest) []ChatResponse {
+		switch call {
+		case 1:
+			return []ChatResponse{
+				{
+					Model: "head:test",
+					Message: Message{
+						Role:    RoleAssistant,
+						Content: "I will search for that.",
+						ToolCalls: []ToolCall{
+							{
+								Function: ToolCallFunction{
+									Name:      "lookup",
+									Arguments: map[string]any{"q": "thing"},
+								},
+							},
+						},
+					},
+				},
+				{Model: "head:test", Done: true, PromptEvalCount: 10, EvalCount: 6},
+			}
+		case 2:
+			return []ChatResponse{
+				{
+					Model: "head:test",
+					Message: Message{
+						Role:    RoleAssistant,
+						Content: "Based on the lookup, the answer is 42.",
+					},
+				},
+				{Model: "head:test", Done: true, PromptEvalCount: 20, EvalCount: 10},
+			}
+		default:
+			return []ChatResponse{{Model: "head:test", Done: true}}
+		}
+	})
+	defer ollamaMock.Close()
+
+	conversationMock := newMockConversationManager("You are a test assistant.")
+	modelsMock := newMockModelManager("head:test")
+
+	loop := NewAgentLoop(
+		ollama,
+		conversationMock.Instance(),
+		modelsMock.Instance(),
+		bus.New(),
+		"head:test",
+		nil,
+	)
+
+	loop.RegisterTools(
+		[]ToolDef{
+			{
+				Type: "function",
+				Function: ToolFunction{
+					Name:        "lookup",
+					Description: "A lookup tool.",
+					Parameters: ToolFunctionParams{
+						Type: "object",
+						Properties: map[string]ToolParamProp{
+							"q": {Type: "string", Description: "query"},
+						},
+						Required: []string{"q"},
+					},
+				},
+			},
+		},
+		map[string]ToolExecutor{
+			"lookup": func(_ map[string]any) (string, error) {
+				return "result", nil
+			},
+		},
+	)
+
+	var messages []string
+	loop.onMessage = func(role, content string) {
+		messages = append(messages, content)
+	}
+
+	if err := loop.Run(context.Background(), "look up that thing"); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if len(messages) != 2 {
+		t.Fatalf("callback called %d times, want 2 (narration + final)", len(messages))
+	}
+	if messages[0] != "I will search for that." {
+		t.Errorf("message[0] = %q, want narration", messages[0])
+	}
+	if messages[1] != "Based on the lookup, the answer is 42." {
+		t.Errorf("message[1] = %q, want final response", messages[1])
+	}
+}
+
+// TestAgentLoop_MessageCallbackNotFiredForEmptyContent verifies the callback
+// is only invoked when there's actual content to capture.
+func TestAgentLoop_MessageCallbackNotFiredForEmptyContent(t *testing.T) {
+	ollama, ollamaMock := newMockOllamaClient(t, func(call int, _ ChatRequest) []ChatResponse {
+		return []ChatResponse{
+			{
+				Model: "head:test",
+				Message: Message{
+					Role:    RoleAssistant,
+					Content: "", // empty content
+				},
+			},
+			{Model: "head:test", Done: true, PromptEvalCount: 5, EvalCount: 1},
+		}
+	})
+	defer ollamaMock.Close()
+
+	conversationMock := newMockConversationManager("You are a test assistant.")
+	modelsMock := newMockModelManager("head:test")
+
+	loop := NewAgentLoop(
+		ollama,
+		conversationMock.Instance(),
+		modelsMock.Instance(),
+		bus.New(),
+		"head:test",
+		nil,
+	)
+
+	callbackCount := 0
+	loop.onMessage = func(role, content string) {
+		callbackCount++
+	}
+
+	if err := loop.Run(context.Background(), "test"); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if callbackCount != 0 {
+		t.Errorf("callback called %d times for empty content, want 0", callbackCount)
+	}
+}

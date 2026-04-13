@@ -326,6 +326,25 @@ func runOrchestrate() error {
 			} else {
 				fmt.Fprintf(os.Stderr, "\r\033[K✓ Model loaded and ready\n")
 			}
+			// Wire local LLM messages into m3m0ry for retrieval. The agent
+			// loop emits streamed deltas as EventProgress which the recorder
+			// filters; the callback receives the aggregated message and
+			// appends it as a task_result chunk for keyword/recency search.
+			if rollingCtx != nil {
+				headName := lo.HeadModelName()
+				lo.SetMessageCallback(func(role, content string) {
+					if content == "" {
+						return
+					}
+					_ = rollingCtx.Append(&m3m0ry.Chunk{
+						SessionID: sessionID,
+						Agent:     headName,
+						Kind:      "task_result",
+						Content:   content,
+						CreatedAt: time.Now(),
+					})
+				})
+			}
 		}
 	}
 
