@@ -477,6 +477,12 @@ func (a *App) startSpinner(label string) {
 	a.spinStop = make(chan struct{})
 	a.spinStart = time.Now()
 	a.spinLabel = label
+	// Fresh idle→running transition: reset counters for a new task.
+	// Mid-task restarts (after a paragraph flush) do NOT reset, because
+	// the spinner stays marked "running" via its internal state and we
+	// preserve tokenIn/tokenOut across flushes.
+	atomic.StoreInt64(&a.tokenIn, 0)
+	atomic.StoreInt64(&a.tokenOut, 0)
 
 	go func() {
 		i := 0
@@ -515,8 +521,12 @@ func (a *App) stopSpinner() {
 	}
 	close(a.spinStop)
 	a.spinning = false
-	atomic.StoreInt64(&a.tokenIn, 0)
-	atomic.StoreInt64(&a.tokenOut, 0)
+	// Do NOT reset tokenIn/tokenOut here — stopSpinner is called in the
+	// middle of a task whenever we need to print over the spinner line
+	// (e.g. between paragraph flushes during streaming). Resetting the
+	// counters here wipes the in-flight token count and the spinner
+	// restart shows "0 tokens" which made it look like nothing was
+	// happening. Counters reset on idle→running transition in startSpinner.
 	time.Sleep(100 * time.Millisecond)
 }
 
@@ -1278,8 +1288,12 @@ func (a *App) handleEvent(event bus.Event) {
 				a.println(formatted)
 				a.startSpinner(a.headModel() + " processing...")
 			} else {
-				a.stopSpinner()
-				a.appendAndFlushParagraphs(agentEvt.Agent, agentEvt.Content)
+				// Streaming delta from the local LLM. Do NOT stop the spinner
+				// here — let it keep running with a live token counter so the
+				// user can see work is happening. appendAndFlushLines handles
+				// spinner stop/start only when a complete line is ready to
+				// render, so the spinner survives across streaming chunks.
+				a.appendAndFlushLines(agentEvt.Agent, agentEvt.Content)
 			}
 		}
 
@@ -1480,6 +1494,63 @@ func (a *App) appendAndFlushParagraphs(agentName, content string) {
 	}
 	// Keep the remainder in the buffer.
 	a.stream.Set(agentName, buf)
+}
+
+// appendAndFlushLines is the streaming variant: it flushes on every
+// single newline (not just double), so multi-line responses render
+// line-by-line as they arrive. Preserves the spinner across chunks
+// and only stops/restarts it when a line is actually being printed.
+// Used for local LLM streaming deltas.
+func (a *App) appendAndFlushLines(agentName, content string) {
+	a.stream.Append(agentName, content)
+	a.addTokens(len(content))
+
+	buf := a.stream.Peek(agentName)
+	// Fast path: nothing to flush yet. Don't touch the spinner — the
+	// live token counter in its status line shows streaming progress.
+	if !strings.Contains(buf, "\n") {
+		a.stream.Set(agentName, buf)
+		return
+	}
+
+	// A line boundary exists — we're about to print. Capture the
+	// current spinner label AND the live counters so we can restart
+	// without wiping the in-flight token count.
+	a.spinMu.Lock()
+	spinnerLabel := a.spinLabel
+	a.spinMu.Unlock()
+	savedIn := atomic.LoadInt64(&a.tokenIn)
+	savedOut := atomic.LoadInt64(&a.tokenOut)
+
+	a.stopSpinner()
+
+	for {
+		idx := strings.Index(buf, "\n")
+		if idx < 0 {
+			break
+		}
+		line := buf[:idx]
+		buf = buf[idx+1:]
+
+		if strings.TrimSpace(line) != "" {
+			rendered := renderMarkdown(line)
+			if rendered != "" {
+				a.println(rendered)
+			}
+		} else {
+			// Blank line — preserve vertical spacing.
+			a.println("")
+		}
+	}
+	a.stream.Set(agentName, buf)
+
+	// Restart the spinner and restore the counters so the live ↓ tokens
+	// display continues from where it was, not from zero.
+	if spinnerLabel != "" {
+		a.startSpinner(spinnerLabel)
+		atomic.StoreInt64(&a.tokenIn, savedIn)
+		atomic.StoreInt64(&a.tokenOut, savedOut)
+	}
 }
 
 // flushStream renders any remaining buffered text and clears the buffer.
