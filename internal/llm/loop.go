@@ -85,6 +85,15 @@ func (al *AgentLoop) Run(ctx context.Context, userMessage string) error {
 		Content: userMessage,
 	})
 
+	// Fire callback with the user prompt so m3m0ry can index it. This
+	// is important for recall — users typically search by the action
+	// word they asked for ("summarise", "research", "implement") which
+	// lives in the prompt, not the response. Without indexing prompts,
+	// recall by action word returns zero matches.
+	if al.onMessage != nil && userMessage != "" {
+		al.onMessage("user", userMessage)
+	}
+
 	// Check if summarization is needed.
 	if al.conversation.NeedsSummarization() {
 		al.emitSystem("Compressing conversation history...")

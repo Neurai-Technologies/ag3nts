@@ -352,26 +352,27 @@ func TestAgentLoop_MessageCallbackFiresOnFinalResponse(t *testing.T) {
 		nil,
 	)
 
-	var capturedRole, capturedContent string
-	var callbackCount int
+	type captured struct {
+		role, content string
+	}
+	var calls []captured
 	loop.onMessage = func(role, content string) {
-		callbackCount++
-		capturedRole = role
-		capturedContent = content
+		calls = append(calls, captured{role, content})
 	}
 
 	if err := loop.Run(context.Background(), "hi"); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
-	if callbackCount != 1 {
-		t.Errorf("callback called %d times, want 1", callbackCount)
+	// Expect two callbacks: user prompt then assistant response.
+	if len(calls) != 2 {
+		t.Fatalf("callback called %d times, want 2 (user + assistant)", len(calls))
 	}
-	if capturedRole != "assistant" {
-		t.Errorf("role = %q, want assistant", capturedRole)
+	if calls[0].role != "user" || calls[0].content != "hi" {
+		t.Errorf("calls[0] = %+v, want {user hi}", calls[0])
 	}
-	if capturedContent != "Hello! How can I help you today?" {
-		t.Errorf("content = %q, want 'Hello! How can I help you today?'", capturedContent)
+	if calls[1].role != "assistant" || calls[1].content != "Hello! How can I help you today?" {
+		t.Errorf("calls[1] = %+v, want {assistant Hello!...}", calls[1])
 	}
 }
 
@@ -453,23 +454,27 @@ func TestAgentLoop_MessageCallbackFiresOnIntermediateNarration(t *testing.T) {
 		},
 	)
 
-	var messages []string
+	// Collect only assistant-role callbacks — the user-prompt callback
+	// always fires once and is out of scope for this test.
+	var assistantMessages []string
 	loop.onMessage = func(role, content string) {
-		messages = append(messages, content)
+		if role == "assistant" {
+			assistantMessages = append(assistantMessages, content)
+		}
 	}
 
 	if err := loop.Run(context.Background(), "look up that thing"); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
-	if len(messages) != 2 {
-		t.Fatalf("callback called %d times, want 2 (narration + final)", len(messages))
+	if len(assistantMessages) != 2 {
+		t.Fatalf("assistant callback called %d times, want 2 (narration + final)", len(assistantMessages))
 	}
-	if messages[0] != "I will search for that." {
-		t.Errorf("message[0] = %q, want narration", messages[0])
+	if assistantMessages[0] != "I will search for that." {
+		t.Errorf("assistantMessages[0] = %q, want narration", assistantMessages[0])
 	}
-	if messages[1] != "Based on the lookup, the answer is 42." {
-		t.Errorf("message[1] = %q, want final response", messages[1])
+	if assistantMessages[1] != "Based on the lookup, the answer is 42." {
+		t.Errorf("assistantMessages[1] = %q, want final response", assistantMessages[1])
 	}
 }
 
@@ -502,16 +507,20 @@ func TestAgentLoop_MessageCallbackNotFiredForEmptyContent(t *testing.T) {
 		nil,
 	)
 
-	callbackCount := 0
+	// Count only assistant-role callbacks. The user-prompt callback
+	// always fires; this test checks the empty-assistant-content path.
+	assistantCount := 0
 	loop.onMessage = func(role, content string) {
-		callbackCount++
+		if role == "assistant" {
+			assistantCount++
+		}
 	}
 
 	if err := loop.Run(context.Background(), "test"); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
-	if callbackCount != 0 {
-		t.Errorf("callback called %d times for empty content, want 0", callbackCount)
+	if assistantCount != 0 {
+		t.Errorf("assistant callback called %d times for empty content, want 0", assistantCount)
 	}
 }

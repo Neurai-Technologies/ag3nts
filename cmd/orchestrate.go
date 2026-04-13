@@ -342,18 +342,25 @@ func runOrchestrate() error {
 			}
 			// Wire local LLM messages into m3m0ry for retrieval. The agent
 			// loop emits streamed deltas as EventProgress which the recorder
-			// filters; the callback receives the aggregated message and
-			// appends it as a task_result chunk for keyword/recency search.
+			// filters; the callback receives the aggregated message for both
+			// user prompts and assistant responses, so we can index both
+			// sides of every turn. Indexing user prompts is critical because
+			// users typically search by the action word they asked for,
+			// which lives in the prompt not the response.
 			if rollingCtx != nil {
 				headName := lo.HeadModelName()
 				lo.SetMessageCallback(func(role, content string) {
 					if content == "" {
 						return
 					}
+					kind := "task_result"
+					if role == "user" {
+						kind = "user_prompt"
+					}
 					_ = rollingCtx.Append(&m3m0ry.Chunk{
 						SessionID: sessionID,
 						Agent:     headName,
-						Kind:      "task_result",
+						Kind:      kind,
 						Content:   content,
 						CreatedAt: time.Now(),
 					})
