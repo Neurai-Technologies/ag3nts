@@ -140,7 +140,11 @@ tasks:
     timeout: 30m
 
   # Stage 6: Review — Claude Opus (adversarial evaluator).
-  # Spawns retry tasks if REJECT, terminates on ACCEPT or after 3 retries.
+  # Spawns retry tasks if REJECT, terminates on ACCEPT or BLOCKED, or
+  # after 3 retries. Reviewer sees the FULL chain (discovery, research,
+  # evaluate, plan, architecture, implement) so upstream concerns like
+  # "the input was too vague to plan against" are visible and can
+  # trigger BLOCKED instead of wasted retry attempts.
   - id: review
     agent: claude
     model: opus
@@ -149,6 +153,10 @@ tasks:
     depends_on:
       - implement
     context_from:
+      - discovery
+      - research
+      - evaluate
+      - plan
       - architecture
       - implement
     evaluator_of: implement

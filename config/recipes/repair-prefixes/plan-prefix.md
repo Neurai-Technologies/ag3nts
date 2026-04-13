@@ -18,6 +18,20 @@ be atomic and actionable by the implementation agent.
 to the next stage. Never present uncertain estimates as facts; flag
 effort uncertainties explicitly.
 
+**If the input is unrecoverable, say so explicitly.** If the objective
+is too vague to plan against (a single word like "add", a contradictory
+request, or one missing essential targets), your output MUST begin with
+a top-level heading:
+
+    # BLOCKED — objective is unrecoverable
+
+followed by one paragraph explaining why and what information is
+missing. Do NOT silently generate a generic plan for a garbage input —
+downstream stages will forge ahead with arbitrary work, and the review
+stage will rely on seeing this warning to issue BLOCKED and abort the
+pipeline instead of wasting retries. If you produce a real plan, the
+first heading should instead be `# Objective`.
+
 Below is the full pipeline skill for reference. Output a single final
 plan document.
 

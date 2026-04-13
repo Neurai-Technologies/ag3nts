@@ -40,6 +40,17 @@ tasks:
       concise implementation plan with 3-5 numbered steps. Each step
       should be directly actionable by an implementation agent.
 
+      If the objective is unrecoverably vague, contradictory, or missing
+      essential details (e.g. a single word like "add" with no target),
+      do NOT silently produce a generic plan. Instead, your output MUST
+      begin with a top-level heading:
+
+          # BLOCKED — objective is unrecoverable
+
+      followed by one paragraph explaining what information is missing.
+      The downstream review stage will recognize this marker and abort
+      the pipeline instead of wasting retry attempts on a doomed run.
+
       Objective: {{objective}}
     timeout: 10m
 
@@ -65,16 +76,39 @@ tasks:
     depends_on:
       - implement
     context_from:
+      - research
+      - plan
       - implement
     evaluator_of: implement
     evaluator_retries: 2
     prompt_template: |
-      You are the adversarial reviewer. Review the implementation above.
-      Your FIRST line must be exactly one of:
+      You are the adversarial reviewer. Review the implementation above
+      against the plan and research that produced it.
+
+      Your FIRST line must be EXACTLY one of:
         ACCEPT: <one-line summary>
-        REJECT: <one-line reason>
-      Subsequent lines may contain detailed feedback. Only ACCEPT if the
-      code runs, matches the plan, and handles obvious edge cases.
+        REJECT: <one-line specific fixable issue>
+        BLOCKED: <one-line reason the input cannot produce useful work>
+
+      Use BLOCKED (not REJECT) when:
+      - The objective is unrecoverably vague, contradictory, or missing
+        essential details (e.g. a single word like "add" with no target).
+      - The plan stage above explicitly flagged the input as too vague
+        to plan against, and the implementer nevertheless produced
+        arbitrary work to fill the void.
+      - The implementation addresses a different goal than what the user
+        asked for because the actual goal was undefined.
+      - No amount of retrying can rescue the situation.
+
+      Use REJECT for fixable issues (missing tests, wrong API, bad edge
+      cases, incomplete logic) that a retry with feedback could address.
+
+      Use ACCEPT only if the code runs, matches the objective, matches
+      the plan, and handles obvious edge cases.
+
+      If uncertain between REJECT and BLOCKED, prefer REJECT — a false
+      BLOCKED loses work a retry could have fixed; a false REJECT only
+      costs one retry attempt.
 
       Objective: {{objective}}
     timeout: 10m
