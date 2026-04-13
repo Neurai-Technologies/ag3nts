@@ -50,9 +50,14 @@ func parseEvaluatorTrailer(description string) *evaluatorMeta {
 	}
 }
 
-// parseEvaluatorVerdict extracts ACCEPT / REJECT / ASK_USER from the first
+// parseEvaluatorVerdict extracts ACCEPT / REJECT / BLOCKED from the first
 // line of an evaluator's output. Falls back to keyword search if first-line
 // parse fails (LLM didn't follow instructions).
+//
+// BLOCKED is used when the input is unrecoverable (missing requirements,
+// impossible task, self-contradictory inputs) and retrying would waste
+// compute. BLOCKED terminates the loop immediately and marks the target
+// as failed with the blocking reason.
 func parseEvaluatorVerdict(output string) (verdict string, reason string) {
 	trimmed := strings.TrimSpace(output)
 	if trimmed == "" {
@@ -63,11 +68,15 @@ func parseEvaluatorVerdict(output string) (verdict string, reason string) {
 	first := strings.TrimSpace(lines[0])
 	upper := strings.ToUpper(first)
 
+	// Check BLOCKED before REJECT since "BLOCKED" doesn't start with "REJECT"
+	// but we still want precedence clarity here.
 	switch {
+	case strings.HasPrefix(upper, "BLOCKED"):
+		return "BLOCKED", trimVerdictPrefix(first, 7)
 	case strings.HasPrefix(upper, "ACCEPT"):
-		return "ACCEPT", strings.TrimPrefix(first, first[:6])
+		return "ACCEPT", trimVerdictPrefix(first, 6)
 	case strings.HasPrefix(upper, "REJECT"):
-		return "REJECT", strings.TrimPrefix(first, first[:6])
+		return "REJECT", trimVerdictPrefix(first, 6)
 	}
 
 	// Fallback: keyword search in the first 500 chars.
@@ -76,6 +85,12 @@ func parseEvaluatorVerdict(output string) (verdict string, reason string) {
 		head = head[:500]
 	}
 	upperHead := strings.ToUpper(head)
+	// Precedence: BLOCKED > ACCEPT/APPROVED > REJECT/REJECTED — a reviewer
+	// that mentions "blocked" or "unrecoverable" should not be overridden
+	// by incidental approval/rejection keywords later in the text.
+	if strings.Contains(upperHead, "BLOCKED") || strings.Contains(upperHead, "UNRECOVERABLE") {
+		return "BLOCKED", "inferred from keyword"
+	}
 	if strings.Contains(upperHead, "APPROVED") || strings.Contains(upperHead, "ACCEPT") {
 		return "ACCEPT", "inferred from keyword"
 	}
@@ -87,10 +102,26 @@ func parseEvaluatorVerdict(output string) (verdict string, reason string) {
 	return "REJECT", "unparseable verdict"
 }
 
+// trimVerdictPrefix strips the verdict keyword plus an optional trailing
+// ":" and whitespace from the first line, returning just the reason.
+func trimVerdictPrefix(line string, keywordLen int) string {
+	if len(line) <= keywordLen {
+		return ""
+	}
+	rest := line[keywordLen:]
+	rest = strings.TrimLeft(rest, ": \t")
+	return strings.TrimSpace(rest)
+}
+
 // handleEvaluatorCompletion is called after an evaluator task completes.
-// If the verdict is REJECT and retries remain, it spawns retry tasks
-// (a new implementer task + a new evaluator task) wired into the DAG.
-// If the verdict is ACCEPT or retries are exhausted, the loop terminates.
+// Terminal verdicts (ACCEPT, BLOCKED, or exhausted retries) end the loop.
+// REJECT with remaining retries spawns a retry impl + retry eval pair.
+//
+// Verdict semantics:
+//   - ACCEPT: work meets criteria, loop ends cleanly
+//   - REJECT: issues exist that retry could fix — spawn retry pair
+//   - BLOCKED: unrecoverable (missing reqs, impossible task) — terminate
+//     immediately and mark target as failed with the blocking reason
 //
 // The trailer format evolves across attempts:
 //
@@ -121,20 +152,41 @@ func (o *Orchestrator) handleEvaluatorCompletion(evalTask *task.Task, result *ta
 		})
 	}
 
-	// ACCEPT or max retries exhausted: loop terminates.
+	// ACCEPT: loop terminates cleanly.
 	if verdict == "ACCEPT" {
 		return
 	}
+
+	// BLOCKED: reviewer has determined the input is unrecoverable. Skip
+	// retry spawn entirely and mark the original target as failed with
+	// the blocking reason so downstream tasks can see why.
+	if verdict == "BLOCKED" {
+		if o.logger != nil {
+			o.logger.Warn("evaluator",
+				fmt.Sprintf("blocked by reviewer: %s (target=%s)", reason, meta.targetID))
+		}
+		baseTargetID := stripRetrySuffix(meta.targetID)
+		if target := o.queue.Get(baseTargetID); target != nil {
+			targetResult := &task.Result{
+				Error: fmt.Sprintf("blocked by reviewer: %s", reason),
+			}
+			_ = o.queue.Update(baseTargetID, task.StatusFailed, targetResult)
+		}
+		return
+	}
+
+	// REJECT path: check retry budget.
 	if meta.attempt >= meta.maxRetry {
 		if o.logger != nil {
 			o.logger.Warn("evaluator", fmt.Sprintf("max retries exhausted for %s", meta.targetID))
 		}
 		// Mark the original target as failed so downstream tasks don't advance.
-		if target := o.queue.Get(meta.targetID); target != nil {
+		baseTargetID := stripRetrySuffix(meta.targetID)
+		if target := o.queue.Get(baseTargetID); target != nil {
 			targetResult := &task.Result{
 				Error: fmt.Sprintf("evaluator rejected after %d retries", meta.maxRetry),
 			}
-			_ = o.queue.Update(meta.targetID, task.StatusFailed, targetResult)
+			_ = o.queue.Update(baseTargetID, task.StatusFailed, targetResult)
 		}
 		return
 	}

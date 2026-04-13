@@ -102,6 +102,76 @@ func TestParseEvaluatorVerdictUnparseable(t *testing.T) {
 	}
 }
 
+func TestParseEvaluatorVerdictBlocked(t *testing.T) {
+	cases := []struct {
+		input      string
+		wantReason string
+	}{
+		{"BLOCKED: missing requirements\nDetails...", "missing requirements"},
+		{"BLOCKED: objective is empty, cannot proceed", "objective is empty, cannot proceed"},
+		{"blocked: self-contradictory input", "self-contradictory input"},
+		{"BLOCKED", ""},
+	}
+	for _, c := range cases {
+		v, r := parseEvaluatorVerdict(c.input)
+		if v != "BLOCKED" {
+			t.Errorf("verdict for %q = %q, want BLOCKED", c.input, v)
+		}
+		if r != c.wantReason {
+			t.Errorf("reason for %q = %q, want %q", c.input, r, c.wantReason)
+		}
+	}
+}
+
+func TestParseEvaluatorVerdictBlockedKeywordFallback(t *testing.T) {
+	// Reviewer doesn't use strict format but body mentions "blocked".
+	text := "The implementation is blocked by a missing requirement and cannot proceed."
+	v, _ := parseEvaluatorVerdict(text)
+	if v != "BLOCKED" {
+		t.Errorf("verdict = %q, want BLOCKED (keyword fallback)", v)
+	}
+}
+
+func TestParseEvaluatorVerdictBlockedPrecedenceOverReject(t *testing.T) {
+	// If both BLOCKED and REJECT appear in keyword fallback, BLOCKED wins.
+	// Otherwise a reviewer saying "rejected because unrecoverable" would
+	// incorrectly trigger a retry.
+	text := "The implementation is REJECTED because the input is BLOCKED/unrecoverable."
+	v, _ := parseEvaluatorVerdict(text)
+	if v != "BLOCKED" {
+		t.Errorf("verdict = %q, want BLOCKED (precedence over REJECT)", v)
+	}
+}
+
+func TestParseEvaluatorVerdictUnrecoverableKeyword(t *testing.T) {
+	text := "The requirements are UNRECOVERABLE in their current form."
+	v, _ := parseEvaluatorVerdict(text)
+	if v != "BLOCKED" {
+		t.Errorf("verdict = %q, want BLOCKED (unrecoverable keyword)", v)
+	}
+}
+
+func TestTrimVerdictPrefix(t *testing.T) {
+	cases := []struct {
+		line       string
+		keywordLen int
+		want       string
+	}{
+		{"ACCEPT: all good", 6, "all good"},
+		{"REJECT: needs work", 6, "needs work"},
+		{"BLOCKED: missing requirements", 7, "missing requirements"},
+		{"ACCEPT", 6, ""},
+		{"ACCEPT:", 6, ""},
+		{"ACCEPT  extra spaces", 6, "extra spaces"},
+	}
+	for _, c := range cases {
+		got := trimVerdictPrefix(c.line, c.keywordLen)
+		if got != c.want {
+			t.Errorf("trimVerdictPrefix(%q, %d) = %q, want %q", c.line, c.keywordLen, got, c.want)
+		}
+	}
+}
+
 // --- Trailer manipulation ---
 
 func TestStripEvaluatorTrailer(t *testing.T) {
