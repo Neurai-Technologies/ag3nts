@@ -850,7 +850,9 @@ func (a *App) handleSlash(ctx context.Context, input string) {
 		}
 		a.printLines("ag3nts", "Agents:\n"+strings.Join(lines, "\n"))
 
-	case "/tasks":
+	case "/tasks", "/task":
+		// Accept /task as a singular alias. Trailing args like
+		// "list" are ignored — the command always lists tasks.
 		tasks := a.orch.Tasks().List()
 		if len(tasks) == 0 {
 			a.printLine("ag3nts", "No tasks.")
