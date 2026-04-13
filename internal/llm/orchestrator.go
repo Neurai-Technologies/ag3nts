@@ -165,6 +165,7 @@ func NewLocalOrchestrator(
 				{Role: RoleSystem, Content: "Summarize the following conversation concisely, preserving key decisions, facts, and context needed for continuation. Be brief but complete."},
 				{Role: RoleUser, Content: text},
 			},
+			KeepAlive: -1,
 		})
 		if err != nil {
 			return "", err

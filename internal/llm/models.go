@@ -55,9 +55,11 @@ func (mm *ModelManager) EnsureLoaded(ctx context.Context, role ModelRole) error 
 	mm.mu.Unlock()
 
 	// Send an empty chat request with keep_alive to warm the model.
+	// Default to -1 (indefinite) — models stay loaded until explicitly
+	// unloaded via Unload() or ag3nts exits. No time-based eviction.
 	keepAlive := cfg.KeepAlive
-	if keepAlive == "" {
-		keepAlive = "30m"
+	if keepAlive == nil || keepAlive == "" {
+		keepAlive = -1
 	}
 
 	_, _, err := mm.client.Chat(ctx, ChatRequest{

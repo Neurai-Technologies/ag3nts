@@ -102,7 +102,9 @@ func (al *AgentLoop) Run(ctx context.Context, userMessage string) error {
 		default:
 		}
 
-		// Build and send request.
+		// Build and send request. KeepAlive=-1 pins the model in VRAM
+		// indefinitely — every request must carry it, otherwise Ollama
+		// resets to its default (5 min) and unloads during idle gaps.
 		msg, resp, err := al.client.StreamChat(ctx, ChatRequest{
 			Model:    al.headModel,
 			Messages: al.conversation.Messages(),
@@ -110,6 +112,7 @@ func (al *AgentLoop) Run(ctx context.Context, userMessage string) error {
 			Options: &ModelOptions{
 				NumCtx: al.models.Config(ModelHead).ContextLen,
 			},
+			KeepAlive: -1,
 		}, func(chunk ChatResponse) {
 			// Stream text tokens to TUI as they arrive.
 			if chunk.Message.Content != "" {
