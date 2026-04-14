@@ -121,7 +121,19 @@ func NewLocalOrchestrator(
 	}
 
 	models := NewModelManager(client, modelConfigs)
-	conversation := NewConversationManager(cfg.SystemPrompt, cfg.MaxContext)
+
+	// Project context priming (Fix D): scan the working directory once
+	// at startup and prepend a <project_context> block to the system
+	// prompt. Gives Gemma baseline awareness (cwd, git state, top-level
+	// files, CLAUDE.md if present) so it doesn't have to call
+	// read_file/run_command just to figure out where it is. ScanProject
+	// returns "" if the workdir is empty, missing, or has nothing
+	// useful to surface — in which case we keep the original prompt.
+	systemPrompt := cfg.SystemPrompt
+	if projectCtx := ScanProject(cfg.WorkDir); projectCtx != "" {
+		systemPrompt = systemPrompt + "\n\n" + projectCtx
+	}
+	conversation := NewConversationManager(systemPrompt, cfg.MaxContext)
 
 	// Memory: Go-native with disk persistence. No LLM needed.
 	persistPath := ""
