@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"charm.land/lipgloss/v2"
 )
@@ -26,13 +27,26 @@ type stageState struct {
 	taskID string
 }
 
+// stageSummary is per-stage data collected for the final summary banner
+// when a recipe run completes. Built from the queue's task records at
+// the moment the recipe reaches a terminal state.
+type stageSummary struct {
+	name         string
+	status       stageStatus
+	inputTokens  int
+	outputTokens int
+	costUSD      float64
+}
+
 // recipeRunState tracks the live state of a single recipe execution.
 // Stages are added dynamically as tasks of type "repair.*" appear in
 // the queue, so we don't need a hardcoded list of stages — repair-lite
 // (4 stages) and repair (7 stages) both work without configuration.
 type recipeRunState struct {
-	runID  string
-	stages []*stageState // ordered by first-seen
+	runID     string
+	stages    []*stageState // ordered by first-seen
+	startedAt time.Time     // when the run was first observed (dispatch or first event)
+	finalized bool          // true once the final summary banner has been emitted
 }
 
 // pipelineTracker keeps state for all in-flight recipe runs and renders
@@ -124,15 +138,19 @@ func (p *pipelineTracker) stageStatusFor(runID, taskID string) stageStatus {
 // discoverStages scans the provided task list for all tasks belonging
 // to runID and adds them as pending stages. Used on first-contact with
 // a new recipe run so the banner shows the full pipeline shape from
-// the start, not just the stages that have begun executing.
-func (p *pipelineTracker) discoverStages(runID string, tasksByID func() []taskMeta) {
+// the start, not just the stages that have begun executing. Returns
+// a snapshot of the discovered run, or nil if no stages were found.
+func (p *pipelineTracker) discoverStages(runID string, tasksByID func() []taskMeta) *recipeRunState {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if _, ok := p.runs[runID]; ok {
-		return
+	if existing, ok := p.runs[runID]; ok {
+		return cloneRunStateLocked(existing)
 	}
 	all := tasksByID()
-	run := &recipeRunState{runID: runID}
+	run := &recipeRunState{
+		runID:     runID,
+		startedAt: time.Now(),
+	}
 	for _, t := range all {
 		if runIDFromTaskID(t.id) != runID {
 			continue
@@ -149,7 +167,40 @@ func (p *pipelineTracker) discoverStages(runID string, tasksByID func() []taskMe
 	}
 	if len(run.stages) > 0 {
 		p.runs[runID] = run
+		return cloneRunStateLocked(run)
 	}
+	return nil
+}
+
+// markFinalized records that the final summary banner has been emitted
+// for a run, so subsequent transitions don't re-emit it. Returns true
+// if this is the first time finalize was called (i.e. caller should
+// emit the banner now); false if it was already finalized.
+func (p *pipelineTracker) markFinalized(runID string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	run, ok := p.runs[runID]
+	if !ok || run.finalized {
+		return false
+	}
+	run.finalized = true
+	return true
+}
+
+// cloneRunStateLocked returns a deep snapshot of a run state. Caller
+// must hold p.mu.
+func cloneRunStateLocked(src *recipeRunState) *recipeRunState {
+	clone := &recipeRunState{
+		runID:     src.runID,
+		startedAt: src.startedAt,
+		finalized: src.finalized,
+		stages:    make([]*stageState, len(src.stages)),
+	}
+	for i, s := range src.stages {
+		st := *s
+		clone.stages[i] = &st
+	}
+	return clone
 }
 
 // taskMeta is a minimal projection of task fields used by discoverStages
@@ -268,4 +319,91 @@ func (run *recipeRunState) isTerminal() bool {
 		}
 	}
 	return true
+}
+
+// renderFinalSummary renders a styled completion box for a finished
+// recipe run. Includes per-stage status + totals (wall-clock, tokens,
+// cost). Stage data is provided by the caller — the tracker doesn't
+// know the orchestrator's task records.
+func renderFinalSummary(run *recipeRunState, summaries []stageSummary, totalCost float64, totalIn, totalOut int) string {
+	if run == nil || len(run.stages) == 0 {
+		return ""
+	}
+
+	// Header line: outcome verdict.
+	var verdict string
+	allOK := true
+	for _, s := range run.stages {
+		if s.status == stageFailed || s.status == stageBlocked {
+			allOK = false
+			break
+		}
+	}
+	if allOK {
+		verdict = lipgloss.NewStyle().Foreground(lipgloss.Color("#81C784")).Bold(true).Render("✓ recipe complete")
+	} else {
+		verdict = lipgloss.NewStyle().Foreground(lipgloss.Color("#EF5350")).Bold(true).Render("✗ recipe ended with failures")
+	}
+
+	// Per-stage rows.
+	var rows []string
+	for _, s := range run.stages {
+		icon := stageColor(s.status).Render(stageIcon(s.status))
+		// Look up summary for this stage.
+		var ts stageSummary
+		for _, sum := range summaries {
+			if sum.name == s.name {
+				ts = sum
+				break
+			}
+		}
+		stageLabel := fmt.Sprintf("%s %s", icon, s.name)
+		stats := ""
+		if ts.inputTokens > 0 || ts.outputTokens > 0 {
+			stats = dimStyle.Render(fmt.Sprintf("  ↑%s ↓%s",
+				formatTokensShort(ts.inputTokens),
+				formatTokensShort(ts.outputTokens)))
+			if ts.costUSD > 0 {
+				stats += dimStyle.Render(fmt.Sprintf("  $%.4f", ts.costUSD))
+			}
+		}
+		rows = append(rows, stageLabel+stats)
+	}
+
+	// Total stats line.
+	duration := time.Since(run.startedAt).Round(time.Second)
+	totals := dimStyle.Render(fmt.Sprintf("total: ↑%s ↓%s",
+		formatTokensShort(totalIn),
+		formatTokensShort(totalOut)))
+	if totalCost > 0 {
+		totals += dimStyle.Render(fmt.Sprintf("  $%.4f", totalCost))
+	}
+	totals += dimStyle.Render(fmt.Sprintf("  %s", duration))
+
+	header := dimStyle.Render(fmt.Sprintf("recipe %s", run.runID))
+
+	body := header + "\n" +
+		verdict + "\n" +
+		strings.Join(rows, "\n") + "\n" +
+		totals
+
+	border := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#6E6E6E")).
+		Padding(0, 1)
+
+	return border.Render(body)
+}
+
+// formatTokensShort formats a token count compactly: 1234 → "1.2k",
+// 12345 → "12k", 1234567 → "1.2M". Used by the final summary banner
+// to keep stage rows narrow.
+func formatTokensShort(n int) string {
+	if n < 1000 {
+		return fmt.Sprintf("%d", n)
+	}
+	if n < 1_000_000 {
+		return fmt.Sprintf("%.1fk", float64(n)/1000)
+	}
+	return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
 }

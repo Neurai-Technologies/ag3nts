@@ -465,33 +465,94 @@ func (a *App) maybeUpdatePipeline(evt agent.AgentEvent) {
 		return
 	}
 
-	// Render the inline banner only on stage transitions worth
-	// surfacing — running, completed, failed. Skip pending (set
-	// during discovery) since that's a no-op visually.
-	if newStatus == stageRunning || newStatus == stageCompleted || newStatus == stageFailed {
-		a.printPipelineBanner(run)
-	}
-
-	// Update the spinner label to reflect current pipeline state
-	// (sticky status, B.3). When the run reaches a terminal state,
-	// clear the sticky label so the spinner reverts on its next
-	// natural restart.
-	if run.isTerminal() {
+	// Banner emission policy (Fix E refinement):
+	//
+	//  - Running transitions: NO banner. The sticky status line
+	//    (spinner label) shows the live state; printing a full
+	//    banner on every "stage starting" is just noise.
+	//  - Terminal transitions (completed/failed): banner only when
+	//    the run is NOT yet fully terminal. The final terminal
+	//    transition is handled by the summary banner below instead.
+	//  - Run becomes fully terminal: emit a one-shot final summary
+	//    banner with totals and skip the regular per-stage banner
+	//    (the summary subsumes it).
+	//
+	// This cuts banner spam from ~2N (one per Init + one per
+	// Complete) down to ~N (one per stage completion) plus one
+	// summary at the end.
+	terminal := run.isTerminal()
+	switch {
+	case terminal:
+		// Final summary banner — emit once.
+		if a.pipeline.markFinalized(run.runID) {
+			a.printFinalSummary(run)
+		}
+		// Clear the sticky status so the spinner reverts on next restart.
 		a.stickyMu.Lock()
 		a.stickyStatus = ""
 		a.stickyMu.Unlock()
-	} else {
+	case newStatus == stageCompleted || newStatus == stageFailed || newStatus == stageBlocked:
+		// Mid-run completion of one stage — show progress.
+		a.printPipelineBanner(run)
+		fallthrough
+	default:
+		// Update sticky status on every transition, including
+		// running ones, so the spinner label tracks live state.
 		sticky := renderStickyStatus(run)
 		a.stickyMu.Lock()
 		a.stickyStatus = sticky
 		a.stickyMu.Unlock()
-		// Update the live spinner label so the user sees pipeline
-		// state immediately, not just on the next spinner restart.
 		a.spinMu.Lock()
 		if a.spinning {
 			a.spinLabel = sticky
 		}
 		a.spinMu.Unlock()
+	}
+}
+
+// printFinalSummary renders the terminal-state summary banner for a
+// completed recipe run. Walks the orchestrator's task queue to gather
+// per-stage token/cost stats, then renders via renderFinalSummary.
+func (a *App) printFinalSummary(run *recipeRunState) {
+	var summaries []stageSummary
+	totalIn, totalOut := 0, 0
+	totalCost := 0.0
+	for _, s := range run.stages {
+		t := a.orch.Tasks().Get(s.taskID)
+		if t == nil || t.Result == nil || t.Result.Usage == nil {
+			summaries = append(summaries, stageSummary{name: s.name, status: s.status})
+			continue
+		}
+		u := t.Result.Usage
+		summaries = append(summaries, stageSummary{
+			name:         s.name,
+			status:       s.status,
+			inputTokens:  u.InputTokens,
+			outputTokens: u.OutputTokens,
+			costUSD:      u.TotalCost,
+		})
+		totalIn += u.InputTokens
+		totalOut += u.OutputTokens
+		totalCost += u.TotalCost
+	}
+
+	banner := renderFinalSummary(run, summaries, totalCost, totalIn, totalOut)
+	if banner == "" {
+		return
+	}
+	a.spinMu.Lock()
+	wasSpinning := a.spinning
+	label := a.spinLabel
+	a.spinMu.Unlock()
+	if wasSpinning {
+		a.stopSpinner()
+	}
+	a.println("")
+	for _, line := range strings.Split(banner, "\n") {
+		a.println(line)
+	}
+	if wasSpinning {
+		a.startSpinner(label)
 	}
 }
 
@@ -1373,6 +1434,21 @@ func (a *App) handleRecipe(ctx context.Context, args string) {
 
 	if r.IsMultiTask() {
 		a.printLine("ag3nts", fmt.Sprintf("Recipe %q dispatched (run=%s, %d sub-tasks)", r.Name, runID, len(r.Tasks)))
+		// Fix E: eager dispatch banner. Populate the pipeline tracker
+		// with all stages immediately and print the initial banner so
+		// the user sees the recipe shape right away, not after the
+		// first agent connects.
+		run := a.pipeline.discoverStages(runID, func() []taskMeta {
+			all := a.orch.Tasks().List()
+			out := make([]taskMeta, 0, len(all))
+			for _, qt := range all {
+				out = append(out, taskMeta{id: qt.ID, taskType: qt.Type})
+			}
+			return out
+		})
+		if run != nil {
+			a.printPipelineBanner(run)
+		}
 	} else {
 		a.printLine("ag3nts", fmt.Sprintf("Recipe %q dispatched as task %s → %s", r.Name, runID, r.Agent))
 	}
