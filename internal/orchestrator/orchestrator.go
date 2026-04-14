@@ -57,6 +57,7 @@ type Orchestrator struct {
 	recorder  *m3m0ry.Recorder    // bus recorder feeding rollingCtx
 	baseDir   string              // ag3nts install root for recipe file: resolution
 	agentWorkDir string            // cwd pinned for every subprocess agent dispatch
+	taskDir   string              // task persistence directory (empty = disabled)
 	bus       *bus.Bus
 	primary string
 	maxConc int
@@ -107,6 +108,7 @@ func New(cfg Config, agents *agent.Registry) (*Orchestrator, error) {
 		rollingCtx:   cfg.Context,
 		baseDir:      cfg.BaseDir,
 		agentWorkDir: cfg.AgentWorkDir,
+		taskDir:      taskDir,
 		bus:          bus.New(),
 		primary:    cfg.Primary,
 		maxConc:    maxConc,
@@ -481,6 +483,13 @@ func (o *Orchestrator) UpdateRouting(routes []router.Route) error {
 // Used by the TUI to scope task views to the current session.
 func (o *Orchestrator) SessionID() string {
 	return o.sessID
+}
+
+// TaskPersistDir returns the directory where task JSON files are
+// stored, or empty if task persistence is disabled. Used by the
+// TUI's /task gc command to scan for legacy flat-layout files.
+func (o *Orchestrator) TaskPersistDir() string {
+	return o.taskDir
 }
 
 func (o *Orchestrator) Primary() string {

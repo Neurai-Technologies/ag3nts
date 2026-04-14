@@ -230,6 +230,9 @@ func (a *App) Run(ctx context.Context) error {
 	a.rl = rl
 
 	go a.eventLoop(ctx)
+	// Reset the in-place streaming region on terminal resize so the
+	// next chunk render doesn't use stale cursor-math.
+	a.watchResize(ctx)
 	a.updateTitle()
 
 	// Get the PasteReader for multi-line terminator tracking.
@@ -409,6 +412,84 @@ func (a *App) printTaskDetails(t *task.Task) {
 	}
 	fmt.Fprintf(&b, "  description:\n%s", indent(t.Description, "    "))
 	a.printLines("ag3nts", b.String())
+}
+
+// handleTaskGC cleans up legacy flat-layout task JSON files left
+// over from before Fix B.1 (session-scoped task persistence). The
+// pre-B.1 layout was state/orchestrator/tasks/<task-id>.json; the
+// post-B.1 layout is state/orchestrator/tasks/<sessionID>/<task-id>.json.
+// Flat files have empty SessionID and only appear in /task list --all,
+// but they accumulate on disk as forensic noise.
+//
+// /task gc           → deletes the legacy flat files
+// /task gc --dry-run → shows what would be deleted without deleting
+//
+// Never touches session subdirectories, so active session tasks and
+// historical session tasks are always preserved. Only removes loose
+// *.json files in the tasks root.
+func (a *App) handleTaskGC(dryRun bool) {
+	// Resolve the task persistence dir from the orchestrator's config.
+	// The queue's persist dir is <persistDir>/tasks, and persistDir
+	// is derived from layout.State + "/orchestrator" in cmd/orchestrate.go.
+	// We reconstruct the same path here rather than plumbing it through.
+	persistDir := a.orch.TaskPersistDir()
+	if persistDir == "" {
+		a.printLine("ag3nts", "Task persistence is disabled; nothing to garbage-collect.")
+		return
+	}
+
+	entries, err := os.ReadDir(persistDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			a.printLine("ag3nts", "Task directory doesn't exist yet; nothing to garbage-collect.")
+			return
+		}
+		a.printError("ag3nts", fmt.Sprintf("gc: scan %s: %v", persistDir, err))
+		return
+	}
+
+	var targets []string
+	for _, e := range entries {
+		if e.IsDir() {
+			continue // session subdir, keep it
+		}
+		if filepath.Ext(e.Name()) != ".json" {
+			continue
+		}
+		targets = append(targets, filepath.Join(persistDir, e.Name()))
+	}
+
+	if len(targets) == 0 {
+		a.printLine("ag3nts", "No legacy task files found. Nothing to garbage-collect.")
+		return
+	}
+
+	if dryRun {
+		a.printLine("ag3nts", fmt.Sprintf("gc --dry-run: would delete %d legacy task file(s):", len(targets)))
+		for _, t := range targets {
+			a.printLine("ag3nts", "  "+filepath.Base(t))
+		}
+		a.printLine("ag3nts", "Re-run /task gc (without --dry-run) to actually delete.")
+		return
+	}
+
+	deleted := 0
+	var failures []string
+	for _, t := range targets {
+		if err := os.Remove(t); err != nil {
+			failures = append(failures, filepath.Base(t)+": "+err.Error())
+			continue
+		}
+		deleted++
+	}
+
+	a.printLine("ag3nts", fmt.Sprintf("gc: deleted %d legacy task file(s) from %s", deleted, persistDir))
+	if len(failures) > 0 {
+		a.printError("ag3nts", fmt.Sprintf("gc: %d failure(s):", len(failures)))
+		for _, f := range failures {
+			a.printError("ag3nts", "  "+f)
+		}
+	}
 }
 
 // maybeUpdatePipeline checks whether the given agent event belongs
@@ -1007,7 +1088,7 @@ func (a *App) handleSlash(ctx context.Context, input string) {
 			"  /compact  — compress conversation history to free context",
 			"  /export   — export conversation to a timestamped file",
 			"  /agents   — list agents",
-			"  /tasks    — list current-session tasks (compact). /task <id> for details, /task list --all for cross-session",
+			"  /tasks    — list current-session tasks (compact). /task <id> for details, /task list --all for cross-session, /task gc to clean up legacy files",
 			"  /status   — show overview",
 			"  /reload   — reload config and apply hot settings",
 			"  /cost    — show session cost breakdown",
@@ -1120,9 +1201,12 @@ func (a *App) handleSlash(ctx context.Context, input string) {
 		// /task <id>           — show full details for one task
 		// /task list / /task   — compact list of current-session tasks
 		// /task list --all     — include tasks from prior sessions
+		// /task gc             — delete legacy flat-layout task files
+		// /task gc --dry-run   — show what would be deleted without deleting
 		var sub string
 		var taskID string
 		showAll := false
+		dryRun := false
 		if len(parts) > 1 {
 			arg := parts[1]
 			switch arg {
@@ -1136,6 +1220,13 @@ func (a *App) handleSlash(ctx context.Context, input string) {
 			case "--all":
 				sub = "list"
 				showAll = true
+			case "gc":
+				sub = "gc"
+				for _, p := range parts[2:] {
+					if p == "--dry-run" || p == "--dry" {
+						dryRun = true
+					}
+				}
 			default:
 				// Single positional arg → treat as task ID for details.
 				sub = "show"
@@ -1152,6 +1243,11 @@ func (a *App) handleSlash(ctx context.Context, input string) {
 				return
 			}
 			a.printTaskDetails(t)
+			return
+		}
+
+		if sub == "gc" {
+			a.handleTaskGC(dryRun)
 			return
 		}
 
