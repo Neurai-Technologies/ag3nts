@@ -54,6 +54,7 @@ func (s Status) String() string {
 // Task represents a unit of work to be dispatched to an agent.
 type Task struct {
 	ID          string        `json:"id"`
+	SessionID   string        `json:"session_id,omitempty"`  // orchestrator session that owns this task
 	Description string        `json:"description"`
 	Type        string        `json:"type"`                  // matches routing patterns
 	Agent       string        `json:"agent,omitempty"`       // explicit agent override (empty = use router)
@@ -77,20 +78,54 @@ type Result struct {
 }
 
 // Queue manages tasks with thread-safe access and optional disk persistence.
+//
+// Persistence layout: tasks are written to <dir>/<sessionID>/<task-id>.json
+// when a sessionID has been configured via SetSessionID. This scopes
+// persisted tasks to their owning session, so Load() in a new session
+// only restores that session's own tasks instead of inheriting every
+// task from every prior orchestrator run. Tasks added before
+// SetSessionID is called fall back to the legacy flat layout
+// (<dir>/<task-id>.json) for backward compatibility.
 type Queue struct {
-	tasks map[string]*Task
-	order []string // insertion order for deterministic listing
-	mu    sync.RWMutex
-	dir   string // persistence directory (empty = no persistence)
+	tasks     map[string]*Task
+	order     []string // insertion order for deterministic listing
+	mu        sync.RWMutex
+	dir       string // persistence directory (empty = no persistence)
+	sessionID string // session that owns newly added tasks
 }
 
 // NewQueue creates a task queue. If persistDir is non-empty, tasks are
-// saved to and loaded from that directory as JSON files.
+// saved to and loaded from that directory as JSON files. Call
+// SetSessionID after construction to scope persistence to a session.
 func NewQueue(persistDir string) *Queue {
 	return &Queue{
 		tasks: make(map[string]*Task),
 		dir:   persistDir,
 	}
+}
+
+// SetSessionID configures the session that owns tasks added through
+// this queue. Newly added tasks are stamped with this ID and persisted
+// to a session-scoped subdirectory. Load() will only restore tasks
+// from that subdirectory, so prior sessions' tasks no longer leak
+// into the current session's view. Call this once after NewQueue,
+// before Load() or Add().
+func (q *Queue) SetSessionID(id string) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.sessionID = id
+}
+
+// sessionTaskDir returns the per-session task directory if a sessionID
+// is set, or the legacy flat dir otherwise. Caller must hold the lock.
+func (q *Queue) sessionTaskDir() string {
+	if q.dir == "" {
+		return ""
+	}
+	if q.sessionID == "" {
+		return q.dir
+	}
+	return filepath.Join(q.dir, q.sessionID)
 }
 
 // Add inserts a new task into the queue. The task must have a unique ID.
@@ -113,6 +148,12 @@ func (q *Queue) Add(t *Task) error {
 	}
 	if t.Status == 0 {
 		t.Status = StatusPending
+	}
+	// Stamp the task with the queue's session ID so it's owned by
+	// the current orchestrator run. Tasks created elsewhere with an
+	// explicit SessionID are left alone.
+	if t.SessionID == "" && q.sessionID != "" {
+		t.SessionID = q.sessionID
 	}
 
 	q.tasks[t.ID] = t
@@ -261,7 +302,12 @@ func (q *Queue) Load() error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	entries, err := os.ReadDir(q.dir)
+	// Read from the session-scoped subdirectory so that prior
+	// sessions' persisted tasks don't leak into the current session.
+	// Falls back to the flat layout (legacy / no sessionID) when
+	// SetSessionID has not been called.
+	loadDir := q.sessionTaskDir()
+	entries, err := os.ReadDir(loadDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -273,7 +319,7 @@ func (q *Queue) Load() error {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(q.dir, entry.Name()))
+		data, err := os.ReadFile(filepath.Join(loadDir, entry.Name()))
 		if err != nil {
 			continue
 		}
@@ -303,15 +349,17 @@ func (q *Queue) depsComplete(t *Task) bool {
 	return true
 }
 
-// persistTask writes a single task to disk as a JSON file.
-// Must be called with at least a read lock held.
+// persistTask writes a single task to disk as a JSON file in the
+// session-scoped subdirectory if a session ID is configured. Must be
+// called with at least a read lock held.
 func (q *Queue) persistTask(t *Task) error {
-	if err := os.MkdirAll(q.dir, 0700); err != nil {
+	dir := q.sessionTaskDir()
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(t, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(q.dir, t.ID+".json"), data, 0600)
+	return os.WriteFile(filepath.Join(dir, t.ID+".json"), data, 0600)
 }

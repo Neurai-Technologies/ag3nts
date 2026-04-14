@@ -73,6 +73,13 @@ type App struct {
 	agentTokens   map[string][3]int64 // [input, output, cost_microdollars]
 	agentTokensMu sync.RWMutex
 	totalCostUSD  float64
+
+	// Recipe pipeline tracking — drives inline banners (B.2) and the
+	// sticky one-line status above the prompt (B.3). Updated by
+	// handleEvent on repair.* task transitions.
+	pipeline      *pipelineTracker
+	stickyStatus  string // current sticky status line above the prompt (empty = no status shown)
+	stickyMu      sync.Mutex
 }
 
 // newSlashCompleter creates a tab-completion handler for slash commands.
@@ -122,6 +129,7 @@ func New(orch *orchestrator.Orchestrator, localOrch *llm.LocalOrchestrator, conf
 		allowedTools: make(map[string]bool),
 		lastTool:    make(map[string]string),
 		agentTokens: make(map[string][3]int64),
+		pipeline:    newPipelineTracker(),
 	}
 }
 
@@ -333,6 +341,185 @@ func (a *App) printLines(source, content string) {
 	for _, line := range strings.Split(content, "\n") {
 		a.printLine(source, line)
 	}
+}
+
+// firstLine returns the first non-empty line of s, trimmed.
+// Used for compact task list rendering so multi-line descriptions
+// (which include full prompt templates) collapse to a single line.
+func firstLine(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+// printTaskDetails renders the full state of a single task, used by
+// /task <id>. Shows status, agent, type, full description, dependencies,
+// timing, and result summary.
+func (a *App) printTaskDetails(t *task.Task) {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Task: %s\n", t.ID)
+	fmt.Fprintf(&b, "  status:  %s %s\n", taskIcon(t.Status.String()), t.Status.String())
+	fmt.Fprintf(&b, "  type:    %s\n", t.Type)
+	if t.Agent != "" {
+		fmt.Fprintf(&b, "  agent:   %s\n", t.Agent)
+	}
+	if t.SessionID != "" {
+		fmt.Fprintf(&b, "  session: %s\n", t.SessionID)
+	}
+	if !t.CreatedAt.IsZero() {
+		fmt.Fprintf(&b, "  created: %s\n", t.CreatedAt.Format("15:04:05"))
+	}
+	if !t.StartedAt.IsZero() {
+		fmt.Fprintf(&b, "  started: %s\n", t.StartedAt.Format("15:04:05"))
+	}
+	if !t.CompletedAt.IsZero() {
+		fmt.Fprintf(&b, "  done:    %s\n", t.CompletedAt.Format("15:04:05"))
+	}
+	if len(t.DependsOn) > 0 {
+		fmt.Fprintf(&b, "  deps:    %s\n", strings.Join(t.DependsOn, ", "))
+	}
+	if len(t.ContextFrom) > 0 {
+		fmt.Fprintf(&b, "  context: %s\n", strings.Join(t.ContextFrom, ", "))
+	}
+	if t.Result != nil {
+		if t.Result.Error != "" {
+			fmt.Fprintf(&b, "  error:   %s\n", t.Result.Error)
+		}
+		if t.Result.Usage != nil {
+			fmt.Fprintf(&b, "  tokens:  ↑%d ↓%d\n", t.Result.Usage.InputTokens, t.Result.Usage.OutputTokens)
+		}
+		if t.Result.Output != "" {
+			out := t.Result.Output
+			if len(out) > 800 {
+				out = out[:800] + "\n[... truncated, see state/orchestrator/results/ for full output]"
+			}
+			fmt.Fprintf(&b, "  output:\n%s\n", indent(out, "    "))
+		}
+	}
+	fmt.Fprintf(&b, "  description:\n%s", indent(t.Description, "    "))
+	a.printLines("ag3nts", b.String())
+}
+
+// maybeUpdatePipeline checks whether the given agent event belongs
+// to a repair recipe stage and updates the pipeline tracker if so.
+// On state transitions, prints the inline banner (B.2) and updates
+// the spinner label to the sticky pipeline status (B.3).
+//
+// The first event for a new runID triggers eager stage discovery —
+// the tracker scans the queue for all sibling stages and adds them
+// as pending so the banner shows the full pipeline shape from the
+// start, not just the stages that have already started executing.
+func (a *App) maybeUpdatePipeline(evt agent.AgentEvent) {
+	t := a.orch.Tasks().Get(evt.TaskID)
+	if t == nil || !strings.HasPrefix(t.Type, "repair.") {
+		return
+	}
+
+	// Determine new status from event kind.
+	var newStatus stageStatus
+	switch evt.Kind {
+	case agent.EventInit:
+		newStatus = stageRunning
+	case agent.EventComplete:
+		// Don't downgrade a failed stage to completed if EventError
+		// already arrived for this task.
+		runID := runIDFromTaskID(evt.TaskID)
+		if a.pipeline.stageStatusFor(runID, evt.TaskID) == stageFailed {
+			return
+		}
+		newStatus = stageCompleted
+	case agent.EventError:
+		newStatus = stageFailed
+	default:
+		return
+	}
+
+	// Eager discovery: if this is a brand-new runID, scan the queue
+	// for all sibling stages and add them as pending so the banner
+	// shows the full pipeline shape.
+	runID := runIDFromTaskID(evt.TaskID)
+	if !a.pipeline.hasRun(runID) {
+		a.pipeline.discoverStages(runID, func() []taskMeta {
+			all := a.orch.Tasks().List()
+			out := make([]taskMeta, 0, len(all))
+			for _, qt := range all {
+				out = append(out, taskMeta{id: qt.ID, taskType: qt.Type})
+			}
+			return out
+		})
+	}
+
+	run := a.pipeline.updateStage(evt.TaskID, t.Type, newStatus)
+	if run == nil {
+		return
+	}
+
+	// Render the inline banner only on stage transitions worth
+	// surfacing — running, completed, failed. Skip pending (set
+	// during discovery) since that's a no-op visually.
+	if newStatus == stageRunning || newStatus == stageCompleted || newStatus == stageFailed {
+		a.printPipelineBanner(run)
+	}
+
+	// Update the spinner label to reflect current pipeline state
+	// (sticky status, B.3). When the run reaches a terminal state,
+	// clear the sticky label so the spinner reverts on its next
+	// natural restart.
+	if run.isTerminal() {
+		a.stickyMu.Lock()
+		a.stickyStatus = ""
+		a.stickyMu.Unlock()
+	} else {
+		sticky := renderStickyStatus(run)
+		a.stickyMu.Lock()
+		a.stickyStatus = sticky
+		a.stickyMu.Unlock()
+		// Update the live spinner label so the user sees pipeline
+		// state immediately, not just on the next spinner restart.
+		a.spinMu.Lock()
+		if a.spinning {
+			a.spinLabel = sticky
+		}
+		a.spinMu.Unlock()
+	}
+}
+
+// printPipelineBanner prints the inline pipeline banner above the
+// current cursor position. Stops the spinner first to avoid drawing
+// over its line, then restarts it after.
+func (a *App) printPipelineBanner(run *recipeRunState) {
+	banner := renderInlineBanner(run)
+	if banner == "" {
+		return
+	}
+	a.spinMu.Lock()
+	wasSpinning := a.spinning
+	label := a.spinLabel
+	a.spinMu.Unlock()
+
+	if wasSpinning {
+		a.stopSpinner()
+	}
+	a.println("")
+	for _, line := range strings.Split(banner, "\n") {
+		a.println(line)
+	}
+	if wasSpinning {
+		a.startSpinner(label)
+	}
+}
+
+// indent prepends prefix to each line of s.
+func indent(s, prefix string) string {
+	lines := strings.Split(s, "\n")
+	for i, l := range lines {
+		lines[i] = prefix + l
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (a *App) printErrors(source, content string) {
@@ -741,7 +928,7 @@ func (a *App) handleSlash(ctx context.Context, input string) {
 			"  /compact  — compress conversation history to free context",
 			"  /export   — export conversation to a timestamped file",
 			"  /agents   — list agents",
-			"  /tasks    — list tasks",
+			"  /tasks    — list current-session tasks (compact). /task <id> for details, /task list --all for cross-session",
 			"  /status   — show overview",
 			"  /reload   — reload config and apply hot settings",
 			"  /cost    — show session cost breakdown",
@@ -851,19 +1038,77 @@ func (a *App) handleSlash(ctx context.Context, input string) {
 		a.printLines("ag3nts", "Agents:\n"+strings.Join(lines, "\n"))
 
 	case "/tasks", "/task":
-		// Accept /task as a singular alias. Trailing args like
-		// "list" are ignored — the command always lists tasks.
-		tasks := a.orch.Tasks().List()
-		if len(tasks) == 0 {
-			a.printLine("ag3nts", "No tasks.")
+		// /task <id>           — show full details for one task
+		// /task list / /task   — compact list of current-session tasks
+		// /task list --all     — include tasks from prior sessions
+		var sub string
+		var taskID string
+		showAll := false
+		if len(parts) > 1 {
+			arg := parts[1]
+			switch arg {
+			case "list":
+				sub = "list"
+				for _, p := range parts[2:] {
+					if p == "--all" {
+						showAll = true
+					}
+				}
+			case "--all":
+				sub = "list"
+				showAll = true
+			default:
+				// Single positional arg → treat as task ID for details.
+				sub = "show"
+				taskID = arg
+			}
+		} else {
+			sub = "list"
+		}
+
+		if sub == "show" {
+			t := a.orch.Tasks().Get(taskID)
+			if t == nil {
+				a.printError("ag3nts", fmt.Sprintf("task %q not found", taskID))
+				return
+			}
+			a.printTaskDetails(t)
+			return
+		}
+
+		// Compact list view.
+		all := a.orch.Tasks().List()
+		// Filter to current session unless --all requested. Tasks
+		// added before SessionID was wired (legacy) have empty
+		// SessionID and only show with --all.
+		var visible []*task.Task
+		for _, t := range all {
+			if showAll || t.SessionID == a.orch.SessionID() {
+				visible = append(visible, t)
+			}
+		}
+		if len(visible) == 0 {
+			if showAll {
+				a.printLine("ag3nts", "No tasks.")
+			} else {
+				a.printLine("ag3nts", "No tasks in this session. Use /task list --all for cross-session view.")
+			}
 			return
 		}
 		var lines []string
-		for _, t := range tasks {
-			lines = append(lines, fmt.Sprintf("  %s %s [%s] — %s",
-				taskIcon(t.Status.String()), t.ID, t.Type, t.Description))
+		for _, t := range visible {
+			desc := firstLine(t.Description)
+			if len(desc) > 60 {
+				desc = desc[:57] + "..."
+			}
+			lines = append(lines, fmt.Sprintf("  %s %s [%s] %s",
+				taskIcon(t.Status.String()), t.ID, t.Type, desc))
 		}
-		a.printLines("ag3nts", "Tasks:\n"+strings.Join(lines, "\n"))
+		header := fmt.Sprintf("Tasks (%d in session, /task <id> for details):", len(visible))
+		if showAll {
+			header = fmt.Sprintf("Tasks (%d total across sessions):", len(visible))
+		}
+		a.printLines("ag3nts", header+"\n"+strings.Join(lines, "\n"))
 
 	case "/status":
 		counts := a.orch.Tasks().Count()
@@ -1255,6 +1500,14 @@ func (a *App) handleEvent(event bus.Event) {
 	agentEvt, ok := event.Payload.(agent.AgentEvent)
 	if !ok {
 		return
+	}
+
+	// Recipe pipeline tracking — update inline banner and sticky
+	// status when a repair.* task transitions states. Runs before
+	// the main switch so banner rendering isn't gated on which
+	// branch handles the event.
+	if agentEvt.TaskID != "" {
+		a.maybeUpdatePipeline(agentEvt)
 	}
 
 	switch agentEvt.Kind {

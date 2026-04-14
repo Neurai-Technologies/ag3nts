@@ -91,10 +91,12 @@ func New(cfg Config, agents *agent.Registry) (*Orchestrator, error) {
 		resultDir = persistDir + "/results"
 	}
 
+	q := task.NewQueue(taskDir)
+	q.SetSessionID(cfg.SessionID)
 	return &Orchestrator{
 		agents:     agents,
 		router:     r,
-		queue:      task.NewQueue(taskDir),
+		queue:      q,
 		store:      NewStore(resultDir),
 		storeDB:    cfg.StoreDB,
 		sessID:     cfg.SessionID,
@@ -475,6 +477,12 @@ func (o *Orchestrator) UpdateRouting(routes []router.Route) error {
 }
 
 // Primary returns the current primary agent name.
+// SessionID returns the orchestrator's current session identifier.
+// Used by the TUI to scope task views to the current session.
+func (o *Orchestrator) SessionID() string {
+	return o.sessID
+}
+
 func (o *Orchestrator) Primary() string {
 	return o.primary
 }
