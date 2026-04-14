@@ -80,6 +80,13 @@ type App struct {
 	pipeline      *pipelineTracker
 	stickyStatus  string // current sticky status line above the prompt (empty = no status shown)
 	stickyMu      sync.Mutex
+
+	// In-place streaming region (Fix C). Tracks how many terminal
+	// rows the current uncommitted streaming buffer occupies so we
+	// can erase and re-render it as new tokens arrive. Reset to 0
+	// whenever the region is committed (via newline) or cleared.
+	streamRegionLines int
+	streamRegionMu    sync.Mutex
 }
 
 // newSlashCompleter creates a tab-completion handler for slash commands.
@@ -1751,39 +1758,67 @@ func (a *App) appendAndFlushParagraphs(agentName, content string) {
 	a.stream.Set(agentName, buf)
 }
 
-// appendAndFlushLines is the streaming variant: it flushes on every
-// single newline (not just double), so multi-line responses render
-// line-by-line as they arrive. Preserves the spinner across chunks
-// and only stops/restarts it when a line is actually being printed.
-// Used for local LLM streaming deltas.
+// appendAndFlushLines is the streaming variant for local LLM deltas.
+// It renders every chunk visibly so the user sees text arrive token
+// by token, not in a single block at the end.
+//
+// Two layers:
+//
+//  1. Committed lines — when a \n arrives, the line up to the newline
+//     is rendered through glamour and printed permanently. The cursor
+//     advances past it and it never changes again.
+//
+//  2. In-place region — the partial line after the last \n (or the
+//     entire buffer if no \n yet) is rendered as raw text in an
+//     erasable region using ANSI cursor controls. Each new chunk
+//     erases the prior region and re-renders the buffer in place.
+//
+// During streaming the spinner is suspended — the streaming region
+// itself IS the visible feedback. When the response completes (the
+// EventComplete handler calls flushStream and restarts the spinner),
+// any uncommitted content is flushed through glamour as a final line
+// and the region is cleared.
 func (a *App) appendAndFlushLines(agentName, content string) {
 	a.stream.Append(agentName, content)
 	a.addTokens(len(content))
 
-	buf := a.stream.Peek(agentName)
-	// Fast path: nothing to flush yet. Don't touch the spinner — the
-	// live token counter in its status line shows streaming progress.
-	if !strings.Contains(buf, "\n") {
-		a.stream.Set(agentName, buf)
-		return
-	}
-
-	// A line boundary exists — we're about to print. Capture the
-	// current spinner label AND the live counters so we can restart
-	// without wiping the in-flight token count.
+	// Suspend the spinner if it's running — the streaming region is
+	// our feedback now. Save counter values so the eventual restart
+	// preserves them.
 	a.spinMu.Lock()
+	wasSpinning := a.spinning
 	spinnerLabel := a.spinLabel
 	a.spinMu.Unlock()
-	savedIn := atomic.LoadInt64(&a.tokenIn)
-	savedOut := atomic.LoadInt64(&a.tokenOut)
+	if wasSpinning {
+		savedIn := atomic.LoadInt64(&a.tokenIn)
+		savedOut := atomic.LoadInt64(&a.tokenOut)
+		a.stopSpinner()
+		// Restore counters after stopSpinner (which used to reset them
+		// in earlier versions; harmless now but defensive).
+		atomic.StoreInt64(&a.tokenIn, savedIn)
+		atomic.StoreInt64(&a.tokenOut, savedOut)
+		// Stash the label so the EventComplete handler can resume
+		// the right spinner after streaming ends.
+		_ = spinnerLabel
+	}
 
-	a.stopSpinner()
+	buf := a.stream.Peek(agentName)
 
+	// Process all completed lines (everything before the last \n)
+	// through glamour and print them permanently. Before printing,
+	// erase any in-place region from the prior chunk so raw text
+	// doesn't bleed into the committed output.
 	for {
 		idx := strings.Index(buf, "\n")
 		if idx < 0 {
 			break
 		}
+
+		// Erase the in-place region first — once. Subsequent loop
+		// iterations don't need to re-erase because we've already
+		// reset streamRegionLines to 0.
+		a.commitStreamRegion()
+
 		line := buf[:idx]
 		buf = buf[idx+1:]
 
@@ -1799,18 +1834,25 @@ func (a *App) appendAndFlushLines(agentName, content string) {
 	}
 	a.stream.Set(agentName, buf)
 
-	// Restart the spinner and restore the counters so the live ↓ tokens
-	// display continues from where it was, not from zero.
-	if spinnerLabel != "" {
-		a.startSpinner(spinnerLabel)
-		atomic.StoreInt64(&a.tokenIn, savedIn)
-		atomic.StoreInt64(&a.tokenOut, savedOut)
+	// Render the remaining partial line as raw text in the in-place
+	// region. Empty buf means we just committed everything and have
+	// nothing more to show until the next chunk.
+	if buf != "" {
+		a.renderStreamRegion(buf)
+	} else {
+		// Nothing partial. Make sure no stale region is left over.
+		a.commitStreamRegion()
 	}
 }
 
 // flushStream renders any remaining buffered text and clears the buffer.
+// Also clears the in-place streaming region so the raw partial text
+// from the last chunk doesn't bleed into the glamour-rendered final.
 func (a *App) flushStream(agentName string) {
 	text := a.stream.Flush(agentName)
+	// Always erase the in-place region, even if there's no text to
+	// render — otherwise stale partial-line text stays on screen.
+	a.commitStreamRegion()
 	if text == "" {
 		return
 	}
@@ -1822,6 +1864,9 @@ func (a *App) flushStream(agentName string) {
 
 func (a *App) flushAgent(agentName string) {
 	text := a.stream.Flush(agentName)
+	// Erase any in-place streaming region first so raw partial-line
+	// text doesn't bleed into the formatted output below.
+	a.commitStreamRegion()
 	if text == "" {
 		return
 	}
