@@ -188,6 +188,33 @@ func (d *DB) CountContextChunks(sessionID string) (int, error) {
 	return count, err
 }
 
+// NextTaskResultAfterSeq returns the first task_result chunk in the
+// given session with seq strictly greater than afterSeq. Used for
+// turn pairing in m3m0ry retrieval — when a user_prompt chunk matches
+// a query, this finds the corresponding assistant response so the
+// pair is returned together. Returns nil if no such chunk exists.
+func (d *DB) NextTaskResultAfterSeq(sessionID string, afterSeq int64) (*ContextChunkRecord, error) {
+	rows, err := d.db.Query(`
+		SELECT id, session_id, task_id, agent, kind, content, token_count, keywords, seq, created_at
+		FROM context_chunks
+		WHERE session_id = ? AND kind = 'task_result' AND seq > ?
+		ORDER BY seq ASC
+		LIMIT 1`, sessionID, afterSeq)
+	if err != nil {
+		return nil, fmt.Errorf("next task_result: %w", err)
+	}
+	defer rows.Close()
+
+	chunks, err := scanContextChunks(rows)
+	if err != nil {
+		return nil, err
+	}
+	if len(chunks) == 0 {
+		return nil, nil
+	}
+	return chunks[0], nil
+}
+
 // MaxContextSeq returns the highest seq number for a session (0 if empty).
 func (d *DB) MaxContextSeq(sessionID string) (int64, error) {
 	var maxSeq sql.NullInt64

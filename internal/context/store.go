@@ -276,7 +276,16 @@ func (r *RollingStore) appendJSONL(chunk *Chunk) error {
 
 // Retrieve returns up to RetrievalLimit chunks matching the query,
 // ranked by keyword hits + recency. Total tokens capped at RetrievalBudget.
-// If query is empty, returns most recent chunks.
+//
+// Behavior:
+//   - If query is empty, returns most recent chunks (pure recency).
+//   - If keyword query returns zero matches, falls back to most recent
+//     chunks. Eliminates "no matches" outcomes when there's clearly
+//     recent activity but no keywords align.
+//   - When a user_prompt chunk matches, the next task_result chunk in
+//     the session (by seq) is automatically paired with it. So a search
+//     for an action word like "summarise" that only appears in the
+//     prompt still surfaces the corresponding response together.
 func (r *RollingStore) Retrieve(query string, now time.Time) ([]*Chunk, error) {
 	if now.IsZero() {
 		now = time.Now()
@@ -288,6 +297,17 @@ func (r *RollingStore) Retrieve(query string, now time.Time) ([]*Chunk, error) {
 	records, err := r.db.QueryContextChunks(r.sessID, keywords, fetchLimit)
 	if err != nil {
 		return nil, fmt.Errorf("query chunks: %w", err)
+	}
+
+	// Recency fallback: zero keyword matches → most recent chunks.
+	// extractKeywords may return non-empty for the query but the LIKE
+	// search returns zero rows because no chunk contains those tokens.
+	// Re-issue with empty keywords to get pure recency.
+	if len(records) == 0 && len(keywords) > 0 {
+		records, err = r.db.QueryContextChunks(r.sessID, nil, fetchLimit)
+		if err != nil {
+			return nil, fmt.Errorf("recency fallback: %w", err)
+		}
 	}
 
 	// Convert to Chunk and compute scores.
@@ -354,5 +374,43 @@ func (r *RollingStore) Retrieve(query string, now time.Time) ([]*Chunk, error) {
 		out = append(out, sc.chunk)
 		used += sc.chunk.TokenCount
 	}
-	return out, nil
+
+	// Turn pairing: for each user_prompt in the result set, fetch the
+	// next task_result by seq and inline it after the prompt. Skips
+	// chunks already in the result set. Walks within the remaining
+	// token budget — pairs that don't fit are dropped silently.
+	seenIDs := make(map[int64]bool, len(out))
+	for _, c := range out {
+		seenIDs[c.ID] = true
+	}
+	paired := make([]*Chunk, 0, len(out)*2)
+	for _, c := range out {
+		paired = append(paired, c)
+		if c.Kind != "user_prompt" {
+			continue
+		}
+		nextRec, nerr := r.db.NextTaskResultAfterSeq(r.sessID, c.Seq)
+		if nerr != nil || nextRec == nil || seenIDs[nextRec.ID] {
+			continue
+		}
+		nextChunk := &Chunk{
+			ID:         nextRec.ID,
+			SessionID:  nextRec.SessionID,
+			TaskID:     nextRec.TaskID,
+			Agent:      nextRec.Agent,
+			Kind:       nextRec.Kind,
+			Content:    nextRec.Content,
+			TokenCount: nextRec.TokenCount,
+			Keywords:   splitKeywords(nextRec.Keywords),
+			Seq:        nextRec.Seq,
+			CreatedAt:  nextRec.CreatedAt,
+		}
+		if used+nextChunk.TokenCount > budget {
+			continue
+		}
+		paired = append(paired, nextChunk)
+		used += nextChunk.TokenCount
+		seenIDs[nextRec.ID] = true
+	}
+	return paired, nil
 }

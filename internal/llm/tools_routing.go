@@ -32,7 +32,7 @@ func RegisterRoutingTools(deps RoutingDeps) ([]ToolDef, map[string]ToolExecutor)
 			Type: "function",
 			Function: ToolFunction{
 				Name:        "recall",
-				Description: "Retrieve relevant context from the current session — recent task results, agent outputs, and tool calls in this conversation. Scoped to this session only; does NOT return data from past sessions. Use when the user refers to 'the last result', 'earlier in this conversation', or anything discussed since ag3nts started.",
+				Description: "FALLBACK ONLY. Relevant prior context from this session is automatically injected into every turn — you do NOT normally need to call recall. Only call recall if you've already checked the auto-injected context above and still cannot find what the user is asking about. Scoped to the current session.",
 				Parameters: ToolFunctionParams{
 					Type: "object",
 					Properties: map[string]ToolParamProp{

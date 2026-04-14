@@ -9,6 +9,7 @@ import (
 
 	"github.com/rohanrgit/ag3nts/internal/agent"
 	"github.com/rohanrgit/ag3nts/internal/bus"
+	m3m0ry "github.com/rohanrgit/ag3nts/internal/context"
 )
 
 const (
@@ -36,6 +37,7 @@ type AgentLoop struct {
 	headModel     string // full model name for API (e.g. "gemma4:31b")
 	headDisplay   string // short name for display (e.g. "gemma4")
 	memory        *Memory
+	rollingCtx    *m3m0ry.RollingStore // optional: auto-recall context per turn
 	askPermission PermissionFunc
 	onMessage     MessageCallback // optional: fired on aggregated messages
 }
@@ -94,6 +96,26 @@ func (al *AgentLoop) Run(ctx context.Context, userMessage string) error {
 		al.onMessage("user", userMessage)
 	}
 
+	// Auto-recall: query m3m0ry for context relevant to the current
+	// user message. The retrieved chunks become a one-shot system
+	// message we prepend to every iteration's API call this turn,
+	// without mutating the persistent conversation history. This
+	// removes the need for the model to call recall explicitly —
+	// relevant prior context is always already in front of it.
+	//
+	// Done once per Run(), not per iteration: the context is a
+	// property of "this turn" and stays constant across tool-calling
+	// rounds within the same turn.
+	var autoContextMsg *Message
+	if al.rollingCtx != nil {
+		if rendered := al.rollingCtx.RenderRelevant(userMessage); rendered != "" {
+			autoContextMsg = &Message{
+				Role:    RoleSystem,
+				Content: rendered,
+			}
+		}
+	}
+
 	// Check if summarization is needed.
 	if al.conversation.NeedsSummarization() {
 		al.emitSystem("Compressing conversation history...")
@@ -111,12 +133,25 @@ func (al *AgentLoop) Run(ctx context.Context, userMessage string) error {
 		default:
 		}
 
+		// Build the messages slice for this API call. If we auto-recalled
+		// m3m0ry context for this turn, prepend it as a system message
+		// so the model sees relevant prior turns without having to call
+		// recall explicitly. The conversation history itself is never
+		// mutated — the context is per-call decoration.
+		messages := al.conversation.Messages()
+		if autoContextMsg != nil {
+			withCtx := make([]Message, 0, len(messages)+1)
+			withCtx = append(withCtx, *autoContextMsg)
+			withCtx = append(withCtx, messages...)
+			messages = withCtx
+		}
+
 		// Build and send request. KeepAlive=-1 pins the model in VRAM
 		// indefinitely — every request must carry it, otherwise Ollama
 		// resets to its default (5 min) and unloads during idle gaps.
 		msg, resp, err := al.client.StreamChat(ctx, ChatRequest{
 			Model:    al.headModel,
-			Messages: al.conversation.Messages(),
+			Messages: messages,
 			Tools:    al.toolDefs,
 			Options: &ModelOptions{
 				NumCtx: al.models.Config(ModelHead).ContextLen,

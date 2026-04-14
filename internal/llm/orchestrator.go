@@ -133,6 +133,9 @@ func NewLocalOrchestrator(
 	// Create agent loop.
 	loop := NewAgentLoop(client, conversation, models, eventBus, cfg.HeadModel, memory)
 	loop.askPermission = cfg.AskPermission
+	// Wire m3m0ry into the loop so it can auto-recall relevant context
+	// per turn without requiring the model to call recall explicitly.
+	loop.rollingCtx = cfg.Rolling
 
 	// Register system tools.
 	sysDefs, sysExecs := RegisterSystemTools(cfg.WorkDir)
