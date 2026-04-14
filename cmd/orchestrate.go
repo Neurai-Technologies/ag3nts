@@ -28,6 +28,7 @@ var (
 	primaryFlag string
 	resumeFlag  string
 	forkFlag    string
+	verboseFlag bool
 )
 
 var orchestrateCmd = &cobra.Command{
@@ -50,6 +51,7 @@ func init() {
 	orchestrateCmd.Flags().StringVar(&primaryFlag, "primary", "", "override the primary agent")
 	orchestrateCmd.Flags().StringVar(&resumeFlag, "resume", "", "resume a previous session by ID")
 	orchestrateCmd.Flags().StringVar(&forkFlag, "fork", "", "fork from a previous session (new session, same context)")
+	orchestrateCmd.Flags().BoolVarP(&verboseFlag, "verbose", "v", false, "enable debug-level logging")
 	rootCmd.AddCommand(orchestrateCmd)
 }
 
@@ -209,18 +211,26 @@ func runOrchestrate() error {
 
 	// Create structured logger if enabled.
 	var logger *logging.Logger
-	if cfg.Logging.Enabled && layout != nil {
+	if (cfg.Logging.Enabled || verboseFlag) && layout != nil {
 		logsDir := layout.State + "/logs"
+		defaultLevel := logging.ParseLevel(cfg.Logging.Level)
 		moduleLevels := make(map[string]logging.Level)
-		for mod, lvl := range cfg.Logging.ModuleLevels {
-			moduleLevels[mod] = logging.ParseLevel(lvl)
+		if verboseFlag {
+			defaultLevel = logging.LevelDebug
+		} else {
+			for mod, lvl := range cfg.Logging.ModuleLevels {
+				moduleLevels[mod] = logging.ParseLevel(lvl)
+			}
 		}
-		l, err := logging.Open(logsDir, sessionID, logging.ParseLevel(cfg.Logging.Level), moduleLevels)
+		l, err := logging.Open(logsDir, sessionID, defaultLevel, moduleLevels)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "⚠ Logging unavailable: %v\n", err)
 		} else {
 			logger = l
 			defer logger.Close()
+			if verboseFlag {
+				fmt.Fprintf(os.Stderr, "✓ Verbose logging → %s/%s.jsonl\n", logsDir, sessionID)
+			}
 		}
 	}
 
