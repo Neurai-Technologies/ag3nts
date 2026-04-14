@@ -12,7 +12,8 @@ parameters:
   - key: objective
     type: string
     required: true
-    description: What to build or fix
+    min_words: 5
+    description: What to build or fix (complete sentence with a concrete target)
 
 tasks:
   - id: research

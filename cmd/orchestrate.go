@@ -29,6 +29,7 @@ var (
 	resumeFlag  string
 	forkFlag    string
 	verboseFlag bool
+	projectFlag string
 )
 
 var orchestrateCmd = &cobra.Command{
@@ -38,10 +39,11 @@ var orchestrateCmd = &cobra.Command{
 multiple AI agents simultaneously. Chat with your primary agent, dispatch
 tasks to others, and watch them work in parallel.
 
-  ag3nts orchestrate                       # use config defaults
-  ag3nts orchestrate --primary gemini      # start with Gemini as primary
-  ag3nts orchestrate --resume <session-id> # resume a previous session
-  ag3nts orchestrate --fork <session-id>   # fork from a previous session`,
+  ag3nts orchestrate                             # use config defaults
+  ag3nts orchestrate --primary gemini            # start with Gemini as primary
+  ag3nts orchestrate --project /path/to/project  # operate on a specific project
+  ag3nts orchestrate --resume <session-id>       # resume a previous session
+  ag3nts orchestrate --fork <session-id>         # fork from a previous session`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runOrchestrate()
 	},
@@ -52,6 +54,7 @@ func init() {
 	orchestrateCmd.Flags().StringVar(&resumeFlag, "resume", "", "resume a previous session by ID")
 	orchestrateCmd.Flags().StringVar(&forkFlag, "fork", "", "fork from a previous session (new session, same context)")
 	orchestrateCmd.Flags().BoolVarP(&verboseFlag, "verbose", "v", false, "enable debug-level logging")
+	orchestrateCmd.Flags().StringVarP(&projectFlag, "project", "p", "", "pin subprocess agents to a specific project directory (overrides cwd)")
 	rootCmd.AddCommand(orchestrateCmd)
 }
 
@@ -120,13 +123,36 @@ func runOrchestrate() error {
 	// Pin the working directory that every subprocess agent (Claude, Gemini,
 	// Codex) runs in. Without this, agents inherit ag3nts' own cwd and may
 	// walk their own heuristics to find a "project", potentially editing
-	// files in unrelated repos. Prefer the user's launch cwd; fall back to
-	// ag3nts install root if Getwd fails.
-	agentWorkDir, gwdErr := os.Getwd()
-	if gwdErr != nil || agentWorkDir == "" {
-		if layout != nil {
-			agentWorkDir = layout.Base
+	// files in unrelated repos.
+	//
+	// Priority order:
+	//   1. --project flag (explicit override, validated below)
+	//   2. os.Getwd() at startup
+	//   3. ag3nts install root as last-resort fallback
+	var agentWorkDir string
+	if projectFlag != "" {
+		// Resolve to an absolute, cleaned path so downstream subprocess
+		// cwd matches what we told the user in the banner.
+		abs, err := filepath.Abs(projectFlag)
+		if err != nil {
+			return fmt.Errorf("--project: resolve path: %w", err)
 		}
+		info, err := os.Stat(abs)
+		if err != nil {
+			return fmt.Errorf("--project: %w", err)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("--project: %s is not a directory", abs)
+		}
+		agentWorkDir = abs
+	} else {
+		wd, gwdErr := os.Getwd()
+		if gwdErr != nil || wd == "" {
+			if layout != nil {
+				wd = layout.Base
+			}
+		}
+		agentWorkDir = wd
 	}
 	fmt.Fprintf(os.Stderr, "✓ Agent workdir: %s\n", agentWorkDir)
 

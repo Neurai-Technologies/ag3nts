@@ -460,6 +460,17 @@ func (a *App) maybeUpdatePipeline(evt agent.AgentEvent) {
 		})
 	}
 
+	// Accumulate running totals on completion so the sticky status
+	// line can surface live cost/token accrual. Pulled from the
+	// queue's task record since the bus event itself doesn't
+	// always carry final usage.
+	if newStatus == stageCompleted || newStatus == stageFailed {
+		if t.Result != nil && t.Result.Usage != nil {
+			u := t.Result.Usage
+			a.pipeline.addRunningTotals(runID, u.InputTokens, u.OutputTokens, u.TotalCost)
+		}
+	}
+
 	run := a.pipeline.updateStage(evt.TaskID, t.Type, newStatus)
 	if run == nil {
 		return
@@ -1419,6 +1430,16 @@ func (a *App) handleRecipe(ctx context.Context, args string) {
 		return
 	}
 	if err := r.Validate(); err != nil {
+		a.printError("recipe", err.Error())
+		return
+	}
+
+	// Pre-dispatch parameter validation — catches obvious garbage
+	// input (missing required, too-vague objectives, etc.) before
+	// burning tokens on a doomed pipeline run. Returns a filled-in
+	// copy with defaults applied.
+	params, err = r.ValidateParams(params)
+	if err != nil {
 		a.printError("recipe", err.Error())
 		return
 	}

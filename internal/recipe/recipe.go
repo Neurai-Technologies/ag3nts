@@ -7,6 +7,7 @@ package recipe
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -66,6 +67,15 @@ type Parameter struct {
 	Description string   `yaml:"description"`
 	Default     string   `yaml:"default"`
 	Options     []string `yaml:"options"`     // for select type
+
+	// Validation constraints (all optional, all additive). If a
+	// constraint is set, ValidateParams enforces it before the
+	// recipe dispatches, catching obvious garbage input (e.g.
+	// single-word objectives that are too vague to plan against)
+	// before any agent tokens are burned.
+	MinWords int    `yaml:"min_words"` // minimum word count (0 = no min)
+	MinChars int    `yaml:"min_chars"` // minimum character count (0 = no min)
+	Pattern  string `yaml:"pattern"`   // optional regex the value must match
 }
 
 // LoadRecipe reads and parses a recipe from a YAML file.
@@ -128,6 +138,87 @@ func (r *Recipe) Validate() error {
 		return fmt.Errorf("recipe %q: system_prompt or description is required", r.Name)
 	}
 	return nil
+}
+
+// ValidateParams checks user-provided parameter values against the
+// recipe's declared constraints (required, min_words, min_chars,
+// pattern). Runs BEFORE dispatch so obviously-garbage input like
+// objective="add" gets rejected with a clear error instead of burning
+// tokens on a doomed pipeline run.
+//
+// Missing required params error out. Missing optional params fall
+// back to the declared default. Returns a filled-in copy of the
+// params map with defaults applied; the caller should use this
+// filled-in map for dispatch.
+func (r *Recipe) ValidateParams(params map[string]string) (map[string]string, error) {
+	// Always work on a copy so callers don't see mutations if we error.
+	out := make(map[string]string, len(params))
+	for k, v := range params {
+		out[k] = v
+	}
+
+	for _, p := range r.Parameters {
+		value, provided := out[p.Key]
+
+		// Required check.
+		if !provided || value == "" {
+			if p.Required {
+				return nil, fmt.Errorf("recipe %q: parameter %q is required (%s)",
+					r.Name, p.Key, p.Description)
+			}
+			// Apply default and skip further validation — defaults are
+			// trusted not to violate their own constraints.
+			if p.Default != "" {
+				out[p.Key] = p.Default
+			}
+			continue
+		}
+
+		// Min character count.
+		if p.MinChars > 0 && len(value) < p.MinChars {
+			return nil, fmt.Errorf("recipe %q: parameter %q too short: minimum %d characters, got %d (%q)",
+				r.Name, p.Key, p.MinChars, len(value), value)
+		}
+
+		// Min word count. Counted as whitespace-separated tokens.
+		if p.MinWords > 0 {
+			words := len(strings.Fields(value))
+			if words < p.MinWords {
+				return nil, fmt.Errorf("recipe %q: parameter %q too vague: minimum %d words, got %d (%q). %s",
+					r.Name, p.Key, p.MinWords, words, value, p.Description)
+			}
+		}
+
+		// Regex pattern.
+		if p.Pattern != "" {
+			re, err := regexp.Compile(p.Pattern)
+			if err != nil {
+				return nil, fmt.Errorf("recipe %q: parameter %q has invalid pattern %q: %w",
+					r.Name, p.Key, p.Pattern, err)
+			}
+			if !re.MatchString(value) {
+				return nil, fmt.Errorf("recipe %q: parameter %q does not match pattern %q (got %q)",
+					r.Name, p.Key, p.Pattern, value)
+			}
+		}
+
+		// Enum check (reuses Options field).
+		if p.Type == "select" && len(p.Options) > 0 {
+			ok := false
+			for _, opt := range p.Options {
+				if value == opt {
+					ok = true
+					break
+				}
+			}
+			if !ok {
+				return nil, fmt.Errorf("recipe %q: parameter %q must be one of %v (got %q)",
+					r.Name, p.Key, p.Options, value)
+			}
+		}
+	}
+
+	return out, nil
 }
 
 // validateMultiTask checks SubTask fields, unique IDs, and DAG integrity.

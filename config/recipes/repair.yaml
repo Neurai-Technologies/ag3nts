@@ -14,7 +14,8 @@ parameters:
   - key: objective
     type: string
     required: true
-    description: What to build, fix, or research
+    min_words: 5
+    description: What to build, fix, or research (complete sentence with a concrete target)
   - key: motivation
     type: string
     required: false

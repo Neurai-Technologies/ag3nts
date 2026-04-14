@@ -47,6 +47,13 @@ type recipeRunState struct {
 	stages    []*stageState // ordered by first-seen
 	startedAt time.Time     // when the run was first observed (dispatch or first event)
 	finalized bool          // true once the final summary banner has been emitted
+
+	// Running totals updated on every stage completion. Surfaced in
+	// the sticky status line so the user can see live cost accrual
+	// rather than waiting for the final summary banner.
+	runningCost     float64
+	runningTokensIn int
+	runningTokensOut int
 }
 
 // pipelineTracker keeps state for all in-flight recipe runs and renders
@@ -191,16 +198,34 @@ func (p *pipelineTracker) markFinalized(runID string) bool {
 // must hold p.mu.
 func cloneRunStateLocked(src *recipeRunState) *recipeRunState {
 	clone := &recipeRunState{
-		runID:     src.runID,
-		startedAt: src.startedAt,
-		finalized: src.finalized,
-		stages:    make([]*stageState, len(src.stages)),
+		runID:            src.runID,
+		startedAt:        src.startedAt,
+		finalized:        src.finalized,
+		runningCost:      src.runningCost,
+		runningTokensIn:  src.runningTokensIn,
+		runningTokensOut: src.runningTokensOut,
+		stages:           make([]*stageState, len(src.stages)),
 	}
 	for i, s := range src.stages {
 		st := *s
 		clone.stages[i] = &st
 	}
 	return clone
+}
+
+// addRunningTotals atomically adds the given token/cost deltas to the
+// run's running totals. Called from maybeUpdatePipeline when a stage
+// completes so the sticky status line reflects live cost accrual.
+func (p *pipelineTracker) addRunningTotals(runID string, tokensIn, tokensOut int, costUSD float64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	run, ok := p.runs[runID]
+	if !ok {
+		return
+	}
+	run.runningTokensIn += tokensIn
+	run.runningTokensOut += tokensOut
+	run.runningCost += costUSD
 }
 
 // taskMeta is a minimal projection of task fields used by discoverStages
@@ -295,7 +320,9 @@ func renderInlineBanner(run *recipeRunState) string {
 
 // renderStickyStatus returns a one-line summary of a recipe run for
 // the sticky status line above the prompt (Option 1). Compact form,
-// no border, fits on one terminal row.
+// no border, fits on one terminal row. Appends a running cost suffix
+// if any stages have reported usage so far, so the user can see cost
+// accruing live rather than only at the final summary.
 func renderStickyStatus(run *recipeRunState) string {
 	if run == nil || len(run.stages) == 0 {
 		return ""
@@ -306,7 +333,19 @@ func renderStickyStatus(run *recipeRunState) string {
 		parts = append(parts, icon+" "+s.name)
 	}
 	prefix := dimStyle.Render("▶ " + run.runID + ": ")
-	return prefix + strings.Join(parts, "  ")
+	line := prefix + strings.Join(parts, "  ")
+
+	// Running cost/tokens suffix. Only appended once we've seen at
+	// least one stage with reportable usage to avoid showing $0.00
+	// at the start of every run.
+	if run.runningCost > 0 || run.runningTokensIn > 0 {
+		stats := fmt.Sprintf("  ($%.4f · ↑%s ↓%s)",
+			run.runningCost,
+			formatTokensShort(run.runningTokensIn),
+			formatTokensShort(run.runningTokensOut))
+		line += dimStyle.Render(stats)
+	}
+	return line
 }
 
 // isTerminal returns true if every stage in the run has reached a
