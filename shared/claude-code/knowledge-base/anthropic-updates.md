@@ -1,5 +1,90 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-04-14
+
+### Summary
+- Sources scanned: 4 (anthropic.com/news, /research, /engineering, docs.anthropic.com)
+- New findings: 4
+- Actionable integrations: 3
+
+### Findings
+
+#### Web Search + Programmatic Tool Calling Now GA + Dynamic Filtering
+- **Source**: https://docs.anthropic.com/en/release-notes/api; https://www.anthropic.com/news/agent-capabilities-api
+- **Published**: April 2026 (GA confirmation, not previously logged)
+- **Category**: API
+- **What Changed**: Web search tool and Programmatic Tool Calling (PTC) are now **generally available** — no beta header required. Web search and web fetch also gained **dynamic filtering** support, reducing token cost and improving precision for targeted lookups. PTC (Claude writes code that calls multiple tools sequentially/conditionally) was previously beta (logged in April 12 scan as `tool-use-advanced-2025-10-01` header); GA removes that requirement.
+- **Impact on ag3nts**:
+  - The `anthropic` agent (this agent) uses WebSearch heavily on every daily scan. With GA, WebSearch invocations no longer require beta header management; dynamic filtering can reduce per-scan token cost on targeted domain queries.
+  - The `security-engineer` agent receives CVE/OWASP reference lookups via web tools. Dynamic filtering (restricting to `nvd.nist.gov`, `owasp.org`, etc.) would cut irrelevant results and reduce context bloat per commit hook invocation.
+  - PTC GA means the `code-reviewer` and REPAIR pipeline agents can batch sequential tool calls in code without beta header plumbing — already the intended design once it stabilized.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/files/agents/security-engineer.md` — add note that web search calls should use domain filtering (`nvd.nist.gov`, `cve.mitre.org`, `owasp.org`) now that dynamic filtering is GA
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — update the PTC reference entry (from April 12 scan) to mark as GA (no beta header)
+- **Priority**: High — GA removes beta friction from two heavily-used capabilities; dynamic filtering directly reduces token cost on hook-invoked agents
+
+---
+
+#### MCP Tool Result Size Override — 500K chars via `_meta` Annotation
+- **Source**: https://docs.anthropic.com/en/release-notes/claude-code (v2.1.102–2.1.104 changelog)
+- **Published**: April 13–14, 2026
+- **Category**: Tooling / API
+- **What Changed**: MCP tool results can now exceed the default size cap by annotating the result with `_meta["anthropic/maxResultSizeChars"]` (maximum 500,000 characters). Previously, large MCP results (e.g., full database schemas, bulk CVE records, lengthy WCAG references) were silently truncated. The annotation is set by the MCP server, not the caller — server authors opt in per result.
+- **Impact on ag3nts**:
+  - **`security-engineer`**: CVE lookups via MCP can return full vulnerability records including PoCs, affected version ranges, and CVSS vectors without truncation. This is the highest-impact use case in ag3nts.
+  - **`accessibility-auditor`**: WCAG reference MCP results (full success criterion text, technique docs) can now pass through intact — preventing partial audits from truncated criteria.
+  - **`software-architect`**: Schema or API spec results returned via MCP (e.g., OpenAPI specs) can be returned in full for architecture review.
+  - No ag3nts config change required — the annotation is applied by MCP server authors. When using custom MCP servers that return large payloads, add the `_meta` annotation on the server side.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add Claude Code MCP tool result size annotation docs as reference (relevant when building or customizing MCP servers for security/accessibility tools)
+- **Priority**: Medium — passive improvement for existing MCP integrations; action needed only when building/customizing MCP server implementations
+
+---
+
+#### Structured Outputs Now GA — Sonnet 4.5 / Opus 4.5 / Haiku 4.5
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: April 2026 (GA, not previously logged)
+- **Category**: API
+- **What Changed**: Structured outputs (JSON schema-constrained generation) are now **generally available** on the Claude API for Claude Sonnet 4.5, Opus 4.5, and Haiku 4.5. GA includes expanded schema support and improved grammar compilation latency vs. the beta. No beta header required.
+- **Impact on ag3nts**:
+  - The `code-reviewer` dispatches 4 specialists that each return a structured confidence-scored finding set. Structured outputs GA means those schemas can be enforced at the API level rather than relying on prompt-instructed JSON.
+  - The `security-engineer` Stage 6 OWASP audit currently returns findings as text; structured outputs could enforce a finding schema (severity, OWASP category, file, line, recommendation) for downstream parsing.
+  - The `reality-checker` NEEDS WORK / PASS verdict could be a structured output with mandatory fields (verdict, blocking_reasons[], confidence).
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/files/agents/code-reviewer.md` — add structured output schema for specialist findings (severity, category, confidence, file, recommendation) — enforces parseable output from all 4 sub-agents
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add structured outputs GA reference
+- **Priority**: Medium — applies to `code-reviewer` and `security-engineer` agent definitions; structured output enforcement reduces downstream parsing failures
+
+---
+
+#### Claude Code v2.1.102–v2.1.104 — Team Onboarding, CA Trust, Stability
+- **Source**: https://docs.anthropic.com/en/release-notes/claude-code; https://github.com/anthropics/claude-code/releases
+- **Published**: April 11–13, 2026 (not covered in April 13 scan which went through v2.1.101)
+- **Category**: Tooling
+- **What Changed**: Three patch releases since the April 13 scan's v2.1.101 cutoff: (1) **`/team-onboarding` command** — generates a teammate ramp-up guide from local Claude Code usage history, CLAUDE.md files, and recent commits; (2) **OS CA certificate store trust** — enterprise TLS proxy certificates from the system cert store are now trusted by default, eliminating manual cert configuration for enterprise environments; (3) **`refreshInterval` status line setting** — re-runs the status line command every N seconds without a full UI refresh; (4) **Stability** — fixed `mktemp: No such file or directory` after fresh boot in sandboxed Bash; fixed subagents not inheriting MCP tools from dynamically-injected servers; improved Write tool diff computation speed 60% for files with tabs/`&`/`$`.
+- **Impact on ag3nts**:
+  - **`/team-onboarding`**: Directly applicable to ag3nts onboarding. Running `/team-onboarding` in a new ag3nts environment would auto-generate a ramp-up guide from the CLAUDE.md, agent definitions, and hook structure — useful for onboarding contributors to the ag3nts setup.
+  - **CA cert trust**: Removes a friction point for enterprise users running ag3nts behind TLS-intercepting proxies (common in corporate environments where Rohan may work).
+  - **Subagent MCP inheritance fix**: The `code-reviewer`'s 4 parallel sub-agents were previously unable to inherit MCP tools from dynamically-injected servers — this is now fixed. If any sub-agent needs an MCP tool added at runtime, it will propagate correctly.
+  - **Sandboxed Bash fix**: Eliminates flaky pre-commit hook failures caused by `mktemp` errors on fresh boot.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — add `/team-onboarding` to Commands table as the standard onboarding command for new ag3nts contributors
+- **Priority**: Low — incremental stability and UX improvements; `/team-onboarding` is the one user-visible addition worth documenting
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **`shared/claude-code/files/agents/security-engineer.md`** — Add domain filtering guidance for web search calls (GA dynamic filtering): restrict lookups to `nvd.nist.gov`, `cve.mitre.org`, `owasp.org`. This immediately reduces token cost on every pre-commit invocation of the security-engineer hook without any behavior change.
+
+2. **`shared/claude-code/files/agents/code-reviewer.md`** — Add a structured output schema (now GA) for specialist findings: `{severity, category, confidence, file, line, recommendation}`. Enforcing this at the API level eliminates the risk of malformed text output from any of the 4 parallel sub-agents breaking the confidence-scoring logic.
+
+3. **`shared/ag3nts.md`** — Add `/team-onboarding` to the Commands table. This is a first-class Claude Code command that directly serves the ag3nts use case; documenting it makes it discoverable for contributors setting up for the first time.
+
+---
+
 ## Latest Scan: 2026-04-13
 
 ### Summary
