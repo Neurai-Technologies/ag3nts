@@ -1,5 +1,171 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-04-15
+
+### Summary
+- Sources scanned: 4 (anthropic.com/news, /research, /engineering, docs.anthropic.com)
+- New findings: 11
+- Actionable integrations: 5
+
+### Findings
+
+#### [CRITICAL] Claude Haiku 3 Deprecation — Retiring April 19, 2026
+- **Source**: https://docs.anthropic.com/en/release-notes/overview
+- **Published**: April 2026
+- **Category**: Model
+- **What Changed**: `claude-3-haiku-20240307` (Haiku 3) is retired on **April 19, 2026** (4 days). After that date, API calls to this model ID will fail. Migration target is `claude-haiku-4-5-20251001`.
+- **Impact on ag3nts**: Two agents in the registry specify `Haiku` as their model — `feedback` and `version`. If their definition files reference `claude-3-haiku-20240307`, they will break in 4 days.
+- **Proposed Changes**:
+  - [ ] Check `shared/claude-code/files/agents/feedback.md` and `shared/claude-code/files/agents/version.md` — confirm model ID and update to `claude-haiku-4-5-20251001` if still on Haiku 3
+- **Priority**: Critical — 4-day deadline; breakage risk on hook-invoked and scripted runs if not migrated
+
+---
+
+#### [CRITICAL] 1M Context Window Beta Retiring for Sonnet 4.5 / Sonnet 4 — April 30, 2026
+- **Source**: https://docs.anthropic.com/en/release-notes/overview
+- **Published**: April 2026
+- **Category**: API / Model
+- **What Changed**: The 1M token context window beta for `claude-sonnet-4-5` and `claude-sonnet-4` is being retired April 30, 2026. Anthropic recommends migrating to `claude-sonnet-4-6` or `claude-opus-4-6`, both of which ship 1M context as a permanent feature (beta on Claude Platform only).
+- **Impact on ag3nts**: If any agent definitions or tool configurations explicitly use the Sonnet 4.5 1M context beta feature, they need to migrate. Sonnet 4.6 drops in as a direct replacement with improved agentic search performance.
+- **Proposed Changes**:
+  - [ ] Audit agent definition files for any explicit `claude-sonnet-4-5` model references — migrate to `claude-sonnet-4-6` to retain 1M context access and gain agentic search improvements
+- **Priority**: Critical — 15-day deadline; lower urgency than Haiku 3 but still time-bound
+
+---
+
+#### Claude Mythos Preview + Project Glasswing — Autonomous Vulnerability Discovery
+- **Source**: https://red.anthropic.com/2026/mythos-preview/; https://www.anthropic.com/glasswing; https://www.anthropic.com/claude-mythos-preview-risk-report
+- **Published**: April 7, 2026 (missed in previous scans)
+- **Category**: Model / Safety
+- **What Changed**: Claude Mythos Preview is a new general-purpose model with exceptional capability at computer security tasks — including autonomous identification and exploitation of zero-day vulnerabilities in every major OS and browser. Anthropic simultaneously launched **Project Glasswing**: a defensive initiative partnering with AWS, Apple, Cisco, Google, Microsoft, Linux Foundation, and others to secure critical software using Mythos Preview. Access is invitation-only for Project Glasswing partners at $25/$125 per million input/output tokens. A public alignment risk report was published alongside the release.
+- **Impact on ag3nts**:
+  - The `security-engineer` agent is the primary candidate for Mythos Preview when access becomes available — autonomous vulnerability discovery and PoC-level exploit analysis would significantly enhance Stage 6 OWASP audits and threat modeling.
+  - The defensive framing (Project Glasswing) aligns with ag3nts' security-from-inception posture. Mythos Preview's CVE triage capability maps directly onto the `security-engineer`'s pre-commit hook role.
+  - No immediate config change — access is invitation-only. Add to watch list.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add Project Glasswing reference (`anthropic.com/glasswing`) and Mythos Preview risk report for future security-engineer model evaluation
+- **Priority**: High — most security-relevant model announcement in months; watch for public API access
+
+---
+
+#### Claude Managed Agents Public Beta — Fully Managed Sandboxed Agent Harness
+- **Source**: https://www.anthropic.com/engineering/managed-agents; https://docs.anthropic.com/en/release-notes/overview
+- **Published**: April 2026
+- **Category**: API / Agent
+- **What Changed**: Claude Managed Agents is now in public beta — a fully managed agent harness with: (1) secure sandboxing where auth tokens are structurally isolated from the execution sandbox (git tokens bundled at init, never accessible to generated code); (2) built-in tools (Bash, file editing, web search); (3) SSE streaming; (4) explicit session/harness/sandbox separation. All endpoints require the `managed-agents-2026-04-01` beta header. Decouples the model ("brain") from execution infrastructure.
+- **Impact on ag3nts**:
+  - The ag3nts system implements a custom harness via hooks (`pre-commit-secrets-scan.sh`, `pre-commit-review-gate.sh`, `security-sensitive-file-check.sh`). Managed Agents is a platform-hosted alternative for scenarios requiring stronger isolation guarantees — e.g., running the REPAIR pipeline in CI/CD where infrastructure credentials must be kept out of the agent's context.
+  - The token isolation architecture (vault-outside-sandbox pattern) is architecturally superior to environment variable approaches. Worth adopting in the ag3nts `--bare` CI/CD mode if credentials are in scope.
+  - No immediate migration needed — hooks-based approach is appropriate for interactive sessions; Managed Agents targets non-interactive/autonomous use cases.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — add note in "Scripted / Automated Runs" section that Claude Managed Agents (`managed-agents-2026-04-01` beta) is the recommended platform for CI/CD runs requiring strong credential isolation
+- **Priority**: High — directly relevant to scripted REPAIR pipeline runs and any CI/CD automation where secrets hygiene is critical
+
+---
+
+#### Agent Skills — Reusable Packaged Expertise for Claude Agents
+- **Source**: https://www.anthropic.com/news/skills; https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills
+- **Published**: April 2026
+- **Category**: Agent / Tooling
+- **What Changed**: Anthropic formally launched **Agent Skills** — installable packages (SKILL.md + resources) that extend Claude with domain-specific expertise and workflows. Skills are discovered automatically by Claude when relevant, can be shared via version control or installed from the `anthropics/skills` marketplace, and are managed via Claude Console (create, view, upgrade versions). The Claude Code SDK is also renamed to the **Claude Agent SDK**. A `skill-creator` skill provides interactive scaffolding — Claude asks about your workflow, generates the folder structure, SKILL.md, and bundles resources.
+- **Impact on ag3nts**:
+  - The ag3nts sub-agents in `~/.claude/agents/` (defined as `.md` files) are the closest existing parallel to Agent Skills. Skills add formal versioning, a marketplace, and automatic relevance-based loading — capabilities ag3nts currently lacks.
+  - Agents like `security-engineer`, `code-reviewer`, and `accessibility-auditor` could be refactored as Skills when the use case warrants automatic invocation without explicit activation by name.
+  - The SDK rename from "Claude Code SDK" to "Claude Agent SDK" is relevant if ag3nts documentation references the old name.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — update any references to "Claude Code SDK" → "Claude Agent SDK" (SDK rename); add Skills marketplace as a source for extending agents
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add Agent Skills docs and `anthropics/skills` marketplace reference
+- **Priority**: Medium — SDK rename is a correctness fix; Skills architecture is a forward-looking alternative to the current agents pattern worth tracking
+
+---
+
+#### Claude Sonnet 4.6 Release — Improved Agentic Search, Programmatic Filtering
+- **Source**: https://www.anthropic.com/news/claude-sonnet-4-6; https://docs.anthropic.com/en/release-notes/api
+- **Published**: April 2026
+- **Category**: Model
+- **What Changed**: Claude Sonnet 4.6 is the most capable Sonnet model to date. Key improvements: (1) web search and fetch tools automatically write and execute code to filter/process results, retaining only relevant content in context — improving response quality and token efficiency vs. 4.5; (2) stronger performance on hard problems previously requiring Opus; (3) 1M token context window (beta, Claude Platform only); (4) outperforms on orchestration evals and complex agentic workloads.
+- **Impact on ag3nts**:
+  - The `anthropic` agent (this agent) uses Sonnet and makes heavy use of WebSearch on every daily scan. The automatic filtering upgrade means search results are pre-filtered before reaching the model context — reducing token cost and improving precision without any config change.
+  - `code-reviewer`, `accessibility-auditor`, `reality-checker`, `ux-architect` are all on Sonnet. Sonnet 4.6's stronger agentic performance benefits all of them, particularly `code-reviewer`'s parallel dispatch pattern.
+- **Proposed Changes**: None — upgrade is transparent via model alias; if agent definitions reference `claude-sonnet-4-5` explicitly, update to `claude-sonnet-4-6`
+- **Priority**: Medium — transparent improvement for all Sonnet agents; model version audit may reveal explicit version pins to update
+
+---
+
+#### Effective Context Engineering for AI Agents — New Engineering Post
+- **Source**: https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents
+- **Published**: April 2026
+- **Category**: Agent / Tooling
+- **What Changed**: Anthropic's engineering blog published a comprehensive guide on context engineering for agents: (1) defines context engineering as finding the "smallest possible set of high-signal tokens that maximize desired outcome probability"; (2) introduces the **`claude-progress.txt`** pattern — an agent-maintained file tracking task state so fresh context windows can quickly understand where execution left off; (3) recommends different system prompts for the first vs. subsequent context windows in multi-window workflows; (4) emphasizes curating system instructions, tools, MCP, external data, and message history as a unified context state.
+- **Impact on ag3nts**:
+  - **REPAIR pipeline**: RepairBoss orchestrates across multiple stages (4–6 context windows). The `claude-progress.txt` pattern directly addresses the pain point of stage handoffs — each stage agent currently infers state from git history and files. A standardized progress file would improve stage-to-stage continuity.
+  - **`--bare` scripted runs**: Long automation sessions reset context at each invocation. A progress file persisted to disk between `claude --bare -p` calls would preserve state across invocations.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — add `claude-progress.txt` pattern to the "Scripted / Automated Runs" section as the recommended state persistence mechanism for multi-stage pipelines
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add effective context engineering post as reference
+- **Priority**: Medium — directly applicable to REPAIR pipeline stage handoffs and `--bare` CI/CD runs
+
+---
+
+#### Code Execution with MCP — On-Demand Tool Loading Pattern
+- **Source**: https://www.anthropic.com/engineering/code-execution-with-mcp
+- **Published**: April 2026
+- **Category**: Tooling / Agent
+- **What Changed**: Anthropic published an engineering post on using MCP code execution to make agents more token-efficient: (1) load MCP tools on demand rather than upfront — preventing context flooding with unused tool definitions; (2) filter and transform data server-side before it reaches the model; (3) execute complex multi-step logic in a single MCP call instead of multiple round-trips.
+- **Impact on ag3nts**:
+  - Complements the Tool Search beta (logged April 12) with a different approach — MCP code execution handles filtering at the server level vs. Tool Search handling it at the tool catalog level.
+  - `security-engineer` (CVE lookups) and `accessibility-auditor` (WCAG references) are the primary beneficiaries — both load large external reference sets where server-side filtering would reduce context pressure.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add code execution with MCP post as reference alongside the existing Tool Search and PTC references
+- **Priority**: Medium — extends the token efficiency theme from the April 12 Tool Search finding; no immediate config change required
+
+---
+
+#### ant CLI — Command-Line Client for Claude API with YAML Resource Versioning
+- **Source**: https://docs.anthropic.com/en/release-notes/overview
+- **Published**: April 2026
+- **Category**: Tooling
+- **What Changed**: Anthropic released the `ant` CLI — a command-line client for the Claude API that provides: faster interaction with the Claude API, native Claude Code integration, and YAML-based versioning of API resources (prompts, configs, etc.).
+- **Impact on ag3nts**: The ag3nts stack uses `claude --bare -p` for non-interactive API calls. The `ant` CLI may provide a lighter-weight alternative for pure API access patterns that don't need Claude Code's full toolset. YAML resource versioning could complement the ag3nts git-based versioning of agent definition files.
+- **Proposed Changes**: None until evaluated — add to reference once docs stabilize
+- **Priority**: Low — early-stage tooling; evaluate when docs are more complete
+
+---
+
+#### MCP Donated to Agentic AI Foundation (Linux Foundation)
+- **Source**: https://www.anthropic.com/news/donating-the-model-context-protocol-and-establishing-of-the-agentic-ai-foundation
+- **Published**: April 2026
+- **Category**: Tooling / Safety
+- **What Changed**: Anthropic donated the Model Context Protocol to the Linux Foundation's new **Agentic AI Foundation (AAIF)**, co-founded by Anthropic, Block, and OpenAI, with Google, Microsoft, AWS, Cloudflare, and Bloomberg as supporters. MCP joins goose (Block) and AGENTS.md (OpenAI) as founding projects. Governance model unchanged — existing maintainers continue under the AAIF umbrella. Goal: ensure MCP remains a neutral, open, community-driven standard.
+- **Impact on ag3nts**: No immediate config change. The ag3nts system uses MCP servers for tool integrations. Long-term, AAIF governance reduces the risk of MCP fragmentation or vendor lock-in — the standard's neutrality is now institutionally guaranteed, making MCP-based tool investments lower risk.
+- **Proposed Changes**: None
+- **Priority**: Low — governance improvement; no action needed
+
+---
+
+#### Message Batches API — max_tokens Raised to 300K for Opus 4.6 and Sonnet 4.6
+- **Source**: https://docs.anthropic.com/en/release-notes/overview
+- **Published**: April 2026
+- **Category**: API
+- **What Changed**: The `max_tokens` cap on the Message Batches API is raised to 300,000 for `claude-opus-4-6` and `claude-sonnet-4-6`. The `output-300k-2026-03-24` beta header enables longer single-turn outputs on standard API calls as well.
+- **Impact on ag3nts**: The `security-engineer` Stage 6 OWASP audit and `software-architect` ADR generation are the most likely to produce long outputs in batch contexts. This cap increase removes truncation risk on batch runs of these agents.
+- **Proposed Changes**: None — passive improvement
+- **Priority**: Low — automatically available; no config change needed
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **`shared/claude-code/files/agents/feedback.md` + `version.md`** — Audit and update model ID from `claude-3-haiku-20240307` to `claude-haiku-4-5-20251001` if needed. **Deadline: April 19.** Both agents will hard-fail after this date if still on Haiku 3.
+
+2. **`shared/ag3nts.md` — "Scripted / Automated Runs" section** — Add two notes: (a) Claude Managed Agents (`managed-agents-2026-04-01` beta) as the recommended platform for CI/CD runs requiring strong credential isolation; (b) `claude-progress.txt` as the recommended state persistence pattern for multi-stage pipeline runs across fresh context windows.
+
+3. **`shared/claude-code/knowledge-base/repos.md`** — Add: Project Glasswing reference, Agent Skills docs + marketplace, effective context engineering post, and code execution with MCP post. Four additions that collectively document the most important new agent patterns.
+
+---
+
 ## Latest Scan: 2026-04-14
 
 ### Summary
