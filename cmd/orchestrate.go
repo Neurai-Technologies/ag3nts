@@ -356,14 +356,21 @@ func runOrchestrate() error {
 	}
 
 	if cfg.LLM.Enabled {
+		// Custom tools live at <config>/tools/*.yaml. Optional — if the
+		// dir is missing, LoadCustomTools returns cleanly without error.
+		customToolsDir := ""
+		if layout != nil {
+			customToolsDir = filepath.Join(layout.Config, "tools")
+		}
 		lo, err := llm.NewLocalOrchestrator(llm.OrchestratorConfig{
-			Endpoint:     cfg.LLM.Endpoint,
-			ModelsPath:   cfg.LLM.ModelsPath,
-			HeadModel:    cfg.LLM.HeadModel,
-			SystemPrompt: cfg.LLM.SystemPrompt,
-			WorkDir:      agentWorkDir,
-			MaxContext:   cfg.LLM.MaxContext,
-			Rolling:      rollingCtx,
+			Endpoint:       cfg.LLM.Endpoint,
+			ModelsPath:     cfg.LLM.ModelsPath,
+			HeadModel:      cfg.LLM.HeadModel,
+			SystemPrompt:   cfg.LLM.SystemPrompt,
+			WorkDir:        agentWorkDir,
+			MaxContext:     cfg.LLM.MaxContext,
+			Rolling:        rollingCtx,
+			CustomToolsDir: customToolsDir,
 		}, registry, orch.Bus())
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "⚠ local LLM unavailable: %v (falling back to CLI agents)\n", err)

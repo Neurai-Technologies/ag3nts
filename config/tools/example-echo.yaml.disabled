@@ -1,0 +1,40 @@
+# Example custom tool — rename to `echo.yaml` (remove `.disabled`)
+# to enable. Registers as a first-class tool available to the local
+# LLM alongside built-in tools like read_file, run_command, etc.
+#
+# Custom tools let you extend Gemma's capabilities without rebuilding
+# ag3nts. Drop a YAML file in this directory, restart ag3nts, and
+# the new tool appears in the model's tool list automatically.
+#
+# Schema:
+#   name:                  (required) lowercase identifier shown to the model
+#   description:           (required) one-sentence description of what the tool does
+#   parameters:            (optional) list of typed inputs
+#     - key:               parameter name
+#       type:              string | integer | number | boolean
+#       required:          true | false
+#       description:       shown to the model as the parameter's docstring
+#   executor:
+#     type:                shell (only type supported at v1)
+#     command:             (required) argv array — NOT shell-interpreted
+#     env:                 (optional) static env overlay
+#     timeout:             (optional, default 30s) max runtime, e.g. "5s", "2m"
+#     permission_required: (optional, default false) require user approval
+#
+# Parameter values are passed to the command as environment variables
+# with the key name uppercased. E.g. a parameter `message` becomes
+# `$MESSAGE` in the command. Values are never interpolated into argv,
+# which prevents shell injection.
+
+name: echo
+description: Echo a message back to the caller. Useful for testing custom tool infrastructure.
+parameters:
+  - key: message
+    type: string
+    required: true
+    description: The message to echo back
+executor:
+  type: shell
+  command: ["sh", "-c", "echo $MESSAGE"]
+  timeout: 5s
+  permission_required: false

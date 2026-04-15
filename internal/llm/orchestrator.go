@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -18,14 +19,15 @@ import (
 type PermissionFunc func(tool, action string) bool
 
 type OrchestratorConfig struct {
-	Endpoint      string                // Ollama endpoint (default: http://localhost:11434)
-	HeadModel     string                // Gemma 4 31B (with thinking mode)
-	ModelsPath    string                // Path to Ollama models directory (for OLLAMA_MODELS env)
-	SystemPrompt  string                // System prompt for head model (optional override)
-	WorkDir       string                // Working directory for file operations
-	MaxContext    int                   // Context window limit in tokens (default: 256000)
-	AskPermission PermissionFunc        // callback to ask user for permission (nil = auto-approve)
-	Rolling       *m3m0ry.RollingStore  // session-scoped rolling context (nil = recall falls back to llm.Memory)
+	Endpoint        string                // Ollama endpoint (default: http://localhost:11434)
+	HeadModel       string                // Gemma 4 31B (with thinking mode)
+	ModelsPath      string                // Path to Ollama models directory (for OLLAMA_MODELS env)
+	SystemPrompt    string                // System prompt for head model (optional override)
+	WorkDir         string                // Working directory for file operations
+	MaxContext      int                   // Context window limit in tokens (default: 256000)
+	AskPermission   PermissionFunc        // callback to ask user for permission (nil = auto-approve)
+	Rolling         *m3m0ry.RollingStore  // session-scoped rolling context (nil = recall falls back to llm.Memory)
+	CustomToolsDir  string                // directory to scan for user-defined tool YAML files (empty = none)
 }
 
 const defaultSystemPrompt = `<|think|>
@@ -174,6 +176,30 @@ func NewLocalOrchestrator(
 	}
 	routeDefs, routeExecs := RegisterRoutingTools(routeDeps)
 	loop.RegisterTools(routeDefs, routeExecs)
+
+	// Register user-defined custom tools from config/tools/*.yaml if a
+	// directory is configured. These are loaded alongside the built-in
+	// tools and appear to the model as first-class function calls.
+	// Permission callback mirrors the routing-tools pattern so tools
+	// registered here go through the same 1/2/3 TUI prompt.
+	if cfg.CustomToolsDir != "" {
+		customDeps := &CustomToolDeps{
+			WorkDir: cfg.WorkDir,
+			AskPermission: func(tool, action string) bool {
+				if loop.askPermission != nil {
+					return loop.askPermission(tool, action)
+				}
+				return true
+			},
+		}
+		cDefs, cExecs, err := LoadCustomTools(cfg.CustomToolsDir, customDeps)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "⚠ custom tools: %v\n", err)
+		} else if len(cDefs) > 0 {
+			loop.RegisterTools(cDefs, cExecs)
+			fmt.Fprintf(os.Stderr, "✓ %d custom tool(s) loaded from %s\n", len(cDefs), cfg.CustomToolsDir)
+		}
+	}
 
 	// Set up conversation summarizer using the head model.
 	conversation.SetSummarizer(func(ctx context.Context, text string) (string, error) {

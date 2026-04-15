@@ -108,13 +108,29 @@ bin/ag3nts
 dist/
 
 # --- ag3nts runtime directories ---
-tools/
+/tools/
+# The old `tools/` catch-all also hid internal/tools/*.go files from
+# git. We're intentionally keeping them out of source control to match
+# pre-existing repo state — only toolset.go is tracked in that dir.
+internal/tools/claude.go
+internal/tools/codex.go
+internal/tools/gemini.go
+internal/tools/node.go
+internal/tools/quarantine.go
+internal/tools/registry.go
+internal/tools/tool.go
 config/ag3nts.toml
 config/auth.toml
 config/workflows/
 config/claude/
 config/codex/
 config/gemini/
+# User-defined custom tools live at config/tools/*.yaml. They're
+# per-project configuration and should not be tracked. Example
+# templates use the .yaml.disabled suffix so they sit alongside
+# real tool configs without being loaded, and they DO get tracked.
+config/tools/*.yaml
+config/tools/*.yml
 cache/
 state/
 
