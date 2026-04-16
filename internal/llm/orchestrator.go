@@ -235,6 +235,10 @@ func NewLocalOrchestrator(
 		if len(mcpDefs) > 0 {
 			loop.RegisterTools(mcpDefs, mcpExecs)
 		}
+
+		// Proactive health monitoring: ping MCP servers every 30s and
+		// auto-restart dead ones before a tool call hits the failure.
+		mcpMgr.StartHealthCheck(context.Background())
 	}
 
 	// Set up conversation summarizer using the head model.

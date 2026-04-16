@@ -223,6 +223,75 @@ func (m *MCPManager) restartServer(ctx context.Context, serverName string) error
 	return nil
 }
 
+// StartHealthCheck launches a background goroutine that periodically
+// checks if MCP servers are still alive. Dead servers are auto-restarted
+// proactively rather than waiting for the next tool call to fail. Runs
+// every 30 seconds. Call StopAll to stop the health checker.
+func (m *MCPManager) StartHealthCheck(ctx context.Context) {
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				m.mu.RLock()
+				var dead []string
+				for name, client := range m.clients {
+					if !client.Alive() {
+						dead = append(dead, name)
+					}
+				}
+				m.mu.RUnlock()
+				for _, name := range dead {
+					fmt.Fprintf(os.Stderr, "[mcp:%s] health check: server died, restarting...\n", name)
+					if err := m.restartServer(ctx, name); err != nil {
+						fmt.Fprintf(os.Stderr, "[mcp:%s] health check: restart failed: %v\n", name, err)
+					} else {
+						fmt.Fprintf(os.Stderr, "[mcp:%s] health check: restarted\n", name)
+					}
+				}
+			}
+		}
+	}()
+}
+
+// RestartServer manually restarts a named MCP server. Used by the
+// TUI's /mcp restart <name> command. Returns an error if the server
+// name is unknown or the restart fails.
+func (m *MCPManager) RestartServer(ctx context.Context, name string) error {
+	m.mu.RLock()
+	_, ok := m.configs[name]
+	m.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("unknown MCP server %q", name)
+	}
+	return m.restartServer(ctx, name)
+}
+
+// ServerNames returns the names of all configured servers.
+func (m *MCPManager) ServerNames() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	names := make([]string, 0, len(m.clients))
+	for name := range m.clients {
+		names = append(names, name)
+	}
+	return names
+}
+
+// ServerAlive returns whether a named server's subprocess is running.
+func (m *MCPManager) ServerAlive(name string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	client, ok := m.clients[name]
+	if !ok {
+		return false
+	}
+	return client.Alive()
+}
+
 // StopAll gracefully shuts down all MCP server subprocesses.
 func (m *MCPManager) StopAll() {
 	m.mu.Lock()

@@ -5,6 +5,7 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -56,6 +57,7 @@ type App struct {
 	active     string
 	permCh       chan PermissionRequest // tools send permission requests here
 	allowedTools map[string]bool       // tools approved via "always allow"
+	permFile     string                // path to persist allowedTools across sessions (empty = no persist)
 	lastTool   map[string]string      // last tool use line by agent (for formatting tool results)
 
 	// Spinner.
@@ -104,7 +106,9 @@ func newSlashCompleter() *readline.PrefixCompleter {
 		readline.PcItem("/reload"),
 		readline.PcItem("/cost"),
 		readline.PcItem("/recipe"),
-		readline.PcItem("/mcp"),
+		readline.PcItem("/mcp",
+			readline.PcItem("restart"),
+		),
 		readline.PcItem("/schedule"),
 		readline.PcItem("/m3m0ry",
 			readline.PcItem("stats"),
@@ -127,19 +131,28 @@ func New(orch *orchestrator.Orchestrator, localOrch *llm.LocalOrchestrator, conf
 		}
 	}
 
-	return &App{
-		orch:        orch,
-		localOrch:   localOrch,
-		configPath:  configPath,
-		currentCfg:  currentCfg,
-		eventCh:     orch.Bus().Subscribe(512, "system"),
-		stream:      newStreamBuffer(),
+	// Derive the permission file path from the config dir.
+	permFile := ""
+	if configPath != "" {
+		permFile = filepath.Join(filepath.Dir(configPath), "allowed_tools.json")
+	}
+
+	app := &App{
+		orch:         orch,
+		localOrch:    localOrch,
+		configPath:   configPath,
+		currentCfg:   currentCfg,
+		eventCh:      orch.Bus().Subscribe(512, "system"),
+		stream:       newStreamBuffer(),
 		permCh:       make(chan PermissionRequest),
 		allowedTools: make(map[string]bool),
-		lastTool:    make(map[string]string),
-		agentTokens: make(map[string][3]int64),
-		pipeline:    newPipelineTracker(),
+		lastTool:     make(map[string]string),
+		agentTokens:  make(map[string][3]int64),
+		pipeline:     newPipelineTracker(),
+		permFile:     permFile,
 	}
+	app.loadAllowedTools()
+	return app
 }
 
 func cloneConfig(cfg *config.Config) *config.Config {
@@ -1159,7 +1172,7 @@ func (a *App) handleSlash(ctx context.Context, input string) {
 			"  /reload   — reload config and apply hot settings",
 			"  /cost    — show session cost breakdown",
 			"  /recipe   — list or run a recipe (/recipe <name> [--dry-run] [key=val...])",
-			"  /mcp      — show connected MCP servers and their tools",
+			"  /mcp      — MCP server status and tools. /mcp restart <name> to restart a server",
 			"  /schedule — list background schedules",
 			"  /m3m0ry   — rolling context (/m3m0ry stats | search <q> | tail [n])",
 			"  /quit     — exit",
@@ -1405,7 +1418,11 @@ func (a *App) handleSlash(ctx context.Context, input string) {
 		a.handleRecipe(ctx, recipeArgs)
 
 	case "/mcp":
-		a.handleMCP()
+		mcpArgs := ""
+		if len(parts) > 1 {
+			mcpArgs = strings.Join(parts[1:], " ")
+		}
+		a.handleMCP(mcpArgs)
 
 	case "/schedule":
 		a.handleSchedule()
@@ -1844,9 +1861,9 @@ func dryRunParamSummary(params map[string]string) string {
 	return strings.Join(parts, " ")
 }
 
-// handleSchedule lists background schedules.
 // handleMCP shows connected MCP servers, their tools, and status.
-func (a *App) handleMCP() {
+// Usage: /mcp (status) | /mcp restart <name>
+func (a *App) handleMCP(args string) {
 	if a.localOrch == nil {
 		a.printLine("ag3nts", "Local LLM not configured.")
 		return
@@ -1857,18 +1874,44 @@ func (a *App) handleMCP() {
 		return
 	}
 
-	allTools := mgr.AllTools()
-	summary := mgr.ServerSummary()
+	parts := strings.Fields(args)
 
-	if len(summary) == 0 {
+	// /mcp restart <name>
+	if len(parts) >= 2 && parts[0] == "restart" {
+		name := parts[1]
+		a.printLine("ag3nts", fmt.Sprintf("Restarting MCP server %q...", name))
+		if err := mgr.RestartServer(context.Background(), name); err != nil {
+			a.printError("mcp", err.Error())
+		} else {
+			a.printLine("ag3nts", fmt.Sprintf("MCP server %q restarted.", name))
+		}
+		return
+	}
+
+	// Default: show status.
+	allTools := mgr.AllTools()
+	serverNames := mgr.ServerNames()
+
+	if len(serverNames) == 0 {
 		a.printLine("ag3nts", "No MCP servers connected.")
 		return
 	}
 
 	var lines []string
-	lines = append(lines, fmt.Sprintf("MCP servers (%d):", len(summary)))
-	for _, s := range summary {
-		lines = append(lines, "  "+s)
+	lines = append(lines, fmt.Sprintf("MCP servers (%d):", len(serverNames)))
+	for _, name := range serverNames {
+		status := lipgloss.NewStyle().Foreground(lipgloss.Color("#81C784")).Render("alive")
+		if !mgr.ServerAlive(name) {
+			status = lipgloss.NewStyle().Foreground(lipgloss.Color("#EF5350")).Render("dead")
+		}
+		// Count tools for this server.
+		count := 0
+		for qn := range allTools {
+			if strings.HasPrefix(qn, name+"__") {
+				count++
+			}
+		}
+		lines = append(lines, fmt.Sprintf("  %s  %s  (%d tools)", name, status, count))
 	}
 	lines = append(lines, "")
 	lines = append(lines, fmt.Sprintf("Tools (%d total):", len(allTools)))
@@ -1879,6 +1922,8 @@ func (a *App) handleMCP() {
 		}
 		lines = append(lines, fmt.Sprintf("  %-30s %s", name, dimStyle.Render(desc)))
 	}
+	lines = append(lines, "")
+	lines = append(lines, dimStyle.Render("  /mcp restart <name> to manually restart a server"))
 	a.printLines("ag3nts", strings.Join(lines, "\n"))
 }
 
@@ -1984,7 +2029,8 @@ func (a *App) handlePermission(req PermissionRequest) {
 		req.Reply <- true
 	case "2":
 		a.allowedTools[req.Tool] = true
-		a.println(greenStyle.Render("  ✓ Always allowed: " + req.Tool))
+		a.saveAllowedTools()
+		a.println(greenStyle.Render("  ✓ Always allowed: " + req.Tool + " (persisted)"))
 		req.Reply <- true
 	default:
 		a.println(errorStyle.Render("  ✘ Denied"))
@@ -1992,6 +2038,40 @@ func (a *App) handlePermission(req PermissionRequest) {
 	}
 	a.println("")
 	a.startSpinner(a.headModel() + " processing...")
+}
+
+// loadAllowedTools reads the persisted tool permissions from disk.
+func (a *App) loadAllowedTools() {
+	if a.permFile == "" {
+		return
+	}
+	data, err := os.ReadFile(a.permFile)
+	if err != nil {
+		return // missing file = no persisted permissions, not an error
+	}
+	var tools []string
+	if err := json.Unmarshal(data, &tools); err != nil {
+		return
+	}
+	for _, t := range tools {
+		a.allowedTools[t] = true
+	}
+}
+
+// saveAllowedTools persists the "always allow" set to disk.
+func (a *App) saveAllowedTools() {
+	if a.permFile == "" {
+		return
+	}
+	var tools []string
+	for t := range a.allowedTools {
+		tools = append(tools, t)
+	}
+	data, err := json.Marshal(tools)
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(a.permFile, data, 0600)
 }
 
 // GetPermissionFunc returns a function that tools can call to request permission.

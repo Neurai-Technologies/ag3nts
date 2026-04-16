@@ -51,11 +51,18 @@ type ToolFunctionParams struct {
 	Required   []string                 `json:"required"`
 }
 
-// ToolParamProp describes a single parameter.
+// ToolParamProp describes a single parameter. Supports a subset of
+// JSON Schema — enough for the Ollama tool-calling API to pass the
+// schema through to the model. Extended fields (Items, Properties)
+// let MCP tools with array/object params retain more fidelity than
+// the old "flatten to string" approach.
 type ToolParamProp struct {
-	Type        string   `json:"type"`
-	Description string   `json:"description"`
-	Enum        []string `json:"enum,omitempty"`
+	Type        string                   `json:"type"`
+	Description string                   `json:"description"`
+	Enum        []string                 `json:"enum,omitempty"`
+	Items       *ToolParamProp           `json:"items,omitempty"`       // for type="array": element schema
+	Properties  map[string]ToolParamProp `json:"properties,omitempty"`  // for type="object": sub-fields
+	Required    []string                 `json:"required,omitempty"`    // for type="object": required sub-fields
 }
 
 // ModelRole identifies a model's purpose in the orchestration.

@@ -54,48 +54,23 @@ func LoadMCPTools(manager *mcp.MCPManager, askPermission PermissionFunc) ([]Tool
 }
 
 // mcpSchemaToToolDef converts an MCP tool's JSON Schema into a ToolDef
-// compatible with the Ollama API's tool format. Complex parameter types
-// (object, array) are flattened to "string" with a description hint.
+// compatible with the Ollama API's tool format. Now preserves array
+// and object structure via ToolParamProp.Items and .Properties so
+// models that understand JSON Schema get accurate type info.
 func mcpSchemaToToolDef(qualName string, tool mcp.MCPTool) ToolDef {
 	props := make(map[string]ToolParamProp)
 	var required []string
 
 	if len(tool.InputSchema) > 0 {
 		var schema struct {
-			Type       string                       `json:"type"`
-			Properties map[string]json.RawMessage   `json:"properties"`
-			Required   []string                     `json:"required"`
+			Type       string                     `json:"type"`
+			Properties map[string]json.RawMessage `json:"properties"`
+			Required   []string                   `json:"required"`
 		}
 		if err := json.Unmarshal(tool.InputSchema, &schema); err == nil {
 			required = schema.Required
 			for pName, pRaw := range schema.Properties {
-				var pSchema struct {
-					Type        string   `json:"type"`
-					Description string   `json:"description"`
-					Enum        []string `json:"enum"`
-				}
-				if err := json.Unmarshal(pRaw, &pSchema); err != nil {
-					props[pName] = ToolParamProp{Type: "string", Description: "(unparseable schema)"}
-					continue
-				}
-				propType := pSchema.Type
-				desc := pSchema.Description
-				// Flatten complex types to string with a hint.
-				switch propType {
-				case "object":
-					propType = "string"
-					desc = "(JSON object) " + desc
-				case "array":
-					propType = "string"
-					desc = "(JSON array) " + desc
-				case "":
-					propType = "string"
-				}
-				props[pName] = ToolParamProp{
-					Type:        propType,
-					Description: desc,
-					Enum:        pSchema.Enum,
-				}
+				props[pName] = parseMCPParamProp(pRaw)
 			}
 		}
 	}
@@ -112,6 +87,50 @@ func mcpSchemaToToolDef(qualName string, tool mcp.MCPTool) ToolDef {
 			},
 		},
 	}
+}
+
+// parseMCPParamProp recursively converts a JSON Schema property into
+// a ToolParamProp. Handles string/number/integer/boolean directly;
+// arrays get an Items sub-schema; objects get Properties + Required.
+// Unknown or missing types default to "string".
+func parseMCPParamProp(raw json.RawMessage) ToolParamProp {
+	var s struct {
+		Type        string                     `json:"type"`
+		Description string                     `json:"description"`
+		Enum        []string                   `json:"enum"`
+		Items       json.RawMessage            `json:"items"`
+		Properties  map[string]json.RawMessage `json:"properties"`
+		Required    []string                   `json:"required"`
+	}
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return ToolParamProp{Type: "string", Description: "(unparseable schema)"}
+	}
+
+	prop := ToolParamProp{
+		Type:        s.Type,
+		Description: s.Description,
+		Enum:        s.Enum,
+	}
+	if prop.Type == "" {
+		prop.Type = "string"
+	}
+
+	// Recurse into array items.
+	if prop.Type == "array" && len(s.Items) > 0 {
+		items := parseMCPParamProp(s.Items)
+		prop.Items = &items
+	}
+
+	// Recurse into object properties.
+	if prop.Type == "object" && len(s.Properties) > 0 {
+		prop.Properties = make(map[string]ToolParamProp, len(s.Properties))
+		for k, v := range s.Properties {
+			prop.Properties[k] = parseMCPParamProp(v)
+		}
+		prop.Required = s.Required
+	}
+
+	return prop
 }
 
 // mcpToolExecutor returns a ToolExecutor closure that calls the MCP
