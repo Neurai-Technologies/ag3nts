@@ -555,7 +555,7 @@ func (a *App) maybeUpdatePipeline(evt agent.AgentEvent) {
 			all := a.orch.Tasks().List()
 			out := make([]taskMeta, 0, len(all))
 			for _, qt := range all {
-				out = append(out, taskMeta{id: qt.ID, taskType: qt.Type})
+				out = append(out, taskMeta{id: qt.ID, taskType: qt.Type, agent: qt.Agent})
 			}
 			return out
 		})
@@ -572,7 +572,7 @@ func (a *App) maybeUpdatePipeline(evt agent.AgentEvent) {
 		}
 	}
 
-	run := a.pipeline.updateStage(evt.TaskID, t.Type, newStatus)
+	run := a.pipeline.updateStage(evt.TaskID, t.Type, newStatus, evt.Agent)
 	if run == nil {
 		return
 	}
@@ -1341,8 +1341,12 @@ func (a *App) handleSlash(ctx context.Context, input string) {
 			if len(desc) > 60 {
 				desc = desc[:57] + "..."
 			}
-			lines = append(lines, fmt.Sprintf("  %s %s [%s] %s",
-				taskIcon(t.Status.String()), t.ID, t.Type, desc))
+			agentTag := ""
+			if t.Agent != "" {
+				agentTag = dimStyle.Render("(" + t.Agent + ") ")
+			}
+			lines = append(lines, fmt.Sprintf("  %s %s [%s] %s%s",
+				taskIcon(t.Status.String()), t.ID, t.Type, agentTag, desc))
 		}
 		header := fmt.Sprintf("Tasks (%d in session, /task <id> for details):", len(visible))
 		if showAll {
@@ -1641,7 +1645,7 @@ func (a *App) handleRecipe(ctx context.Context, args string) {
 			all := a.orch.Tasks().List()
 			out := make([]taskMeta, 0, len(all))
 			for _, qt := range all {
-				out = append(out, taskMeta{id: qt.ID, taskType: qt.Type})
+				out = append(out, taskMeta{id: qt.ID, taskType: qt.Type, agent: qt.Agent})
 			}
 			return out
 		})
@@ -2021,24 +2025,25 @@ func (a *App) handleEvent(event bus.Event) {
 		a.flushStream(agentEvt.Agent)
 		a.lastTool[agentEvt.Agent] = agentEvt.Content
 		a.printLine(agentEvt.Agent, formatToolLine(agentEvt.Content))
-		// Contextual spinner based on tool type.
-		switch {
-		case strings.Contains(agentEvt.Content, "web_research"):
-			a.startSpinner("researching (gemini)...")
-		case strings.Contains(agentEvt.Content, "code_task"):
-			a.startSpinner("coding (claude)...")
-		case strings.Contains(agentEvt.Content, "implement"):
-			a.startSpinner("implementing (codex)...")
-		case strings.Contains(agentEvt.Content, "recall"):
-			a.startSpinner("searching memory...")
-		case strings.Contains(agentEvt.Content, "store"):
-			a.startSpinner("storing to memory...")
-		case strings.Contains(agentEvt.Content, "read_file"):
-			a.startSpinner("reading file...")
-		case strings.Contains(agentEvt.Content, "run_command"):
-			a.startSpinner("running command...")
-		default:
-			a.startSpinner("working...")
+		// Build a spinner label that shows what the agent is doing.
+		// For recipe tasks, prefix with the agent name so the user
+		// can tell at a glance which deployed agent is active.
+		toolAction := describeToolAction(agentEvt.Content)
+		if agentEvt.TaskID != "" {
+			// Recipe stage: show agent + action e.g. "codex: reading file..."
+			a.startSpinner(agentEvt.Agent + ": " + toolAction)
+		} else {
+			// Direct chat: show contextual action for routing tools.
+			switch {
+			case strings.Contains(agentEvt.Content, "web_research"):
+				a.startSpinner("researching (gemini)...")
+			case strings.Contains(agentEvt.Content, "code_task"):
+				a.startSpinner("coding (claude)...")
+			case strings.Contains(agentEvt.Content, "implement"):
+				a.startSpinner("implementing (codex)...")
+			default:
+				a.startSpinner(toolAction)
+			}
 		}
 
 	case agent.EventReasoning:
@@ -2070,7 +2075,19 @@ func (a *App) handleEvent(event bus.Event) {
 	case agent.EventInit:
 		a.updateTitle()
 		a.printLine("ag3nts", fmt.Sprintf("[%s] connected", agentEvt.Agent))
-		a.startSpinner("waiting for " + agentEvt.Agent + "...")
+		// Show which agent is working. For recipe stages (identified by
+		// TaskID), include the stage name so you can tell "codex is
+		// working on the implement stage" at a glance.
+		spinLabel := agentEvt.Agent + " working..."
+		if agentEvt.TaskID != "" {
+			if t := a.orch.Tasks().Get(agentEvt.TaskID); t != nil {
+				stage := strings.TrimPrefix(t.Type, "repair.")
+				if stage != t.Type {
+					spinLabel = agentEvt.Agent + " → " + stage + "..."
+				}
+			}
+		}
+		a.startSpinner(spinLabel)
 
 	case agent.EventComplete:
 		a.updateTitle()

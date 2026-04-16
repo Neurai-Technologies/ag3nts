@@ -23,6 +23,7 @@ const (
 // stageState holds the live state of one stage in a recipe run.
 type stageState struct {
 	name   string // "research", "plan", "implement", etc. (without the "repair." prefix)
+	agent  string // agent name running this stage (e.g. "gemini", "claude", "codex")
 	status stageStatus
 	taskID string
 }
@@ -72,7 +73,9 @@ func newPipelineTracker() *pipelineTracker {
 // updateStage records a stage transition and returns the affected run
 // state for rendering. runID is derived from the task ID (everything
 // before the first "-"). Returns nil if the task ID has no runID prefix.
-func (p *pipelineTracker) updateStage(taskID, taskType string, status stageStatus) *recipeRunState {
+// agentName is captured on the first transition to a non-pending state
+// so the banner can show which agent runs each stage.
+func (p *pipelineTracker) updateStage(taskID, taskType string, status stageStatus, agentName string) *recipeRunState {
 	stage := strings.TrimPrefix(taskType, "repair.")
 	if stage == taskType {
 		// Not a repair task.
@@ -102,10 +105,13 @@ func (p *pipelineTracker) updateStage(taskID, taskType string, status stageStatu
 		}
 	}
 	if st == nil {
-		st = &stageState{name: stage, taskID: taskID, status: status}
+		st = &stageState{name: stage, taskID: taskID, status: status, agent: agentName}
 		run.stages = append(run.stages, st)
 	} else {
 		st.status = status
+		if agentName != "" && st.agent == "" {
+			st.agent = agentName
+		}
 	}
 
 	// Return a deep snapshot so the caller can render outside the lock.
@@ -163,6 +169,7 @@ func (p *pipelineTracker) discoverStages(runID string, tasksByID func() []taskMe
 		}
 		run.stages = append(run.stages, &stageState{
 			name:   stage,
+			agent:  t.agent,
 			taskID: t.id,
 			status: stagePending,
 		})
@@ -228,6 +235,7 @@ func (p *pipelineTracker) addRunningTotals(runID string, tokensIn, tokensOut int
 type taskMeta struct {
 	id       string
 	taskType string
+	agent    string
 }
 
 // runIDFromTaskID extracts the recipe run prefix from a task ID like
@@ -293,13 +301,22 @@ func renderInlineBanner(run *recipeRunState) string {
 	var stageStrs []string
 	for _, s := range run.stages {
 		icon := stageColor(s.status).Render(stageIcon(s.status))
-		name := s.name
-		if s.status == stageRunning {
-			name = lipgloss.NewStyle().Bold(true).Render(name)
-		} else if s.status == stagePending {
-			name = dimStyle.Render(name)
+		label := s.name
+		// Show which agent is running this stage so the user can tell
+		// at a glance who's doing what. Only shown when available and
+		// the stage isn't pending (no agent assigned yet).
+		if s.agent != "" && s.status != stagePending {
+			label += dimStyle.Render("(" + s.agent + ")")
 		}
-		stageStrs = append(stageStrs, icon+" "+name)
+		if s.status == stageRunning {
+			label = lipgloss.NewStyle().Bold(true).Render(s.name)
+			if s.agent != "" {
+				label += dimStyle.Render("(" + s.agent + ")")
+			}
+		} else if s.status == stagePending {
+			label = dimStyle.Render(label)
+		}
+		stageStrs = append(stageStrs, icon+" "+label)
 	}
 	body := strings.Join(stageStrs, "  ")
 

@@ -204,6 +204,40 @@ var toolIcons = map[string]string{
 }
 
 // formatToolLine returns an icon-prefixed tool use description.
+// describeToolAction returns a concise human-readable spinner label
+// for a tool use event. Used by the spinner to show what the deployed
+// agent is actively doing (e.g. "reading file...", "running command...",
+// "searching files..."). Falls back to "working..." for unknown tools.
+func describeToolAction(content string) string {
+	name := content
+	if idx := strings.Index(content, ": "); idx >= 0 {
+		name = content[:idx]
+	}
+	name = strings.TrimSpace(name)
+	switch name {
+	case "read_file", "Read":
+		return "reading file..."
+	case "write_file", "Write", "Edit":
+		return "writing file..."
+	case "run_command", "Bash":
+		return "running command..."
+	case "search_files", "Grep", "Glob":
+		return "searching files..."
+	case "google_web_search":
+		return "searching web..."
+	case "web_fetch":
+		return "fetching page..."
+	case "grep_search":
+		return "searching code..."
+	case "recall":
+		return "searching memory..."
+	case "store":
+		return "storing to memory..."
+	default:
+		return "working..."
+	}
+}
+
 func formatToolLine(content string) string {
 	// Content is "ToolName: details" or just "ToolName".
 	name := content
