@@ -208,9 +208,10 @@ func (a *SubprocessAgent) Start(ctx context.Context, prompt string, opts *StartO
 				TaskID:    opts.TaskID,
 				Content:   agentErr.Error(),
 				Metadata: map[string]any{
-					"error_type": agentErr.Type.String(),
-					"retryable":  agentErr.Retryable,
-					"exit_code":  exitCode,
+					"error_type":  agentErr.Type.String(),
+					"retryable":   agentErr.Retryable,
+					"exit_code":   exitCode,
+					"retry_after": agentErr.RetryAfter.String(),
 				},
 				Timestamp: time.Now(),
 			})

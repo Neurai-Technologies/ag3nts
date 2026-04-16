@@ -3,6 +3,8 @@ package agent
 import (
 	"math"
 	"math/rand"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -75,7 +77,7 @@ func ClassifyError(agentName string, exitCode int, stderr string) *AgentError {
 	case containsAny(lower, "rate limit", "429", "too many requests", "quota exceeded", "resource exhausted"):
 		ae.Type = ErrRateLimited
 		ae.Retryable = true
-		ae.RetryAfter = 30 * time.Second
+		ae.RetryAfter = parseRetryAfter(lower)
 
 	// Auth failures.
 	case containsAny(lower, "unauthorized", "invalid api key", "401", "authentication failed", "forbidden", "403"):
@@ -144,6 +146,52 @@ func DefaultRetryConfig(errType ErrorType) RetryConfig {
 	default:
 		return RetryConfig{MaxAttempts: 0} // no retry
 	}
+}
+
+// retryAfterRE matches common patterns in error messages that indicate
+// how long to wait before retrying:
+//   retry-after: 45           (HTTP header, seconds)
+//   retry after 45 seconds    (prose, Claude API style)
+//   wait 2 minutes            (prose)
+//   please try again in 30s   (generic)
+var retryAfterRE = regexp.MustCompile(
+	`(?i)(?:retry[ -]after:?\s*|wait\s+|try again in\s+)(\d+)\s*(s(?:ec(?:ond)?s?)?|m(?:in(?:ute)?s?)?)?`,
+)
+
+// parseRetryAfter extracts a duration from an error message's
+// Retry-After-like directive. Returns 30s as a safe default if no
+// directive is found — this matches the typical rate-limit cool-off
+// period for Claude and Gemini APIs.
+//
+// Caps at 5 minutes — if the API says "wait 1 hour", we're better
+// off failing immediately and letting the user decide rather than
+// hanging invisibly for an hour.
+func parseRetryAfter(lower string) time.Duration {
+	const defaultWait = 30 * time.Second
+	const maxWait = 5 * time.Minute
+
+	m := retryAfterRE.FindStringSubmatch(lower)
+	if m == nil {
+		return defaultWait
+	}
+	n, err := strconv.Atoi(m[1])
+	if err != nil || n <= 0 {
+		return defaultWait
+	}
+
+	unit := strings.ToLower(m[2])
+	var d time.Duration
+	switch {
+	case strings.HasPrefix(unit, "m"):
+		d = time.Duration(n) * time.Minute
+	default:
+		d = time.Duration(n) * time.Second
+	}
+
+	if d > maxWait {
+		d = maxWait
+	}
+	return d
 }
 
 // Backoff calculates the delay for a given attempt using exponential backoff with jitter.

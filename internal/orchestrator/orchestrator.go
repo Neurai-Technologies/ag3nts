@@ -751,11 +751,22 @@ func (o *Orchestrator) executeTask(t *task.Task, a agent.Agent, contextStr strin
 
 				if cfg.MaxAttempts > 0 && attempts < cfg.MaxAttempts {
 					backoff := cfg.Backoff(attempts)
+					// If the error includes a parsed Retry-After duration
+					// (from the API's 429 response), prefer it over the
+					// exponential backoff. This is more precise — the API
+					// knows exactly when its rate-limit window resets.
+					retrySource := "backoff"
+					if raStr, ok := lastErr.Metadata["retry_after"].(string); ok {
+						if ra, err := time.ParseDuration(raStr); err == nil && ra > 0 {
+							backoff = ra
+							retrySource = "Retry-After"
+						}
+					}
 					o.publish(agent.AgentEvent{
 						Kind:      agent.EventProgress,
 						Agent:     "orchestrator",
 						TaskID:    t.ID,
-						Content:   fmt.Sprintf("retrying in %s (attempt %d/%d, %s)", backoff.Round(time.Second), attempts+1, cfg.MaxAttempts, errTypeStr),
+						Content:   fmt.Sprintf("retrying in %s (attempt %d/%d, %s, %s)", backoff.Round(time.Second), attempts+1, cfg.MaxAttempts, errTypeStr, retrySource),
 						Timestamp: time.Now(),
 					})
 					if o.logger != nil {
