@@ -64,6 +64,7 @@ During recipe execution, live banners show stage status, agent assignments, and 
 - [Getting Started](docs/getting-started.md) — installation, first run, basic usage
 - [Recipes](docs/recipes.md) — recipe authoring, parameters, evaluator loop, dry-run
 - [Custom Tools](docs/custom-tools.md) — YAML tool definitions, security model
+- [MCP Servers](docs/mcp.md) — connect to external MCP servers (Postgres, GitHub, Slack, etc.)
 - [Commands Reference](docs/commands.md) — all TUI slash commands
 
 ## Architecture

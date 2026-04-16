@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 )
@@ -30,8 +31,9 @@ type managedTool struct {
 // to avoid collisions when multiple servers expose tools with the same
 // name. This matches the convention used by Claude Code's MCP integration.
 type MCPManager struct {
-	clients map[string]*MCPClient  // keyed by config name
-	tools   map[string]managedTool // keyed by qualified name
+	clients map[string]*MCPClient       // keyed by config name
+	configs map[string]MCPManagerConfig  // original configs for auto-restart
+	tools   map[string]managedTool      // keyed by qualified name
 	mu      sync.RWMutex
 }
 
@@ -40,6 +42,7 @@ type MCPManager struct {
 func NewMCPManager() *MCPManager {
 	return &MCPManager{
 		clients: make(map[string]*MCPClient),
+		configs: make(map[string]MCPManagerConfig),
 		tools:   make(map[string]managedTool),
 	}
 }
@@ -69,10 +72,43 @@ func (m *MCPManager) StartServer(ctx context.Context, cfg MCPManagerConfig) (int
 		return 0, fmt.Errorf("list tools: %w", err)
 	}
 
+	// Set up notification handler: when the server signals that its
+	// tool list changed, re-discover and update the catalog.
+	serverName := cfg.Name
+	client.OnToolsChanged = func() {
+		fmt.Fprintf(os.Stderr, "[mcp:%s] tools changed, re-discovering...\n", serverName)
+		reCtx, reCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer reCancel()
+		newTools, err := client.ListTools(reCtx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[mcp:%s] re-discovery failed: %v\n", serverName, err)
+			return
+		}
+		m.mu.Lock()
+		// Remove old tools for this server.
+		for name, mt := range m.tools {
+			if mt.client == client {
+				delete(m.tools, name)
+			}
+		}
+		// Add new tools.
+		for _, t := range newTools {
+			qualName := serverName + "__" + t.Name
+			m.tools[qualName] = managedTool{
+				client:   client,
+				mcpTool:  t,
+				origName: t.Name,
+			}
+		}
+		m.mu.Unlock()
+		fmt.Fprintf(os.Stderr, "[mcp:%s] now has %d tools\n", serverName, len(newTools))
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	m.clients[cfg.Name] = client
+	m.configs[cfg.Name] = cfg
 	for _, t := range tools {
 		qualName := cfg.Name + "__" + t.Name
 		m.tools[qualName] = managedTool{
@@ -108,11 +144,83 @@ func (m *MCPManager) CallTool(ctx context.Context, qualifiedName string, argumen
 		return nil, fmt.Errorf("unknown MCP tool %q", qualifiedName)
 	}
 
+	// Auto-restart: if the server crashed, try to respawn it once
+	// before failing. This handles transient crashes (OOM, segfault)
+	// without requiring the user to restart ag3nts.
 	if !mt.client.Alive() {
-		return nil, fmt.Errorf("MCP server %q is not running", mt.client.Name())
+		serverName := mt.client.Name()
+		fmt.Fprintf(os.Stderr, "[mcp:%s] server died, attempting restart...\n", serverName)
+		if err := m.restartServer(ctx, serverName); err != nil {
+			return nil, fmt.Errorf("MCP server %q crashed and restart failed: %w", serverName, err)
+		}
+		fmt.Fprintf(os.Stderr, "[mcp:%s] restarted successfully\n", serverName)
+		// Re-lookup the tool since restartServer replaces the client.
+		m.mu.RLock()
+		mt, ok = m.tools[qualifiedName]
+		m.mu.RUnlock()
+		if !ok {
+			return nil, fmt.Errorf("MCP tool %q unavailable after restart", qualifiedName)
+		}
 	}
 
 	return mt.client.CallTool(ctx, mt.origName, arguments)
+}
+
+// restartServer closes the dead client and spawns a fresh one using
+// the stored config. Re-discovers tools and updates the catalog.
+// Caller must NOT hold m.mu.
+func (m *MCPManager) restartServer(ctx context.Context, serverName string) error {
+	m.mu.Lock()
+	cfg, ok := m.configs[serverName]
+	oldClient := m.clients[serverName]
+	m.mu.Unlock()
+
+	if !ok {
+		return fmt.Errorf("no config for server %q", serverName)
+	}
+
+	// Close the dead client (idempotent).
+	if oldClient != nil {
+		_ = oldClient.Close()
+	}
+
+	// Spawn a fresh client.
+	client, err := NewMCPClient(cfg.Name, cfg.Command, cfg.Args, cfg.Env)
+	if err != nil {
+		return fmt.Errorf("respawn: %w", err)
+	}
+
+	listCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	tools, err := client.ListTools(listCtx)
+	if err != nil {
+		_ = client.Close()
+		return fmt.Errorf("re-discover tools: %w", err)
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Remove old tools for this server.
+	for name, mt := range m.tools {
+		if mt.client == oldClient {
+			delete(m.tools, name)
+		}
+	}
+
+	// Register new client and tools.
+	m.clients[serverName] = client
+	for _, t := range tools {
+		qualName := serverName + "__" + t.Name
+		m.tools[qualName] = managedTool{
+			client:   client,
+			mcpTool:  t,
+			origName: t.Name,
+		}
+	}
+
+	return nil
 }
 
 // StopAll gracefully shuts down all MCP server subprocesses.

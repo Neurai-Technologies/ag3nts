@@ -104,6 +104,7 @@ func newSlashCompleter() *readline.PrefixCompleter {
 		readline.PcItem("/reload"),
 		readline.PcItem("/cost"),
 		readline.PcItem("/recipe"),
+		readline.PcItem("/mcp"),
 		readline.PcItem("/schedule"),
 		readline.PcItem("/m3m0ry",
 			readline.PcItem("stats"),
@@ -1158,6 +1159,7 @@ func (a *App) handleSlash(ctx context.Context, input string) {
 			"  /reload   — reload config and apply hot settings",
 			"  /cost    — show session cost breakdown",
 			"  /recipe   — list or run a recipe (/recipe <name> [--dry-run] [key=val...])",
+			"  /mcp      — show connected MCP servers and their tools",
 			"  /schedule — list background schedules",
 			"  /m3m0ry   — rolling context (/m3m0ry stats | search <q> | tail [n])",
 			"  /quit     — exit",
@@ -1401,6 +1403,9 @@ func (a *App) handleSlash(ctx context.Context, input string) {
 			recipeArgs = strings.Join(parts[1:], " ")
 		}
 		a.handleRecipe(ctx, recipeArgs)
+
+	case "/mcp":
+		a.handleMCP()
 
 	case "/schedule":
 		a.handleSchedule()
@@ -1840,6 +1845,43 @@ func dryRunParamSummary(params map[string]string) string {
 }
 
 // handleSchedule lists background schedules.
+// handleMCP shows connected MCP servers, their tools, and status.
+func (a *App) handleMCP() {
+	if a.localOrch == nil {
+		a.printLine("ag3nts", "Local LLM not configured.")
+		return
+	}
+	mgr := a.localOrch.MCPManager()
+	if mgr == nil {
+		a.printLine("ag3nts", "No MCP servers configured. Add [toolsets.<name>] with type=\"mcp\" to ag3nts.toml.")
+		return
+	}
+
+	allTools := mgr.AllTools()
+	summary := mgr.ServerSummary()
+
+	if len(summary) == 0 {
+		a.printLine("ag3nts", "No MCP servers connected.")
+		return
+	}
+
+	var lines []string
+	lines = append(lines, fmt.Sprintf("MCP servers (%d):", len(summary)))
+	for _, s := range summary {
+		lines = append(lines, "  "+s)
+	}
+	lines = append(lines, "")
+	lines = append(lines, fmt.Sprintf("Tools (%d total):", len(allTools)))
+	for name, tool := range allTools {
+		desc := tool.Description
+		if len(desc) > 60 {
+			desc = desc[:57] + "..."
+		}
+		lines = append(lines, fmt.Sprintf("  %-30s %s", name, dimStyle.Render(desc)))
+	}
+	a.printLines("ag3nts", strings.Join(lines, "\n"))
+}
+
 func (a *App) handleSchedule() {
 	db := a.orch.StoreDB()
 	if db == nil {

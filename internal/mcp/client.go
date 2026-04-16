@@ -69,6 +69,12 @@ type MCPClient struct {
 
 	done    chan struct{} // closed when readLoop exits
 	readErr error        // first read error
+
+	// OnToolsChanged is called when the server sends a
+	// notifications/tools/list_changed notification. The manager uses
+	// this to re-discover the server's tool catalog. Set before the
+	// readLoop sees any notifications (i.e., during NewMCPClient).
+	OnToolsChanged func()
 }
 
 // NewMCPClient spawns the MCP server subprocess, performs the
@@ -362,8 +368,15 @@ func (c *MCPClient) readLoop() {
 
 		// Check if this is a response (has ID) or a notification (no ID).
 		if len(resp.ID) == 0 || string(resp.ID) == "null" {
-			// Server-initiated notification — ignore for now.
-			// Future: handle notifications/tools/list_changed.
+			// Server-initiated notification. Parse the method from
+			// the raw line since jsonRPCResponse doesn't carry it.
+			var notif struct {
+				Method string `json:"method"`
+			}
+			_ = json.Unmarshal(line, &notif)
+			if notif.Method == "notifications/tools/list_changed" && c.OnToolsChanged != nil {
+				go c.OnToolsChanged() // async to avoid blocking readLoop
+			}
 			continue
 		}
 

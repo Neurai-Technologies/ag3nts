@@ -361,6 +361,12 @@ func (lo *LocalOrchestrator) IsRunning() bool {
 }
 
 // HeadModelName returns the display name of the head model (without tag).
+// MCPManager returns the MCP server manager, or nil if no MCP servers
+// are configured. Used by the TUI's /mcp command.
+func (lo *LocalOrchestrator) MCPManager() *mcp.MCPManager {
+	return lo.mcpManager
+}
+
 func (lo *LocalOrchestrator) HeadModelName() string {
 	name := lo.models.ModelName(ModelHead)
 	if idx := strings.Index(name, ":"); idx > 0 {
