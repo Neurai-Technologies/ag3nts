@@ -79,10 +79,13 @@ func parseEvaluatorVerdict(output string) (verdict string, reason string) {
 		return "REJECT", trimVerdictPrefix(first, 6)
 	}
 
-	// Fallback: keyword search in the first 500 chars.
+	// Fallback: keyword search in the first 2000 chars. The window was
+	// originally 500 but reviews often include long analysis text before
+	// stating the verdict, pushing ACCEPT/REJECT past the 500-char mark
+	// and causing spurious retries.
 	head := trimmed
-	if len(head) > 500 {
-		head = head[:500]
+	if len(head) > 2000 {
+		head = head[:2000]
 	}
 	upperHead := strings.ToUpper(head)
 	// Precedence: BLOCKED > ACCEPT/APPROVED > REJECT/REJECTED — a reviewer

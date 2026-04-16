@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -239,6 +240,7 @@ func (a *App) Run(ctx context.Context) error {
 	pasteReader, _ := rl.Config.Stdin.(*PasteReader)
 
 	for {
+		fmt.Println("") // breathing room after the previous response
 		fmt.Println(dimStyle.Render("─────────────────────────────────────────────────────────"))
 
 		// Multi-line accumulation: Ctrl+J (LF) continues, Enter (CR) submits.
@@ -295,6 +297,7 @@ func (a *App) Run(ctx context.Context) error {
 		}
 
 		fmt.Println(dimStyle.Render("─────────────────────────────────────────────────────────"))
+		fmt.Println("") // spacing between user input and agent response
 
 		if input == "/quit" || input == "/exit" {
 			DisableBracketedPaste()
@@ -330,11 +333,28 @@ func (a *App) println(s string) {
 
 func (a *App) printLine(source, text string) {
 	a.stopSpinner()
+	// User messages get a distinct highlight so they stand out when
+	// scanning the log. Dark background + white text, matching the
+	// user's request for "black background and white text".
+	if strings.HasPrefix(source, "you") {
+		a.printUserLine(source, text)
+		return
+	}
 	ts := dimStyle.Render(time.Now().Format("15:04:05"))
 	styled := ts + " " +
 		lipgloss.NewStyle().Foreground(agentColor(source)).Bold(true).Render(source) +
 		" " + text
 	a.println(styled)
+}
+
+// printUserLine renders user input with a dark-background highlight
+// so it's visually distinct from agent output when scanning the log.
+func (a *App) printUserLine(source, text string) {
+	userStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color("#1A1A1A")).
+		Foreground(lipgloss.Color("#FFFFFF")).
+		Bold(true)
+	a.println(userStyle.Render("  " + source + "  " + text + "  "))
 }
 
 func (a *App) printError(source, text string) {
@@ -643,6 +663,26 @@ func (a *App) printFinalSummary(run *recipeRunState) {
 	for _, line := range strings.Split(banner, "\n") {
 		a.println(line)
 	}
+
+	// Prominent completion signal (U3) — a bold, colored one-liner
+	// after the summary banner so it's impossible to miss even in
+	// a flood of agent output.
+	allOK := true
+	for _, s := range run.stages {
+		if s.status == stageFailed || s.status == stageBlocked {
+			allOK = false
+			break
+		}
+	}
+	if allOK {
+		a.println(lipgloss.NewStyle().Foreground(lipgloss.Color("#81C784")).Bold(true).
+			Render(fmt.Sprintf("  ✓ Pipeline %s complete", run.runID)))
+	} else {
+		a.println(lipgloss.NewStyle().Foreground(lipgloss.Color("#EF5350")).Bold(true).
+			Render(fmt.Sprintf("  ✗ Pipeline %s failed", run.runID)))
+	}
+	a.println("")
+
 	if wasSpinning {
 		a.startSpinner(label)
 	}
@@ -929,6 +969,13 @@ func (a *App) handleInput(ctx context.Context, input string) {
 		return
 	}
 
+	// Shell escape: !command runs directly in the shell without routing
+	// through the LLM. Useful for git status, file ops, etc.
+	if strings.HasPrefix(input, "!") {
+		a.handleShellEscape(strings.TrimSpace(input[1:]))
+		return
+	}
+
 	if a.localOrch != nil && a.localOrch.Available() {
 		// If already processing (e.g. extra lines from paste), drop silently.
 		if a.localOrch.IsRunning() {
@@ -957,6 +1004,24 @@ func (a *App) handleInput(ctx context.Context, input string) {
 	}
 
 	a.handleFallback(ctx, input)
+}
+
+// handleShellEscape runs a command directly in the shell, bypassing
+// the LLM entirely. Triggered by the ! prefix: !git status, !ls, etc.
+// Output goes to stdout/stderr inline. No permission prompt — the user
+// explicitly typed the command, so intent is clear.
+func (a *App) handleShellEscape(cmdStr string) {
+	if cmdStr == "" {
+		a.printLine("ag3nts", "Usage: !<command>  (e.g. !git status)")
+		return
+	}
+	a.println(dimStyle.Render("$ " + cmdStr))
+	cmd := exec.Command("sh", "-c", cmdStr)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		a.printError("shell", err.Error())
+	}
 }
 
 func (a *App) waitForCompletion() {
@@ -1862,9 +1927,10 @@ func (a *App) handlePermission(req PermissionRequest) {
 	a.println(dimStyle.Render("  3) Deny"))
 	fmt.Print(dimStyle.Render("  Choice [1/2/3]: "))
 
-	var response string
-	fmt.Scanln(&response)
-	response = strings.TrimSpace(response)
+	// Read a single character without requiring Enter. Uses raw
+	// terminal mode so pressing 1/2/3 immediately selects the
+	// option, matching the speed of Claude Code's permission flow.
+	response := readSingleChar()
 
 	switch response {
 	case "1", "y", "yes":

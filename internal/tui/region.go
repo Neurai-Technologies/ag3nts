@@ -10,6 +10,27 @@ import (
 	"github.com/charmbracelet/x/term"
 )
 
+// readSingleChar reads one character from stdin in raw terminal mode
+// (no Enter required). Used by the permission prompt so pressing 1/2/3
+// immediately selects the option. Falls back to fmt.Scanln if raw mode
+// fails (e.g. stdin is a pipe).
+func readSingleChar() string {
+	fd := os.Stdin.Fd()
+	oldState, err := term.MakeRaw(fd)
+	if err != nil {
+		// Fallback: readline-style input requiring Enter.
+		var s string
+		fmt.Scanln(&s)
+		return strings.TrimSpace(s)
+	}
+	defer term.Restore(fd, oldState)
+
+	var buf [1]byte
+	_, _ = os.Stdin.Read(buf[:])
+	fmt.Println() // newline since raw mode doesn't echo
+	return string(buf[0])
+}
+
 // fallbackCols is used when the terminal width can't be determined.
 // 80 is the historical default and conservative enough that wrap
 // calculations don't badly under-estimate row counts.

@@ -88,7 +88,7 @@ func (p *pipelineTracker) updateStage(taskID, taskType string, status stageStatu
 
 	run, ok := p.runs[runID]
 	if !ok {
-		run = &recipeRunState{runID: runID}
+		run = &recipeRunState{runID: runID, startedAt: time.Now()}
 		p.runs[runID] = run
 	}
 
@@ -108,13 +108,8 @@ func (p *pipelineTracker) updateStage(taskID, taskType string, status stageStatu
 		st.status = status
 	}
 
-	// Return a snapshot so the caller can render outside the lock.
-	snapshot := &recipeRunState{runID: run.runID, stages: make([]*stageState, len(run.stages))}
-	for i, s := range run.stages {
-		copy := *s
-		snapshot.stages[i] = &copy
-	}
-	return snapshot
+	// Return a deep snapshot so the caller can render outside the lock.
+	return cloneRunStateLocked(run)
 }
 
 // hasRun returns true if the tracker is already aware of the given run.
