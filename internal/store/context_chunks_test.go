@@ -280,14 +280,14 @@ func TestContextChunkConcurrentInsert(t *testing.T) {
 }
 
 func TestContextChunkSchemaV5Migration(t *testing.T) {
-	// Verify that the schema version is 5 after migrate.
+	// Verify that the schema version is current after migrate.
 	db := openTestDB(t)
 	var version int
 	if err := db.db.QueryRow(`SELECT version FROM schema_version LIMIT 1`).Scan(&version); err != nil {
 		t.Fatalf("read version: %v", err)
 	}
-	if version != 5 {
-		t.Errorf("schema version = %d, want 5", version)
+	if version != 6 {
+		t.Errorf("schema version = %d, want 6", version)
 	}
 
 	// Verify the context_chunks table exists.

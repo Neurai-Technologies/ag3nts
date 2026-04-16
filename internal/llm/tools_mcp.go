@@ -12,12 +12,14 @@ import (
 )
 
 // MCPServerConfig describes one MCP server to connect to. Populated
-// from config.ToolSetConfig entries with type="mcp" in cmd/orchestrate.go.
+// from config.ToolSetConfig entries with type="mcp" or "mcp-http".
 type MCPServerConfig struct {
-	Name    string
-	Command string
-	Args    []string
-	Env     []string // pre-formatted "KEY=VALUE" strings
+	Name      string
+	Command   string   // stdio transport (empty for HTTP)
+	Args      []string
+	Env       []string // pre-formatted "KEY=VALUE" strings
+	URL       string   // HTTP transport endpoint (empty for stdio)
+	AuthToken string   // Bearer token for HTTP auth
 }
 
 // LoadMCPTools connects to the configured MCP servers via the manager,

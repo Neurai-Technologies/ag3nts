@@ -11,29 +11,53 @@ import (
 )
 
 // MCPManagerConfig describes one MCP server to connect to.
+// For stdio servers: Command + Args + Env.
+// For HTTP servers: URL + AuthToken (Command is empty).
 type MCPManagerConfig struct {
-	Name    string
-	Command string
-	Args    []string
-	Env     []string // pre-formatted "KEY=VALUE" strings
+	Name      string
+	Command   string   // empty for HTTP transport
+	Args      []string
+	Env       []string // pre-formatted "KEY=VALUE" strings
+	URL       string   // HTTP endpoint (empty for stdio)
+	AuthToken string   // Bearer token for HTTP auth
+}
+
+// IsHTTP returns true if this config describes an HTTP transport server.
+func (c MCPManagerConfig) IsHTTP() bool {
+	return c.URL != "" && c.Command == ""
+}
+
+// MCPTransport is the common interface for stdio and HTTP MCP clients.
+// Both MCPClient and MCPHTTPClient implement this interface.
+type MCPTransport interface {
+	Name() string
+	Alive() bool
+	Close() error
+	HasCapability(name string) bool
+	ListTools(ctx context.Context) ([]MCPTool, error)
+	CallTool(ctx context.Context, toolName string, arguments json.RawMessage) (*MCPToolResult, error)
+	ListResources(ctx context.Context) ([]MCPResource, error)
+	ReadResource(ctx context.Context, uri string) ([]MCPResourceContents, error)
+	ListPrompts(ctx context.Context) ([]MCPPrompt, error)
+	GetPrompt(ctx context.Context, name string, arguments map[string]string) ([]MCPPromptMessage, string, error)
 }
 
 // managedTool maps a tool back to its owning client.
 type managedTool struct {
-	client   *MCPClient
+	client   MCPTransport
 	mcpTool  MCPTool
 	origName string // tool name as reported by the server
 }
 
 // managedResource maps a resource back to its owning client.
 type managedResource struct {
-	client   *MCPClient
+	client   MCPTransport
 	resource MCPResource
 }
 
 // managedPrompt maps a prompt back to its owning client.
 type managedPrompt struct {
-	client   *MCPClient
+	client   MCPTransport
 	prompt   MCPPrompt
 	origName string
 }
@@ -47,7 +71,7 @@ type managedPrompt struct {
 // name. This matches the convention used by Claude Code's MCP integration.
 // Resources are keyed by "servername__uri" and prompts by "servername__promptname".
 type MCPManager struct {
-	clients   map[string]*MCPClient       // keyed by config name
+	clients   map[string]MCPTransport      // keyed by config name
 	configs   map[string]MCPManagerConfig  // original configs for auto-restart
 	tools     map[string]managedTool       // keyed by qualified name
 	resources map[string]managedResource   // keyed by "server__uri"
@@ -63,7 +87,7 @@ type MCPManager struct {
 // configured MCP server, then AllTools to get the aggregated catalog.
 func NewMCPManager() *MCPManager {
 	return &MCPManager{
-		clients:   make(map[string]*MCPClient),
+		clients:   make(map[string]MCPTransport),
 		configs:   make(map[string]MCPManagerConfig),
 		tools:     make(map[string]managedTool),
 		resources: make(map[string]managedResource),
@@ -80,20 +104,30 @@ func (m *MCPManager) SetSamplingHandler(fn SamplingHandler) {
 	m.onSampling = fn
 	// Update existing clients.
 	for _, client := range m.clients {
-		client.OnSampling = fn
+		switch c := client.(type) {
+		case *MCPClient:
+			c.OnSampling = fn
+		case *MCPHTTPClient:
+			c.OnSampling = fn
+		}
 	}
 }
 
-// StartServer launches an MCP server subprocess, performs the
-// initialize handshake, discovers tools, and registers them in the
-// manager's catalog. Returns the number of tools discovered.
+// StartServer launches an MCP server (stdio subprocess or HTTP) and
+// registers its tools, resources, and prompts. Returns the number of
+// tools discovered.
 //
-// Errors during startup are returned to the caller (the server is
-// not added to the manager). The caller decides whether to skip or
-// abort — typically, a startup error is logged as a warning and the
-// remaining servers are still started.
+// For stdio: spawns a subprocess and communicates via JSON-RPC over stdin/stdout.
+// For HTTP: connects to the given URL using Streamable HTTP transport.
 func (m *MCPManager) StartServer(ctx context.Context, cfg MCPManagerConfig) (int, error) {
-	client, err := NewMCPClient(cfg.Name, cfg.Command, cfg.Args, cfg.Env)
+	var client MCPTransport
+	var err error
+
+	if cfg.IsHTTP() {
+		client, err = NewMCPHTTPClient(cfg.Name, cfg.URL, cfg.AuthToken)
+	} else {
+		client, err = NewMCPClient(cfg.Name, cfg.Command, cfg.Args, cfg.Env)
+	}
 	if err != nil {
 		return 0, err
 	}
@@ -135,7 +169,7 @@ func (m *MCPManager) StartServer(ctx context.Context, cfg MCPManagerConfig) (int
 
 	// Set up notification handlers for catalog changes.
 	serverName := cfg.Name
-	client.OnToolsChanged = func() {
+	toolsChanged := func() {
 		fmt.Fprintf(os.Stderr, "[mcp:%s] tools changed, re-discovering...\n", serverName)
 		reCtx, reCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer reCancel()
@@ -161,7 +195,7 @@ func (m *MCPManager) StartServer(ctx context.Context, cfg MCPManagerConfig) (int
 		m.mu.Unlock()
 		fmt.Fprintf(os.Stderr, "[mcp:%s] now has %d tools\n", serverName, len(newTools))
 	}
-	client.OnResourcesChanged = func() {
+	resourcesChanged := func() {
 		fmt.Fprintf(os.Stderr, "[mcp:%s] resources changed, re-discovering...\n", serverName)
 		reCtx, reCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer reCancel()
@@ -183,7 +217,7 @@ func (m *MCPManager) StartServer(ctx context.Context, cfg MCPManagerConfig) (int
 		m.mu.Unlock()
 		fmt.Fprintf(os.Stderr, "[mcp:%s] now has %d resources\n", serverName, len(newRes))
 	}
-	client.OnPromptsChanged = func() {
+	promptsChanged := func() {
 		fmt.Fprintf(os.Stderr, "[mcp:%s] prompts changed, re-discovering...\n", serverName)
 		reCtx, reCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer reCancel()
@@ -206,9 +240,22 @@ func (m *MCPManager) StartServer(ctx context.Context, cfg MCPManagerConfig) (int
 		fmt.Fprintf(os.Stderr, "[mcp:%s] now has %d prompts\n", serverName, len(newPr))
 	}
 
-	// Wire sampling handler if configured.
-	if m.onSampling != nil {
-		client.OnSampling = m.onSampling
+	// Wire notification handlers and sampling onto the transport.
+	switch c := client.(type) {
+	case *MCPClient:
+		c.OnToolsChanged = toolsChanged
+		c.OnResourcesChanged = resourcesChanged
+		c.OnPromptsChanged = promptsChanged
+		if m.onSampling != nil {
+			c.OnSampling = m.onSampling
+		}
+	case *MCPHTTPClient:
+		c.OnToolsChanged = toolsChanged
+		c.OnResourcesChanged = resourcesChanged
+		c.OnPromptsChanged = promptsChanged
+		if m.onSampling != nil {
+			c.OnSampling = m.onSampling
+		}
 	}
 
 	m.mu.Lock()
@@ -273,7 +320,7 @@ func (m *MCPManager) AllResources() map[string]MCPResource {
 func (m *MCPManager) ReadResource(ctx context.Context, uri string) ([]MCPResourceContents, error) {
 	m.mu.RLock()
 	// Find which server owns this URI.
-	var client *MCPClient
+	var client MCPTransport
 	for _, mr := range m.resources {
 		if mr.resource.URI == uri {
 			client = mr.client
@@ -293,8 +340,8 @@ func (m *MCPManager) ReadResource(ctx context.Context, uri string) ([]MCPResourc
 		if err := m.restartServer(ctx, serverName); err != nil {
 			return nil, fmt.Errorf("MCP server %q crashed and restart failed: %w", serverName, err)
 		}
-		// Re-find client after restart.
 		m.mu.RLock()
+		client = nil
 		for _, mr := range m.resources {
 			if mr.resource.URI == uri {
 				client = mr.client
@@ -400,8 +447,14 @@ func (m *MCPManager) restartServer(ctx context.Context, serverName string) error
 		_ = oldClient.Close()
 	}
 
-	// Spawn a fresh client.
-	client, err := NewMCPClient(cfg.Name, cfg.Command, cfg.Args, cfg.Env)
+	// Spawn a fresh client using the same transport type.
+	var client MCPTransport
+	var err error
+	if cfg.IsHTTP() {
+		client, err = NewMCPHTTPClient(cfg.Name, cfg.URL, cfg.AuthToken)
+	} else {
+		client, err = NewMCPClient(cfg.Name, cfg.Command, cfg.Args, cfg.Env)
+	}
 	if err != nil {
 		return fmt.Errorf("respawn: %w", err)
 	}
@@ -430,8 +483,15 @@ func (m *MCPManager) restartServer(ctx context.Context, serverName string) error
 	}
 
 	// Wire sampling handler.
-	if m.onSampling != nil {
-		client.OnSampling = m.onSampling
+	switch c := client.(type) {
+	case *MCPClient:
+		if m.onSampling != nil {
+			c.OnSampling = m.onSampling
+		}
+	case *MCPHTTPClient:
+		if m.onSampling != nil {
+			c.OnSampling = m.onSampling
+		}
 	}
 
 	m.mu.Lock()

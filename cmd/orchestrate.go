@@ -164,6 +164,7 @@ func runOrchestrate() error {
 	// Open SQLite store for structured persistence.
 	var storeDB *store.DB
 	sessionID := fmt.Sprintf("%s_%d", time.Now().Format("20060102"), time.Now().UnixNano()%10000)
+	var resumeIDs map[string]string
 	if layout != nil {
 		dbPath := layout.State + "/ag3nts.db"
 		db, err := store.Open(store.Config{Path: dbPath})
@@ -184,8 +185,12 @@ func runOrchestrate() error {
 				if sess.PrimaryAgent != "" {
 					primary = sess.PrimaryAgent
 				}
+				resumeIDs = sess.ResumeIDs
 				_ = storeDB.UpdateSessionStatus(sessionID, "active")
 				fmt.Fprintf(os.Stderr, "✓ Resuming session %s\n", sessionID)
+				if len(resumeIDs) > 0 {
+					fmt.Fprintf(os.Stderr, "  agent sessions: %v\n", resumeIDs)
+				}
 
 			case forkFlag != "":
 				// Fork: create new session, inherit context from source.
@@ -316,6 +321,7 @@ func runOrchestrate() error {
 		Context:        rollingCtx,
 		BaseDir:        baseDirOrEmpty(layout),
 		AgentWorkDir:   agentWorkDir,
+		ResumeIDs:      resumeIDs,
 	}, registry)
 	if err != nil {
 		return fmt.Errorf("create orchestrator: %w", err)
@@ -365,23 +371,33 @@ func runOrchestrate() error {
 		// Convert MCP tool-set configs into MCPServerConfig entries.
 		var mcpServers []llm.MCPServerConfig
 		for name, ts := range cfg.ToolSets {
-			if ts.Type != "mcp" {
-				continue
+			switch ts.Type {
+			case "mcp":
+				if ts.Command == "" {
+					fmt.Fprintf(os.Stderr, "⚠ toolset %q: mcp type requires command\n", name)
+					continue
+				}
+				env := make([]string, 0, len(ts.Env))
+				for k, v := range ts.Env {
+					env = append(env, k+"="+v)
+				}
+				mcpServers = append(mcpServers, llm.MCPServerConfig{
+					Name:    name,
+					Command: ts.Command,
+					Args:    ts.Args,
+					Env:     env,
+				})
+			case "mcp-http":
+				if ts.URL == "" {
+					fmt.Fprintf(os.Stderr, "⚠ toolset %q: mcp-http type requires url\n", name)
+					continue
+				}
+				mcpServers = append(mcpServers, llm.MCPServerConfig{
+					Name:      name,
+					URL:       ts.URL,
+					AuthToken: ts.AuthToken,
+				})
 			}
-			if ts.Command == "" {
-				fmt.Fprintf(os.Stderr, "⚠ toolset %q: mcp type requires command\n", name)
-				continue
-			}
-			env := make([]string, 0, len(ts.Env))
-			for k, v := range ts.Env {
-				env = append(env, k+"="+v)
-			}
-			mcpServers = append(mcpServers, llm.MCPServerConfig{
-				Name:    name,
-				Command: ts.Command,
-				Args:    ts.Args,
-				Env:     env,
-			})
 		}
 
 		lo, err := llm.NewLocalOrchestrator(llm.OrchestratorConfig{

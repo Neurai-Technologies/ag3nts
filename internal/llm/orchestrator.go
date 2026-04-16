@@ -214,10 +214,12 @@ func NewLocalOrchestrator(
 		ctx := context.Background()
 		for _, srv := range cfg.MCPServers {
 			count, err := mcpMgr.StartServer(ctx, mcp.MCPManagerConfig{
-				Name:    srv.Name,
-				Command: srv.Command,
-				Args:    srv.Args,
-				Env:     srv.Env,
+				Name:      srv.Name,
+				Command:   srv.Command,
+				Args:      srv.Args,
+				Env:       srv.Env,
+				URL:       srv.URL,
+				AuthToken: srv.AuthToken,
 			})
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "⚠ MCP server %s: %v\n", srv.Name, err)

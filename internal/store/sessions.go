@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -19,6 +20,7 @@ type SessionRecord struct {
 	TotalOutputTokens int64
 	TotalCachedTokens int64
 	TotalCostUSD      float64
+	ResumeIDs         map[string]string // agent_name → provider session ID (for cross-restart resume)
 }
 
 // CreateSession inserts a new session record.
@@ -47,15 +49,17 @@ func (d *DB) GetSession(id string) (*SessionRecord, error) {
 	row := d.db.QueryRow(`
 		SELECT id, name, working_dir, primary_agent, status,
 		       created_at, updated_at,
-		       total_input_tokens, total_output_tokens, total_cached_tokens, total_cost_usd
+		       total_input_tokens, total_output_tokens, total_cached_tokens, total_cost_usd,
+		       resume_ids
 		FROM sessions WHERE id = ?`, id)
 
 	var rec SessionRecord
-	var createdStr, updatedStr string
+	var createdStr, updatedStr, resumeJSON string
 	err := row.Scan(
 		&rec.ID, &rec.Name, &rec.WorkingDir, &rec.PrimaryAgent, &rec.Status,
 		&createdStr, &updatedStr,
 		&rec.TotalInputTokens, &rec.TotalOutputTokens, &rec.TotalCachedTokens, &rec.TotalCostUSD,
+		&resumeJSON,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -65,6 +69,8 @@ func (d *DB) GetSession(id string) (*SessionRecord, error) {
 	}
 	rec.CreatedAt, _ = time.Parse(time.RFC3339, createdStr)
 	rec.UpdatedAt, _ = time.Parse(time.RFC3339, updatedStr)
+	rec.ResumeIDs = make(map[string]string)
+	_ = json.Unmarshal([]byte(resumeJSON), &rec.ResumeIDs)
 	return &rec, nil
 }
 
@@ -91,6 +97,40 @@ func (d *DB) AddTokenUsage(sessionID string, input, output, cached int, cost flo
 	return err
 }
 
+// SetResumeID persists a provider-side session ID for an agent within
+// a session. Used for cross-restart resume: when ag3nts restarts with
+// --resume, it can pass the stored provider ID to the agent subprocess.
+func (d *DB) SetResumeID(sessionID, agentName, providerID string) error {
+	// Read current resume_ids JSON.
+	var resumeJSON string
+	err := d.db.QueryRow(`SELECT resume_ids FROM sessions WHERE id = ?`, sessionID).Scan(&resumeJSON)
+	if err != nil {
+		return fmt.Errorf("read resume_ids: %w", err)
+	}
+	ids := make(map[string]string)
+	_ = json.Unmarshal([]byte(resumeJSON), &ids)
+	ids[agentName] = providerID
+	data, _ := json.Marshal(ids)
+	_, err = d.db.Exec(`UPDATE sessions SET resume_ids = ?, updated_at = ? WHERE id = ?`,
+		string(data), time.Now().UTC().Format(time.RFC3339), sessionID)
+	return err
+}
+
+// GetResumeIDs returns the stored provider-side session IDs for a session.
+func (d *DB) GetResumeIDs(sessionID string) (map[string]string, error) {
+	var resumeJSON string
+	err := d.db.QueryRow(`SELECT resume_ids FROM sessions WHERE id = ?`, sessionID).Scan(&resumeJSON)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	ids := make(map[string]string)
+	_ = json.Unmarshal([]byte(resumeJSON), &ids)
+	return ids, nil
+}
+
 // ListSessions returns sessions ordered by most recent first.
 func (d *DB) ListSessions(limit int) ([]*SessionRecord, error) {
 	if limit <= 0 {
@@ -99,7 +139,8 @@ func (d *DB) ListSessions(limit int) ([]*SessionRecord, error) {
 	rows, err := d.db.Query(`
 		SELECT id, name, working_dir, primary_agent, status,
 		       created_at, updated_at,
-		       total_input_tokens, total_output_tokens, total_cached_tokens, total_cost_usd
+		       total_input_tokens, total_output_tokens, total_cached_tokens, total_cost_usd,
+		       resume_ids
 		FROM sessions ORDER BY updated_at DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions: %w", err)
@@ -109,16 +150,19 @@ func (d *DB) ListSessions(limit int) ([]*SessionRecord, error) {
 	var sessions []*SessionRecord
 	for rows.Next() {
 		var rec SessionRecord
-		var createdStr, updatedStr string
+		var createdStr, updatedStr, resumeJSON string
 		if err := rows.Scan(
 			&rec.ID, &rec.Name, &rec.WorkingDir, &rec.PrimaryAgent, &rec.Status,
 			&createdStr, &updatedStr,
 			&rec.TotalInputTokens, &rec.TotalOutputTokens, &rec.TotalCachedTokens, &rec.TotalCostUSD,
+			&resumeJSON,
 		); err != nil {
 			return nil, fmt.Errorf("scan session: %w", err)
 		}
 		rec.CreatedAt, _ = time.Parse(time.RFC3339, createdStr)
 		rec.UpdatedAt, _ = time.Parse(time.RFC3339, updatedStr)
+		rec.ResumeIDs = make(map[string]string)
+		_ = json.Unmarshal([]byte(resumeJSON), &rec.ResumeIDs)
 		sessions = append(sessions, &rec)
 	}
 	return sessions, rows.Err()

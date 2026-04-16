@@ -1,8 +1,11 @@
 package store
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
-const currentSchemaVersion = 5
+const currentSchemaVersion = 6
 
 // schema defines the DDL for all tables at schema version 1.
 const schema = `
@@ -21,7 +24,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     total_input_tokens  INTEGER NOT NULL DEFAULT 0,
     total_output_tokens INTEGER NOT NULL DEFAULT 0,
     total_cached_tokens INTEGER NOT NULL DEFAULT 0,
-    total_cost_usd      REAL NOT NULL DEFAULT 0.0
+    total_cost_usd      REAL NOT NULL DEFAULT 0.0,
+    resume_ids          TEXT NOT NULL DEFAULT '{}'
 );
 
 CREATE TABLE IF NOT EXISTS tasks (
@@ -239,6 +243,19 @@ func (d *DB) migrate() error {
 		_, err = d.db.Exec(`INSERT INTO context_chunks_fts(rowid, content, keywords) SELECT id, content, keywords FROM context_chunks`)
 		if err != nil {
 			return fmt.Errorf("migrate v5 (FTS5 backfill): %w", err)
+		}
+	}
+
+	if version < 6 {
+		// Add resume_ids column to sessions for cross-restart agent resume.
+		_, err = d.db.Exec(`ALTER TABLE sessions ADD COLUMN resume_ids TEXT NOT NULL DEFAULT '{}'`)
+		if err != nil {
+			// Column may already exist if schema was created fresh at v6+.
+			// ALTER TABLE ADD COLUMN is not idempotent in SQLite, so
+			// swallow "duplicate column" errors.
+			if !strings.Contains(err.Error(), "duplicate column") {
+				return fmt.Errorf("migrate v6 (resume_ids column): %w", err)
+			}
 		}
 	}
 

@@ -234,11 +234,37 @@ func (a *SubprocessAgent) Start(ctx context.Context, prompt string, opts *StartO
 	return session, nil
 }
 
-// Send is not yet implemented for subprocess agents. Multi-turn requires
-// stopping the current process and relaunching with --resume.
+// Send continues a conversation by stopping the current subprocess and
+// relaunching with the provider's --resume flag. If the agent doesn't
+// support resume (e.g., Claude), returns an error.
+//
+// The caller should drain the old session's Events() channel before
+// calling Send, then read from the returned session's Events().
 func (a *SubprocessAgent) Send(session *Session, message string) error {
-	// TODO: Implement session resume via --resume flag.
-	return fmt.Errorf("%s: Send not yet implemented (use Start with SessionID for resume)", a.name)
+	if a.resumeFlags == nil {
+		return fmt.Errorf("%s: agent does not support session resume", a.name)
+	}
+
+	resumeID := session.ResumeID()
+	if resumeID == "" {
+		return fmt.Errorf("%s: no provider session ID captured (cannot resume)", a.name)
+	}
+
+	// Stop the old subprocess.
+	_ = a.Stop(session)
+
+	// Start a new subprocess with the provider's resume ID.
+	ctx := context.Background()
+	_, err := a.Start(ctx, message, &StartOpts{
+		TaskID:          session.TaskID,
+		ResumeSessionID: resumeID,
+		WorkDir:         "", // inherits from previous
+	})
+	if err != nil {
+		return fmt.Errorf("%s: resume failed: %w", a.name, err)
+	}
+
+	return nil
 }
 
 // Stop terminates a running subprocess session gracefully.

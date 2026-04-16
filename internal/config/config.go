@@ -45,11 +45,13 @@ type ContextConfig struct {
 
 // ToolSetConfig defines a dynamically registered tool-set in ag3nts.toml.
 type ToolSetConfig struct {
-	Type        string            `toml:"type"`        // "mcp", "builtin", "script"
-	Command     string            `toml:"command"`     // binary to run
-	Args        []string          `toml:"args"`        // arguments
+	Type        string            `toml:"type"`        // "mcp", "mcp-http", "builtin", "script"
+	Command     string            `toml:"command"`     // binary to run (stdio transport)
+	Args        []string          `toml:"args"`        // arguments (stdio transport)
+	URL         string            `toml:"url"`         // HTTP endpoint (HTTP transport, type="mcp-http")
+	AuthToken   string            `toml:"auth_token"`  // Bearer token for HTTP auth
 	Description string            `toml:"description"`
-	Env         map[string]string `toml:"env"`         // environment variables for the subprocess (e.g. POSTGRES_URL, GITHUB_TOKEN)
+	Env         map[string]string `toml:"env"`         // environment variables for the subprocess
 }
 
 // LoggingConfig holds structured logging settings.

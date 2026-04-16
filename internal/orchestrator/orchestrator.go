@@ -39,6 +39,7 @@ type Config struct {
 	Context        *m3m0ry.RollingStore  // rolling context window (nil = disabled)
 	BaseDir        string                // ag3nts install root for recipe file: resolution
 	AgentWorkDir   string                // cwd pinned for every subprocess agent (user's launch dir)
+	ResumeIDs      map[string]string     // agent → provider session ID (restored from SQLite on --resume)
 }
 
 // Orchestrator coordinates agent dispatch, task management, and message flow.
@@ -61,6 +62,8 @@ type Orchestrator struct {
 	bus       *bus.Bus
 	primary string
 	maxConc int
+
+	resumeIDs map[string]string           // agent → provider session ID (for cross-restart resume)
 
 	mu         sync.Mutex
 	running    map[string]*agent.Session // taskID → active session
@@ -114,6 +117,7 @@ func New(cfg Config, agents *agent.Registry) (*Orchestrator, error) {
 		bus:          bus.New(),
 		primary:    cfg.Primary,
 		maxConc:    maxConc,
+		resumeIDs:  cfg.ResumeIDs,
 		running:    make(map[string]*agent.Session),
 		directSess: make(map[string]*agent.Session),
 		retryCount: make(map[string]int),
@@ -220,7 +224,14 @@ func (o *Orchestrator) Send(message string) error {
 	var resumeID string
 	if oldSess != nil {
 		resumeID = oldSess.ResumeID()
+		// Persist resume ID before stopping, so --resume can restore it.
+		if resumeID != "" && o.storeDB != nil && o.sessID != "" {
+			_ = o.storeDB.SetResumeID(o.sessID, o.primary, resumeID)
+		}
 		_ = a.Stop(oldSess)
+	} else if o.resumeIDs != nil {
+		// First message after --resume: use stored provider session ID.
+		resumeID = o.resumeIDs[o.primary]
 	}
 
 	newSess, err := a.Start(o.ctx, message, &agent.StartOpts{
@@ -256,7 +267,12 @@ func (o *Orchestrator) SendTo(agentName string, message string) error {
 	var resumeID string
 	if oldSess != nil {
 		resumeID = oldSess.ResumeID()
+		if resumeID != "" && o.storeDB != nil && o.sessID != "" {
+			_ = o.storeDB.SetResumeID(o.sessID, agentName, resumeID)
+		}
 		_ = a.Stop(oldSess)
+	} else if o.resumeIDs != nil {
+		resumeID = o.resumeIDs[agentName]
 	}
 
 	sess, err := a.Start(o.ctx, message, &agent.StartOpts{
