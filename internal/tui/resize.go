@@ -2,25 +2,23 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 )
 
 // watchResize starts a goroutine that listens for SIGWINCH (terminal
-// resize) signals and force-clears the in-place streaming region on
-// each one. Without this, the region's cursor-math uses the terminal
-// width captured on the previous chunk render — if the user resizes
-// mid-stream, the next clear moves the cursor to the wrong place and
-// the region renders corrupted for one frame.
+// resize) signals and re-renders the in-place streaming region using
+// the new terminal width. Without this, the region's cursor-math uses
+// the terminal width captured on the previous chunk render — if the
+// user resizes mid-stream, the next clear moves the cursor to the
+// wrong place and the region renders corrupted.
 //
-// The resize handler resets streamRegionLines to 0 without emitting
-// any ANSI (no cursor-up, no erase). The next chunk arrives, the
-// renderer sees streamRegionLines == 0 (no prior region to clear),
-// and writes the buffer fresh at the current cursor position. This
-// means a single frame of the prior region is left on screen after
-// the resize — minor visual artifact, no corruption, self-heals on
-// the next chunk.
+// On resize: clear the old region (using old row count), then re-render
+// the buffer at the current cursor position using the new terminal
+// width. This eliminates the stale-frame artifact from the previous
+// "reset to 0" approach.
 //
 // Returns immediately. The watcher exits cleanly when ctx is cancelled.
 func (a *App) watchResize(ctx context.Context) {
@@ -35,7 +33,17 @@ func (a *App) watchResize(ctx context.Context) {
 				return
 			case <-ch:
 				a.streamRegionMu.Lock()
-				a.streamRegionLines = 0
+				// Clear old region with stale row count.
+				a.clearStreamRegionLocked()
+				// Re-render with new terminal width.
+				buf := a.streamRegionBuf
+				if buf != "" {
+					fmt.Fprint(os.Stderr, buf)
+					a.streamRegionLines = countWrappedRows(buf, terminalCols())
+					if a.streamRegionLines == 0 {
+						a.streamRegionLines = 1
+					}
+				}
 				a.streamRegionMu.Unlock()
 			}
 		}

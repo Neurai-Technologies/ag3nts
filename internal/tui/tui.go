@@ -89,6 +89,7 @@ type App struct {
 	// can erase and re-render it as new tokens arrive. Reset to 0
 	// whenever the region is committed (via newline) or cleared.
 	streamRegionLines int
+	streamRegionBuf   string // current partial-line buffer (for re-render on resize)
 	streamRegionMu    sync.Mutex
 }
 

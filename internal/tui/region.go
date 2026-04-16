@@ -3,11 +3,12 @@ package tui
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/charmbracelet/x/term"
+	"github.com/mattn/go-runewidth"
 )
 
 // readSingleChar reads one character from stdin in raw terminal mode
@@ -76,24 +77,26 @@ func countWrappedRows(text string, cols int) int {
 	return rows
 }
 
-// visibleWidth approximates the visible column count of a line by
-// counting runes (so non-ASCII chars count as 1 column each). This
-// is correct for ASCII and most BMP characters; CJK wide chars and
-// combining marks are slightly off but close enough for region
-// row-counting. Tabs expand to the next 8-column boundary.
+// ansiEscRE matches ANSI escape sequences (CSI + OSC) so they can be
+// stripped before measuring visible width. Without this, escape codes
+// like color and cursor-movement would inflate the column count.
+var ansiEscRE = regexp.MustCompile(`\x1b(?:\[[0-9;]*[a-zA-Z]|\][^\x07]*\x07)`)
+
+// visibleWidth returns the visible column count of a line, correctly
+// handling CJK wide characters (2 columns), combining marks (0 columns),
+// ANSI escape sequences (stripped), and tabs (8-column boundaries).
+// Uses go-runewidth for accurate Unicode East Asian Width detection.
 func visibleWidth(s string) int {
+	// Strip ANSI escape sequences first.
+	s = ansiEscRE.ReplaceAllString(s, "")
 	w := 0
 	for _, r := range s {
 		switch r {
 		case '\t':
 			w += 8 - (w % 8)
 		default:
-			w++
+			w += runewidth.RuneWidth(r)
 		}
-	}
-	// Use rune count as a sanity check upper bound.
-	if rc := utf8.RuneCountInString(s); rc > w {
-		w = rc
 	}
 	return w
 }
@@ -130,6 +133,7 @@ func (a *App) renderStreamRegion(buf string) {
 	a.streamRegionMu.Lock()
 	defer a.streamRegionMu.Unlock()
 	a.clearStreamRegionLocked()
+	a.streamRegionBuf = buf
 	if buf == "" {
 		return
 	}
@@ -148,4 +152,5 @@ func (a *App) commitStreamRegion() {
 	a.streamRegionMu.Lock()
 	defer a.streamRegionMu.Unlock()
 	a.clearStreamRegionLocked()
+	a.streamRegionBuf = ""
 }
