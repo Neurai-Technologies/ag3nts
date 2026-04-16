@@ -109,16 +109,6 @@ dist/
 
 # --- ag3nts runtime directories ---
 /tools/
-# The old `tools/` catch-all also hid internal/tools/*.go files from
-# git. We're intentionally keeping them out of source control to match
-# pre-existing repo state — only toolset.go is tracked in that dir.
-internal/tools/claude.go
-internal/tools/codex.go
-internal/tools/gemini.go
-internal/tools/node.go
-internal/tools/quarantine.go
-internal/tools/registry.go
-internal/tools/tool.go
 config/ag3nts.toml
 config/auth.toml
 config/workflows/
