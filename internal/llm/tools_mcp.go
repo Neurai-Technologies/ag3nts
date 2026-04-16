@@ -173,6 +173,162 @@ func mcpToolExecutor(manager *mcp.MCPManager, qualName string, askPermission Per
 	}
 }
 
+// LoadMCPResourceTools registers tools that let the model discover and
+// read MCP server resources. Returns two tools: mcp_list_resources and
+// mcp_read_resource. Only registered if at least one server exposes
+// resources.
+func LoadMCPResourceTools(manager *mcp.MCPManager, askPermission PermissionFunc) ([]ToolDef, map[string]ToolExecutor) {
+	resources := manager.AllResources()
+	if len(resources) == 0 {
+		return nil, nil
+	}
+
+	defs := make([]ToolDef, 0, 2)
+	execs := make(map[string]ToolExecutor, 2)
+
+	// mcp_list_resources: returns all available resources.
+	defs = append(defs, ToolDef{
+		Type: "function",
+		Function: ToolFunction{
+			Name:        "mcp_list_resources",
+			Description: "List all available resources from connected MCP servers. Returns resource URIs, names, descriptions, and MIME types.",
+			Parameters: ToolFunctionParams{
+				Type:       "object",
+				Properties: map[string]ToolParamProp{},
+			},
+		},
+	})
+	execs["mcp_list_resources"] = func(args map[string]any) (string, error) {
+		res := manager.AllResources()
+		if len(res) == 0 {
+			return "(no resources available)", nil
+		}
+		var sb strings.Builder
+		for _, r := range res {
+			sb.WriteString(fmt.Sprintf("- %s (%s)", r.URI, r.Name))
+			if r.Description != "" {
+				sb.WriteString(": ")
+				sb.WriteString(r.Description)
+			}
+			if r.MimeType != "" {
+				sb.WriteString(fmt.Sprintf(" [%s]", r.MimeType))
+			}
+			sb.WriteString("\n")
+		}
+		return sb.String(), nil
+	}
+
+	// mcp_read_resource: reads a specific resource by URI.
+	defs = append(defs, ToolDef{
+		Type: "function",
+		Function: ToolFunction{
+			Name:        "mcp_read_resource",
+			Description: "Read a resource from an MCP server by URI. Use mcp_list_resources first to discover available URIs.",
+			Parameters: ToolFunctionParams{
+				Type: "object",
+				Properties: map[string]ToolParamProp{
+					"uri": {Type: "string", Description: "The resource URI to read"},
+				},
+				Required: []string{"uri"},
+			},
+		},
+	})
+	execs["mcp_read_resource"] = func(args map[string]any) (string, error) {
+		uri, _ := args["uri"].(string)
+		if uri == "" {
+			return "", fmt.Errorf("uri is required")
+		}
+
+		if askPermission != nil {
+			if !askPermission("mcp_read_resource", "read "+uri) {
+				return "Permission denied by user.", nil
+			}
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+
+		contents, err := manager.ReadResource(ctx, uri)
+		if err != nil {
+			return "", fmt.Errorf("read resource: %w", err)
+		}
+
+		var sb strings.Builder
+		for _, c := range contents {
+			if c.Text != "" {
+				sb.WriteString(c.Text)
+			} else if c.Blob != "" {
+				sb.WriteString(fmt.Sprintf("[binary content: %d bytes base64, mime=%s]", len(c.Blob), c.MimeType))
+			}
+			sb.WriteString("\n")
+		}
+		output := sb.String()
+		if output == "" {
+			return "(empty resource)", nil
+		}
+		if len(output) > 100*1024 {
+			output = output[:100*1024] + "\n[TRUNCATED]"
+		}
+		return output, nil
+	}
+
+	return defs, execs
+}
+
+// LoadMCPPromptTools registers a tool that lets the model list available
+// MCP prompts. Prompt execution is handled by the TUI (/prompt command)
+// since prompts inject messages into the conversation.
+func LoadMCPPromptTools(manager *mcp.MCPManager) ([]ToolDef, map[string]ToolExecutor) {
+	prompts := manager.AllPrompts()
+	if len(prompts) == 0 {
+		return nil, nil
+	}
+
+	defs := []ToolDef{{
+		Type: "function",
+		Function: ToolFunction{
+			Name:        "mcp_list_prompts",
+			Description: "List available prompt templates from connected MCP servers. Prompts are pre-built templates that can be invoked via /prompt command.",
+			Parameters: ToolFunctionParams{
+				Type:       "object",
+				Properties: map[string]ToolParamProp{},
+			},
+		},
+	}}
+	execs := map[string]ToolExecutor{
+		"mcp_list_prompts": func(args map[string]any) (string, error) {
+			pr := manager.AllPrompts()
+			if len(pr) == 0 {
+				return "(no prompts available)", nil
+			}
+			var sb strings.Builder
+			for qualName, p := range pr {
+				sb.WriteString(fmt.Sprintf("- %s", qualName))
+				if p.Description != "" {
+					sb.WriteString(": ")
+					sb.WriteString(p.Description)
+				}
+				if len(p.Arguments) > 0 {
+					sb.WriteString("\n  args: ")
+					for i, a := range p.Arguments {
+						if i > 0 {
+							sb.WriteString(", ")
+						}
+						sb.WriteString(a.Name)
+						if a.Required {
+							sb.WriteString(" (required)")
+						}
+					}
+				}
+				sb.WriteString("\n")
+			}
+			return sb.String(), nil
+		},
+	}
+
+	return defs, execs
+}
+
 // formatMCPArgs builds a compact preview of tool arguments for the
 // permission prompt.
 func formatMCPArgs(args map[string]any) string {

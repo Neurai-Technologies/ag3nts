@@ -109,6 +109,12 @@ func newSlashCompleter() *readline.PrefixCompleter {
 		readline.PcItem("/mcp",
 			readline.PcItem("restart"),
 		),
+		readline.PcItem("/resources",
+			readline.PcItem("read"),
+		),
+		readline.PcItem("/prompt",
+			readline.PcItem("run"),
+		),
 		readline.PcItem("/schedule"),
 		readline.PcItem("/m3m0ry",
 			readline.PcItem("stats"),
@@ -1172,7 +1178,9 @@ func (a *App) handleSlash(ctx context.Context, input string) {
 			"  /reload   — reload config and apply hot settings",
 			"  /cost    — show session cost breakdown",
 			"  /recipe   — list or run a recipe (/recipe <name> [--dry-run] [key=val...])",
-			"  /mcp      — MCP server status and tools. /mcp restart <name> to restart a server",
+			"  /mcp      — MCP server status. /mcp restart <name> to restart a server",
+			"  /resources — list MCP resources. /resources read <uri> to read one",
+			"  /prompt   — list MCP prompts. /prompt run <name> [key=val...] to run one",
 			"  /schedule — list background schedules",
 			"  /m3m0ry   — rolling context (/m3m0ry stats | search <q> | tail [n])",
 			"  /quit     — exit",
@@ -1423,6 +1431,20 @@ func (a *App) handleSlash(ctx context.Context, input string) {
 			mcpArgs = strings.Join(parts[1:], " ")
 		}
 		a.handleMCP(mcpArgs)
+
+	case "/resources":
+		resArgs := ""
+		if len(parts) > 1 {
+			resArgs = strings.Join(parts[1:], " ")
+		}
+		a.handleResources(resArgs)
+
+	case "/prompt":
+		prArgs := ""
+		if len(parts) > 1 {
+			prArgs = strings.Join(parts[1:], " ")
+		}
+		a.handlePrompt(ctx, prArgs)
 
 	case "/schedule":
 		a.handleSchedule()
@@ -1890,6 +1912,8 @@ func (a *App) handleMCP(args string) {
 
 	// Default: show status.
 	allTools := mgr.AllTools()
+	allResources := mgr.AllResources()
+	allPrompts := mgr.AllPrompts()
 	serverNames := mgr.ServerNames()
 
 	if len(serverNames) == 0 {
@@ -1904,14 +1928,31 @@ func (a *App) handleMCP(args string) {
 		if !mgr.ServerAlive(name) {
 			status = lipgloss.NewStyle().Foreground(lipgloss.Color("#EF5350")).Render("dead")
 		}
-		// Count tools for this server.
-		count := 0
+		// Count items for this server.
+		toolCount, resCount, prCount := 0, 0, 0
 		for qn := range allTools {
 			if strings.HasPrefix(qn, name+"__") {
-				count++
+				toolCount++
 			}
 		}
-		lines = append(lines, fmt.Sprintf("  %s  %s  (%d tools)", name, status, count))
+		for qn := range allResources {
+			if strings.HasPrefix(qn, name+"__") {
+				resCount++
+			}
+		}
+		for qn := range allPrompts {
+			if strings.HasPrefix(qn, name+"__") {
+				prCount++
+			}
+		}
+		detail := fmt.Sprintf("%d tools", toolCount)
+		if resCount > 0 {
+			detail += fmt.Sprintf(", %d resources", resCount)
+		}
+		if prCount > 0 {
+			detail += fmt.Sprintf(", %d prompts", prCount)
+		}
+		lines = append(lines, fmt.Sprintf("  %s  %s  (%s)", name, status, detail))
 	}
 	lines = append(lines, "")
 	lines = append(lines, fmt.Sprintf("Tools (%d total):", len(allTools)))
@@ -1922,9 +1963,200 @@ func (a *App) handleMCP(args string) {
 		}
 		lines = append(lines, fmt.Sprintf("  %-30s %s", name, dimStyle.Render(desc)))
 	}
+	if len(allResources) > 0 {
+		lines = append(lines, "")
+		lines = append(lines, fmt.Sprintf("Resources (%d total):", len(allResources)))
+		for _, res := range allResources {
+			desc := res.Description
+			if desc == "" {
+				desc = res.Name
+			}
+			if len(desc) > 60 {
+				desc = desc[:57] + "..."
+			}
+			lines = append(lines, fmt.Sprintf("  %-40s %s", res.URI, dimStyle.Render(desc)))
+		}
+	}
+	if len(allPrompts) > 0 {
+		lines = append(lines, "")
+		lines = append(lines, fmt.Sprintf("Prompts (%d total):", len(allPrompts)))
+		for qualName, pr := range allPrompts {
+			desc := pr.Description
+			if len(desc) > 60 {
+				desc = desc[:57] + "..."
+			}
+			lines = append(lines, fmt.Sprintf("  %-30s %s", qualName, dimStyle.Render(desc)))
+		}
+	}
 	lines = append(lines, "")
-	lines = append(lines, dimStyle.Render("  /mcp restart <name> to manually restart a server"))
+	lines = append(lines, dimStyle.Render("  /mcp restart <name>   restart a server"))
+	lines = append(lines, dimStyle.Render("  /resources            browse resources"))
+	lines = append(lines, dimStyle.Render("  /prompt               browse prompts"))
 	a.printLines("ag3nts", strings.Join(lines, "\n"))
+}
+
+// handleResources lists or reads MCP server resources.
+// Usage:
+//
+//	/resources           — list all resources
+//	/resources read <uri> — read a specific resource
+func (a *App) handleResources(args string) {
+	if a.localOrch == nil {
+		a.printLine("ag3nts", "Local LLM not configured.")
+		return
+	}
+	mgr := a.localOrch.MCPManager()
+	if mgr == nil {
+		a.printLine("ag3nts", "No MCP servers configured.")
+		return
+	}
+
+	parts := strings.Fields(args)
+
+	// /resources read <uri>
+	if len(parts) >= 2 && parts[0] == "read" {
+		uri := parts[1]
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		contents, err := mgr.ReadResource(ctx, uri)
+		if err != nil {
+			a.printError("resources", err.Error())
+			return
+		}
+		for _, c := range contents {
+			if c.Text != "" {
+				a.printLines("resource", c.Text)
+			} else if c.Blob != "" {
+				a.printLine("resource", fmt.Sprintf("[binary: %d bytes base64, mime=%s]", len(c.Blob), c.MimeType))
+			}
+		}
+		return
+	}
+
+	// Default: list all resources.
+	allRes := mgr.AllResources()
+	if len(allRes) == 0 {
+		a.printLine("ag3nts", "No resources available from MCP servers.")
+		return
+	}
+
+	var lines []string
+	lines = append(lines, fmt.Sprintf("MCP Resources (%d):", len(allRes)))
+	for _, r := range allRes {
+		line := fmt.Sprintf("  %s", r.URI)
+		if r.Name != "" {
+			line += fmt.Sprintf("  %s", dimStyle.Render(r.Name))
+		}
+		if r.MimeType != "" {
+			line += fmt.Sprintf("  [%s]", r.MimeType)
+		}
+		lines = append(lines, line)
+	}
+	lines = append(lines, "")
+	lines = append(lines, dimStyle.Render("  /resources read <uri> to read a resource"))
+	a.printLines("ag3nts", strings.Join(lines, "\n"))
+}
+
+// handlePrompt lists or runs MCP server prompts.
+// Usage:
+//
+//	/prompt              — list all prompts
+//	/prompt run <name> [key=val ...]  — run a prompt template
+func (a *App) handlePrompt(ctx context.Context, args string) {
+	if a.localOrch == nil {
+		a.printLine("ag3nts", "Local LLM not configured.")
+		return
+	}
+	mgr := a.localOrch.MCPManager()
+	if mgr == nil {
+		a.printLine("ag3nts", "No MCP servers configured.")
+		return
+	}
+
+	parts := strings.Fields(args)
+
+	// /prompt run <name> [key=val ...]
+	if len(parts) >= 2 && parts[0] == "run" {
+		qualName := parts[1]
+		arguments := make(map[string]string)
+		for _, kv := range parts[2:] {
+			if idx := strings.Index(kv, "="); idx > 0 {
+				arguments[kv[:idx]] = kv[idx+1:]
+			}
+		}
+
+		prCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		messages, desc, err := mgr.GetPrompt(prCtx, qualName, arguments)
+		if err != nil {
+			a.printError("prompt", err.Error())
+			return
+		}
+		if desc != "" {
+			a.printLine("prompt", dimStyle.Render(desc))
+		}
+		// Inject prompt messages into the conversation by sending
+		// each user-role message as input to the LLM.
+		for _, m := range messages {
+			role := m.Role
+			text := m.Content.Text
+			if role == "user" && text != "" {
+				a.printLine("prompt", fmt.Sprintf("[injecting: %s]", truncate(text, 80)))
+				if a.localOrch != nil {
+					if err := a.localOrch.Send(ctx, text); err != nil {
+						a.printError("prompt", err.Error())
+						return
+					}
+				}
+				return // one message at a time
+			}
+			if role == "assistant" && text != "" {
+				a.printLines("prompt", text)
+			}
+		}
+		return
+	}
+
+	// Default: list all prompts.
+	allPr := mgr.AllPrompts()
+	if len(allPr) == 0 {
+		a.printLine("ag3nts", "No prompts available from MCP servers.")
+		return
+	}
+
+	var lines []string
+	lines = append(lines, fmt.Sprintf("MCP Prompts (%d):", len(allPr)))
+	for qualName, p := range allPr {
+		line := fmt.Sprintf("  %s", qualName)
+		if p.Description != "" {
+			desc := p.Description
+			if len(desc) > 60 {
+				desc = desc[:57] + "..."
+			}
+			line += fmt.Sprintf("  %s", dimStyle.Render(desc))
+		}
+		lines = append(lines, line)
+		if len(p.Arguments) > 0 {
+			for _, arg := range p.Arguments {
+				req := ""
+				if arg.Required {
+					req = " (required)"
+				}
+				lines = append(lines, fmt.Sprintf("    %s%s", arg.Name, dimStyle.Render(req)))
+			}
+		}
+	}
+	lines = append(lines, "")
+	lines = append(lines, dimStyle.Render("  /prompt run <name> [key=val ...] to run a prompt"))
+	a.printLines("ag3nts", strings.Join(lines, "\n"))
+}
+
+// truncate shortens a string to maxLen, adding "..." if truncated.
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
 }
 
 func (a *App) handleSchedule() {

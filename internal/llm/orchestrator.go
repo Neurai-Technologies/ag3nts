@@ -226,15 +226,65 @@ func NewLocalOrchestrator(
 			fmt.Fprintf(os.Stderr, "✓ MCP: %s (%d tools)\n", srv.Name, count)
 		}
 
-		mcpDefs, mcpExecs := LoadMCPTools(mcpMgr, func(tool, action string) bool {
+		mcpPermFn := func(tool, action string) bool {
 			if loop.askPermission != nil {
 				return loop.askPermission(tool, action)
 			}
 			return true
-		})
+		}
+
+		mcpDefs, mcpExecs := LoadMCPTools(mcpMgr, mcpPermFn)
 		if len(mcpDefs) > 0 {
 			loop.RegisterTools(mcpDefs, mcpExecs)
 		}
+
+		// Register resource and prompt discovery/read tools.
+		resDefs, resExecs := LoadMCPResourceTools(mcpMgr, mcpPermFn)
+		if len(resDefs) > 0 {
+			loop.RegisterTools(resDefs, resExecs)
+		}
+		prDefs, prExecs := LoadMCPPromptTools(mcpMgr)
+		if len(prDefs) > 0 {
+			loop.RegisterTools(prDefs, prExecs)
+		}
+
+		// Wire sampling: MCP servers can ask the client to run an LLM
+		// inference. Route these to the head model via Ollama.
+		mcpMgr.SetSamplingHandler(func(ctx context.Context, req *mcp.MCPSamplingRequest) (*mcp.MCPSamplingResponse, error) {
+			// Convert MCP messages to Ollama messages.
+			msgs := make([]Message, 0, len(req.Messages)+1)
+			if req.SystemPrompt != "" {
+				msgs = append(msgs, Message{Role: RoleSystem, Content: req.SystemPrompt})
+			}
+			for _, m := range req.Messages {
+				msgs = append(msgs, Message{Role: m.Role, Content: m.Content.Text})
+			}
+
+			opts := &ModelOptions{
+				NumPredict: req.MaxTokens,
+			}
+			if req.Temperature != nil {
+				opts.Temperature = *req.Temperature
+			}
+			chatReq := ChatRequest{
+				Model:     cfg.HeadModel,
+				Messages:  msgs,
+				Options:   opts,
+				KeepAlive: -1,
+			}
+
+			resp, _, err := client.Chat(ctx, chatReq)
+			if err != nil {
+				return nil, fmt.Errorf("sampling LLM call: %w", err)
+			}
+
+			return &mcp.MCPSamplingResponse{
+				Role:       RoleAssistant,
+				Content:    mcp.MCPContent{Type: "text", Text: resp.Content},
+				Model:      cfg.HeadModel,
+				StopReason: "endTurn",
+			}, nil
+		})
 
 		// Proactive health monitoring: ping MCP servers every 30s and
 		// auto-restart dead ones before a tool call hits the failure.

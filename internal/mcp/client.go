@@ -45,6 +45,87 @@ type MCPContent struct {
 	Text string `json:"text,omitempty"`
 }
 
+// --- Resource types ---
+
+// MCPResource represents a concrete resource exposed by an MCP server.
+type MCPResource struct {
+	URI         string `json:"uri"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	MimeType    string `json:"mimeType,omitempty"`
+}
+
+// MCPResourceTemplate is a URI-template resource (RFC 6570).
+type MCPResourceTemplate struct {
+	URITemplate string `json:"uriTemplate"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	MimeType    string `json:"mimeType,omitempty"`
+}
+
+// MCPResourceContents is one item in a resources/read response.
+// Either Text or Blob is populated, never both.
+type MCPResourceContents struct {
+	URI      string `json:"uri"`
+	MimeType string `json:"mimeType,omitempty"`
+	Text     string `json:"text,omitempty"`
+	Blob     string `json:"blob,omitempty"` // base64-encoded
+}
+
+// --- Prompt types ---
+
+// MCPPrompt represents a prompt template exposed by an MCP server.
+type MCPPrompt struct {
+	Name        string              `json:"name"`
+	Description string              `json:"description,omitempty"`
+	Arguments   []MCPPromptArgument `json:"arguments,omitempty"`
+}
+
+// MCPPromptArgument describes one parameter of a prompt template.
+type MCPPromptArgument struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Required    bool   `json:"required,omitempty"`
+}
+
+// MCPPromptMessage is one message in a prompt's expanded output.
+type MCPPromptMessage struct {
+	Role    string     `json:"role"` // "user" or "assistant"
+	Content MCPContent `json:"content"`
+}
+
+// --- Sampling types (server→client) ---
+
+// MCPSamplingRequest is sent by the MCP server asking the client to
+// run an LLM inference. The client must respond with the model's output.
+type MCPSamplingRequest struct {
+	Messages       []MCPSamplingMessage `json:"messages"`
+	MaxTokens      int                  `json:"maxTokens"`
+	SystemPrompt   string               `json:"systemPrompt,omitempty"`
+	Temperature    *float64             `json:"temperature,omitempty"`
+	StopSequences  []string             `json:"stopSequences,omitempty"`
+	IncludeContext string               `json:"includeContext,omitempty"` // "none", "thisServer", "allServers"
+}
+
+// MCPSamplingMessage is one message in a sampling request.
+type MCPSamplingMessage struct {
+	Role    string     `json:"role"` // "user" or "assistant"
+	Content MCPContent `json:"content"`
+}
+
+// MCPSamplingResponse is the client's response to a sampling request.
+type MCPSamplingResponse struct {
+	Role       string     `json:"role"` // "assistant"
+	Content    MCPContent `json:"content"`
+	Model      string     `json:"model"`
+	StopReason string     `json:"stopReason,omitempty"`
+}
+
+// SamplingHandler is the callback type for handling incoming
+// sampling/createMessage requests from MCP servers. Set on the client
+// before use; the manager wires this to the local LLM.
+type SamplingHandler func(ctx context.Context, req *MCPSamplingRequest) (*MCPSamplingResponse, error)
+
 // MCPClient manages a persistent JSON-RPC 2.0 connection to an MCP
 // server subprocess via stdin/stdout. The server stays alive for the
 // ag3nts session; tools/call requests are sent on demand.
@@ -75,6 +156,18 @@ type MCPClient struct {
 	// this to re-discover the server's tool catalog. Set before the
 	// readLoop sees any notifications (i.e., during NewMCPClient).
 	OnToolsChanged func()
+
+	// OnResourcesChanged is called when the server sends
+	// notifications/resources/list_changed.
+	OnResourcesChanged func()
+
+	// OnPromptsChanged is called when the server sends
+	// notifications/prompts/list_changed.
+	OnPromptsChanged func()
+
+	// OnSampling handles incoming sampling/createMessage requests.
+	// If nil, the client responds with an error to the server.
+	OnSampling SamplingHandler
 }
 
 // NewMCPClient spawns the MCP server subprocess, performs the
@@ -158,10 +251,12 @@ func newMCPClientFromPipes(name string, stdin io.WriteCloser, stdout io.Reader) 
 func (c *MCPClient) initialize(ctx context.Context) error {
 	resp, err := c.sendRequest(ctx, "initialize", map[string]any{
 		"protocolVersion": "2024-11-05",
-		"capabilities":    map[string]any{},
+		"capabilities": map[string]any{
+			"sampling": map[string]any{},
+		},
 		"clientInfo": map[string]any{
 			"name":    "ag3nts",
-			"version": "0.1",
+			"version": "0.2",
 		},
 	})
 	if err != nil {
@@ -228,6 +323,151 @@ func (c *MCPClient) CallTool(ctx context.Context, toolName string, arguments jso
 		return nil, fmt.Errorf("parse tools/call result: %w", err)
 	}
 	return &result, nil
+}
+
+// HasCapability returns true if the server declared the given
+// capability during the initialize handshake (e.g., "resources",
+// "prompts", "tools").
+func (c *MCPClient) HasCapability(name string) bool {
+	if c.capabilities == nil {
+		return false
+	}
+	_, ok := c.capabilities[name]
+	return ok
+}
+
+// --- Resource methods ---
+
+// ListResources sends resources/list and returns the discovered resources.
+// Returns nil, nil if the server doesn't declare the resources capability.
+func (c *MCPClient) ListResources(ctx context.Context) ([]MCPResource, error) {
+	if !c.HasCapability("resources") {
+		return nil, nil
+	}
+	resp, err := c.sendRequest(ctx, "resources/list", map[string]any{})
+	if err != nil {
+		return nil, fmt.Errorf("resources/list: %w", err)
+	}
+	if resp.Error != nil {
+		return nil, fmt.Errorf("resources/list error: %s", resp.Error.Message)
+	}
+	resultBytes, err := json.Marshal(resp.Result)
+	if err != nil {
+		return nil, fmt.Errorf("marshal resources/list result: %w", err)
+	}
+	var result struct {
+		Resources []MCPResource `json:"resources"`
+	}
+	if err := json.Unmarshal(resultBytes, &result); err != nil {
+		return nil, fmt.Errorf("parse resources/list result: %w", err)
+	}
+	return result.Resources, nil
+}
+
+// ListResourceTemplates sends resources/templates/list and returns
+// URI-template resources. Returns nil, nil without resources capability.
+func (c *MCPClient) ListResourceTemplates(ctx context.Context) ([]MCPResourceTemplate, error) {
+	if !c.HasCapability("resources") {
+		return nil, nil
+	}
+	resp, err := c.sendRequest(ctx, "resources/templates/list", map[string]any{})
+	if err != nil {
+		return nil, fmt.Errorf("resources/templates/list: %w", err)
+	}
+	if resp.Error != nil {
+		return nil, fmt.Errorf("resources/templates/list error: %s", resp.Error.Message)
+	}
+	resultBytes, err := json.Marshal(resp.Result)
+	if err != nil {
+		return nil, fmt.Errorf("marshal resources/templates/list result: %w", err)
+	}
+	var result struct {
+		ResourceTemplates []MCPResourceTemplate `json:"resourceTemplates"`
+	}
+	if err := json.Unmarshal(resultBytes, &result); err != nil {
+		return nil, fmt.Errorf("parse resources/templates/list result: %w", err)
+	}
+	return result.ResourceTemplates, nil
+}
+
+// ReadResource sends resources/read for the given URI and returns the
+// content items.
+func (c *MCPClient) ReadResource(ctx context.Context, uri string) ([]MCPResourceContents, error) {
+	resp, err := c.sendRequest(ctx, "resources/read", map[string]any{
+		"uri": uri,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("resources/read: %w", err)
+	}
+	if resp.Error != nil {
+		return nil, fmt.Errorf("resources/read error: %s", resp.Error.Message)
+	}
+	resultBytes, err := json.Marshal(resp.Result)
+	if err != nil {
+		return nil, fmt.Errorf("marshal resources/read result: %w", err)
+	}
+	var result struct {
+		Contents []MCPResourceContents `json:"contents"`
+	}
+	if err := json.Unmarshal(resultBytes, &result); err != nil {
+		return nil, fmt.Errorf("parse resources/read result: %w", err)
+	}
+	return result.Contents, nil
+}
+
+// --- Prompt methods ---
+
+// ListPrompts sends prompts/list and returns the server's prompt templates.
+// Returns nil, nil if the server doesn't declare the prompts capability.
+func (c *MCPClient) ListPrompts(ctx context.Context) ([]MCPPrompt, error) {
+	if !c.HasCapability("prompts") {
+		return nil, nil
+	}
+	resp, err := c.sendRequest(ctx, "prompts/list", map[string]any{})
+	if err != nil {
+		return nil, fmt.Errorf("prompts/list: %w", err)
+	}
+	if resp.Error != nil {
+		return nil, fmt.Errorf("prompts/list error: %s", resp.Error.Message)
+	}
+	resultBytes, err := json.Marshal(resp.Result)
+	if err != nil {
+		return nil, fmt.Errorf("marshal prompts/list result: %w", err)
+	}
+	var result struct {
+		Prompts []MCPPrompt `json:"prompts"`
+	}
+	if err := json.Unmarshal(resultBytes, &result); err != nil {
+		return nil, fmt.Errorf("parse prompts/list result: %w", err)
+	}
+	return result.Prompts, nil
+}
+
+// GetPrompt sends prompts/get to expand a prompt template with arguments.
+func (c *MCPClient) GetPrompt(ctx context.Context, name string, arguments map[string]string) ([]MCPPromptMessage, string, error) {
+	params := map[string]any{"name": name}
+	if len(arguments) > 0 {
+		params["arguments"] = arguments
+	}
+	resp, err := c.sendRequest(ctx, "prompts/get", params)
+	if err != nil {
+		return nil, "", fmt.Errorf("prompts/get: %w", err)
+	}
+	if resp.Error != nil {
+		return nil, "", fmt.Errorf("prompts/get error: %s", resp.Error.Message)
+	}
+	resultBytes, err := json.Marshal(resp.Result)
+	if err != nil {
+		return nil, "", fmt.Errorf("marshal prompts/get result: %w", err)
+	}
+	var result struct {
+		Messages    []MCPPromptMessage `json:"messages"`
+		Description string             `json:"description"`
+	}
+	if err := json.Unmarshal(resultBytes, &result); err != nil {
+		return nil, "", fmt.Errorf("parse prompts/get result: %w", err)
+	}
+	return result.Messages, result.Description, nil
 }
 
 // Close gracefully shuts down the MCP server. Closes stdin (which
@@ -366,17 +606,42 @@ func (c *MCPClient) readLoop() {
 			continue
 		}
 
-		// Check if this is a response (has ID) or a notification (no ID).
+		// Parse method field to distinguish responses, notifications,
+		// and incoming requests (sampling).
+		var msg struct {
+			Method string          `json:"method,omitempty"`
+			ID     json.RawMessage `json:"id,omitempty"`
+			Params json.RawMessage `json:"params,omitempty"`
+		}
+		_ = json.Unmarshal(line, &msg)
+
+		// Incoming request (has method + has ID): e.g., sampling/createMessage.
+		if msg.Method != "" && len(msg.ID) > 0 && string(msg.ID) != "null" {
+			go c.handleIncomingRequest(msg.Method, msg.ID, msg.Params)
+			continue
+		}
+
+		// Notification (has method, no ID).
+		if msg.Method != "" {
+			switch msg.Method {
+			case "notifications/tools/list_changed":
+				if c.OnToolsChanged != nil {
+					go c.OnToolsChanged()
+				}
+			case "notifications/resources/list_changed":
+				if c.OnResourcesChanged != nil {
+					go c.OnResourcesChanged()
+				}
+			case "notifications/prompts/list_changed":
+				if c.OnPromptsChanged != nil {
+					go c.OnPromptsChanged()
+				}
+			}
+			continue
+		}
+
+		// Response to our request (no method, has ID).
 		if len(resp.ID) == 0 || string(resp.ID) == "null" {
-			// Server-initiated notification. Parse the method from
-			// the raw line since jsonRPCResponse doesn't carry it.
-			var notif struct {
-				Method string `json:"method"`
-			}
-			_ = json.Unmarshal(line, &notif)
-			if notif.Method == "notifications/tools/list_changed" && c.OnToolsChanged != nil {
-				go c.OnToolsChanged() // async to avoid blocking readLoop
-			}
 			continue
 		}
 
@@ -420,6 +685,48 @@ func (c *MCPClient) drainStderr() {
 	for scanner.Scan() {
 		fmt.Fprintf(os.Stderr, "[mcp:%s] %s\n", c.name, scanner.Text())
 	}
+}
+
+// handleIncomingRequest processes a server-initiated JSON-RPC request
+// (e.g., sampling/createMessage) and sends the response back. Runs in
+// its own goroutine to avoid blocking readLoop.
+func (c *MCPClient) handleIncomingRequest(method string, id, params json.RawMessage) {
+	var result any
+	var rpcErr *rpcError
+
+	switch method {
+	case "sampling/createMessage":
+		if c.OnSampling == nil {
+			rpcErr = &rpcError{Code: -1, Message: "sampling not supported by this client"}
+		} else {
+			var req MCPSamplingRequest
+			if err := json.Unmarshal(params, &req); err != nil {
+				rpcErr = &rpcError{Code: -32602, Message: "invalid sampling params: " + err.Error()}
+			} else {
+				ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
+				defer cancel()
+				resp, err := c.OnSampling(ctx, &req)
+				if err != nil {
+					rpcErr = &rpcError{Code: -1, Message: err.Error()}
+				} else {
+					result = resp
+				}
+			}
+		}
+	default:
+		rpcErr = &rpcError{Code: -32601, Message: "method not found: " + method}
+	}
+
+	response := jsonRPCResponse{
+		JSONRPC: "2.0",
+		ID:      id,
+	}
+	if rpcErr != nil {
+		response.Error = rpcErr
+	} else {
+		response.Result = result
+	}
+	_ = c.writeJSON(response)
 }
 
 // --- Helpers ---

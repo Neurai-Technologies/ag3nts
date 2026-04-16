@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -24,26 +25,62 @@ type managedTool struct {
 	origName string // tool name as reported by the server
 }
 
+// managedResource maps a resource back to its owning client.
+type managedResource struct {
+	client   *MCPClient
+	resource MCPResource
+}
+
+// managedPrompt maps a prompt back to its owning client.
+type managedPrompt struct {
+	client   *MCPClient
+	prompt   MCPPrompt
+	origName string
+}
+
 // MCPManager manages the lifecycle of multiple MCP server connections
-// and provides a unified tool catalog across all of them.
+// and provides a unified tool, resource, and prompt catalog across all
+// of them.
 //
 // Tool names are qualified as "servername__toolname" (double underscore)
 // to avoid collisions when multiple servers expose tools with the same
 // name. This matches the convention used by Claude Code's MCP integration.
+// Resources are keyed by "servername__uri" and prompts by "servername__promptname".
 type MCPManager struct {
-	clients map[string]*MCPClient       // keyed by config name
-	configs map[string]MCPManagerConfig  // original configs for auto-restart
-	tools   map[string]managedTool      // keyed by qualified name
-	mu      sync.RWMutex
+	clients   map[string]*MCPClient       // keyed by config name
+	configs   map[string]MCPManagerConfig  // original configs for auto-restart
+	tools     map[string]managedTool       // keyed by qualified name
+	resources map[string]managedResource   // keyed by "server__uri"
+	prompts   map[string]managedPrompt     // keyed by "server__name"
+	mu        sync.RWMutex
+
+	// onSampling is wired by the orchestrator to route sampling
+	// requests to the local LLM. Shared across all clients.
+	onSampling SamplingHandler
 }
 
 // NewMCPManager creates an empty manager. Call StartServer for each
 // configured MCP server, then AllTools to get the aggregated catalog.
 func NewMCPManager() *MCPManager {
 	return &MCPManager{
-		clients: make(map[string]*MCPClient),
-		configs: make(map[string]MCPManagerConfig),
-		tools:   make(map[string]managedTool),
+		clients:   make(map[string]*MCPClient),
+		configs:   make(map[string]MCPManagerConfig),
+		tools:     make(map[string]managedTool),
+		resources: make(map[string]managedResource),
+		prompts:   make(map[string]managedPrompt),
+	}
+}
+
+// SetSamplingHandler configures the callback for handling
+// sampling/createMessage requests from MCP servers. Call before
+// StartServer so new clients inherit the handler.
+func (m *MCPManager) SetSamplingHandler(fn SamplingHandler) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.onSampling = fn
+	// Update existing clients.
+	for _, client := range m.clients {
+		client.OnSampling = fn
 	}
 }
 
@@ -72,8 +109,31 @@ func (m *MCPManager) StartServer(ctx context.Context, cfg MCPManagerConfig) (int
 		return 0, fmt.Errorf("list tools: %w", err)
 	}
 
-	// Set up notification handler: when the server signals that its
-	// tool list changed, re-discover and update the catalog.
+	// Discover resources and prompts if the server declares those capabilities.
+	var resources []MCPResource
+	var prompts []MCPPrompt
+	if client.HasCapability("resources") {
+		resCtx, resCancel := context.WithTimeout(ctx, 30*time.Second)
+		res, err := client.ListResources(resCtx)
+		resCancel()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[mcp:%s] resources/list: %v\n", cfg.Name, err)
+		} else {
+			resources = res
+		}
+	}
+	if client.HasCapability("prompts") {
+		prCtx, prCancel := context.WithTimeout(ctx, 30*time.Second)
+		pr, err := client.ListPrompts(prCtx)
+		prCancel()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[mcp:%s] prompts/list: %v\n", cfg.Name, err)
+		} else {
+			prompts = pr
+		}
+	}
+
+	// Set up notification handlers for catalog changes.
 	serverName := cfg.Name
 	client.OnToolsChanged = func() {
 		fmt.Fprintf(os.Stderr, "[mcp:%s] tools changed, re-discovering...\n", serverName)
@@ -85,13 +145,11 @@ func (m *MCPManager) StartServer(ctx context.Context, cfg MCPManagerConfig) (int
 			return
 		}
 		m.mu.Lock()
-		// Remove old tools for this server.
 		for name, mt := range m.tools {
 			if mt.client == client {
 				delete(m.tools, name)
 			}
 		}
-		// Add new tools.
 		for _, t := range newTools {
 			qualName := serverName + "__" + t.Name
 			m.tools[qualName] = managedTool{
@@ -102,6 +160,55 @@ func (m *MCPManager) StartServer(ctx context.Context, cfg MCPManagerConfig) (int
 		}
 		m.mu.Unlock()
 		fmt.Fprintf(os.Stderr, "[mcp:%s] now has %d tools\n", serverName, len(newTools))
+	}
+	client.OnResourcesChanged = func() {
+		fmt.Fprintf(os.Stderr, "[mcp:%s] resources changed, re-discovering...\n", serverName)
+		reCtx, reCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer reCancel()
+		newRes, err := client.ListResources(reCtx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[mcp:%s] resources re-discovery failed: %v\n", serverName, err)
+			return
+		}
+		m.mu.Lock()
+		for key, mr := range m.resources {
+			if mr.client == client {
+				delete(m.resources, key)
+			}
+		}
+		for _, r := range newRes {
+			qualKey := serverName + "__" + r.URI
+			m.resources[qualKey] = managedResource{client: client, resource: r}
+		}
+		m.mu.Unlock()
+		fmt.Fprintf(os.Stderr, "[mcp:%s] now has %d resources\n", serverName, len(newRes))
+	}
+	client.OnPromptsChanged = func() {
+		fmt.Fprintf(os.Stderr, "[mcp:%s] prompts changed, re-discovering...\n", serverName)
+		reCtx, reCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer reCancel()
+		newPr, err := client.ListPrompts(reCtx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[mcp:%s] prompts re-discovery failed: %v\n", serverName, err)
+			return
+		}
+		m.mu.Lock()
+		for key, mp := range m.prompts {
+			if mp.client == client {
+				delete(m.prompts, key)
+			}
+		}
+		for _, p := range newPr {
+			qualKey := serverName + "__" + p.Name
+			m.prompts[qualKey] = managedPrompt{client: client, prompt: p, origName: p.Name}
+		}
+		m.mu.Unlock()
+		fmt.Fprintf(os.Stderr, "[mcp:%s] now has %d prompts\n", serverName, len(newPr))
+	}
+
+	// Wire sampling handler if configured.
+	if m.onSampling != nil {
+		client.OnSampling = m.onSampling
 	}
 
 	m.mu.Lock()
@@ -117,8 +224,24 @@ func (m *MCPManager) StartServer(ctx context.Context, cfg MCPManagerConfig) (int
 			origName: t.Name,
 		}
 	}
+	for _, r := range resources {
+		qualKey := cfg.Name + "__" + r.URI
+		m.resources[qualKey] = managedResource{client: client, resource: r}
+	}
+	for _, p := range prompts {
+		qualKey := cfg.Name + "__" + p.Name
+		m.prompts[qualKey] = managedPrompt{client: client, prompt: p, origName: p.Name}
+	}
 
-	return len(tools), nil
+	total := len(tools)
+	if len(resources) > 0 {
+		fmt.Fprintf(os.Stderr, "  ├─ %d resources\n", len(resources))
+	}
+	if len(prompts) > 0 {
+		fmt.Fprintf(os.Stderr, "  ├─ %d prompts\n", len(prompts))
+	}
+
+	return total, nil
 }
 
 // AllTools returns all discovered tools across all servers, keyed by
@@ -131,6 +254,99 @@ func (m *MCPManager) AllTools() map[string]MCPTool {
 		result[name] = mt.mcpTool
 	}
 	return result
+}
+
+// AllResources returns all discovered resources across all servers,
+// keyed by their qualified key (servername__uri).
+func (m *MCPManager) AllResources() map[string]MCPResource {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	result := make(map[string]MCPResource, len(m.resources))
+	for key, mr := range m.resources {
+		result[key] = mr.resource
+	}
+	return result
+}
+
+// ReadResource reads a resource by URI from the correct server.
+// The URI is matched against the discovered resource catalog.
+func (m *MCPManager) ReadResource(ctx context.Context, uri string) ([]MCPResourceContents, error) {
+	m.mu.RLock()
+	// Find which server owns this URI.
+	var client *MCPClient
+	for _, mr := range m.resources {
+		if mr.resource.URI == uri {
+			client = mr.client
+			break
+		}
+	}
+	m.mu.RUnlock()
+
+	if client == nil {
+		return nil, fmt.Errorf("no server owns resource URI %q", uri)
+	}
+
+	// Auto-restart dead server.
+	if !client.Alive() {
+		serverName := client.Name()
+		fmt.Fprintf(os.Stderr, "[mcp:%s] server died, attempting restart...\n", serverName)
+		if err := m.restartServer(ctx, serverName); err != nil {
+			return nil, fmt.Errorf("MCP server %q crashed and restart failed: %w", serverName, err)
+		}
+		// Re-find client after restart.
+		m.mu.RLock()
+		for _, mr := range m.resources {
+			if mr.resource.URI == uri {
+				client = mr.client
+				break
+			}
+		}
+		m.mu.RUnlock()
+		if client == nil {
+			return nil, fmt.Errorf("resource %q unavailable after restart", uri)
+		}
+	}
+
+	return client.ReadResource(ctx, uri)
+}
+
+// AllPrompts returns all discovered prompts across all servers,
+// keyed by their qualified name (servername__promptname).
+func (m *MCPManager) AllPrompts() map[string]MCPPrompt {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	result := make(map[string]MCPPrompt, len(m.prompts))
+	for key, mp := range m.prompts {
+		result[key] = mp.prompt
+	}
+	return result
+}
+
+// GetPrompt expands a prompt template by qualified name with arguments.
+func (m *MCPManager) GetPrompt(ctx context.Context, qualifiedName string, arguments map[string]string) ([]MCPPromptMessage, string, error) {
+	m.mu.RLock()
+	mp, ok := m.prompts[qualifiedName]
+	m.mu.RUnlock()
+
+	if !ok {
+		return nil, "", fmt.Errorf("unknown MCP prompt %q", qualifiedName)
+	}
+
+	if !mp.client.Alive() {
+		serverName := mp.client.Name()
+		fmt.Fprintf(os.Stderr, "[mcp:%s] server died, attempting restart...\n", serverName)
+		if err := m.restartServer(ctx, serverName); err != nil {
+			return nil, "", fmt.Errorf("MCP server %q crashed and restart failed: %w", serverName, err)
+		}
+		m.mu.RLock()
+		mp, ok = m.prompts[qualifiedName]
+		m.mu.RUnlock()
+		if !ok {
+			return nil, "", fmt.Errorf("MCP prompt %q unavailable after restart", qualifiedName)
+		}
+	}
+
+	return mp.client.GetPrompt(ctx, mp.origName, arguments)
 }
 
 // CallTool routes a tools/call request to the correct server by
@@ -199,17 +415,46 @@ func (m *MCPManager) restartServer(ctx context.Context, serverName string) error
 		return fmt.Errorf("re-discover tools: %w", err)
 	}
 
+	// Re-discover resources and prompts if supported.
+	var resources []MCPResource
+	var prompts []MCPPrompt
+	if client.HasCapability("resources") {
+		resCtx, resCancel := context.WithTimeout(ctx, 30*time.Second)
+		resources, _ = client.ListResources(resCtx)
+		resCancel()
+	}
+	if client.HasCapability("prompts") {
+		prCtx, prCancel := context.WithTimeout(ctx, 30*time.Second)
+		prompts, _ = client.ListPrompts(prCtx)
+		prCancel()
+	}
+
+	// Wire sampling handler.
+	if m.onSampling != nil {
+		client.OnSampling = m.onSampling
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Remove old tools for this server.
+	// Remove old entries for this server.
 	for name, mt := range m.tools {
 		if mt.client == oldClient {
 			delete(m.tools, name)
 		}
 	}
+	for key, mr := range m.resources {
+		if mr.client == oldClient {
+			delete(m.resources, key)
+		}
+	}
+	for key, mp := range m.prompts {
+		if mp.client == oldClient {
+			delete(m.prompts, key)
+		}
+	}
 
-	// Register new client and tools.
+	// Register new client, tools, resources, and prompts.
 	m.clients[serverName] = client
 	for _, t := range tools {
 		qualName := serverName + "__" + t.Name
@@ -218,6 +463,14 @@ func (m *MCPManager) restartServer(ctx context.Context, serverName string) error
 			mcpTool:  t,
 			origName: t.Name,
 		}
+	}
+	for _, r := range resources {
+		qualKey := serverName + "__" + r.URI
+		m.resources[qualKey] = managedResource{client: client, resource: r}
+	}
+	for _, p := range prompts {
+		qualKey := serverName + "__" + p.Name
+		m.prompts[qualKey] = managedPrompt{client: client, prompt: p, origName: p.Name}
 	}
 
 	return nil
@@ -302,20 +555,47 @@ func (m *MCPManager) StopAll() {
 }
 
 // ServerSummary returns a human-readable summary of connected servers
-// and their tool counts, suitable for startup banners.
+// and their tool/resource/prompt counts, suitable for startup banners.
 func (m *MCPManager) ServerSummary() []string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	// Count tools per server.
-	counts := make(map[string]int)
+	type counts struct {
+		tools, resources, prompts int
+	}
+	c := make(map[string]*counts)
 	for _, mt := range m.tools {
-		counts[mt.client.Name()]++
+		name := mt.client.Name()
+		if c[name] == nil {
+			c[name] = &counts{}
+		}
+		c[name].tools++
+	}
+	for _, mr := range m.resources {
+		name := mr.client.Name()
+		if c[name] == nil {
+			c[name] = &counts{}
+		}
+		c[name].resources++
+	}
+	for _, mp := range m.prompts {
+		name := mp.client.Name()
+		if c[name] == nil {
+			c[name] = &counts{}
+		}
+		c[name].prompts++
 	}
 
 	var lines []string
-	for name, count := range counts {
-		lines = append(lines, fmt.Sprintf("%s (%d tools)", name, count))
+	for name, ct := range c {
+		parts := []string{fmt.Sprintf("%d tools", ct.tools)}
+		if ct.resources > 0 {
+			parts = append(parts, fmt.Sprintf("%d resources", ct.resources))
+		}
+		if ct.prompts > 0 {
+			parts = append(parts, fmt.Sprintf("%d prompts", ct.prompts))
+		}
+		lines = append(lines, fmt.Sprintf("%s (%s)", name, strings.Join(parts, ", ")))
 	}
 	return lines
 }
