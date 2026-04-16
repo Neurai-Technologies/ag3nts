@@ -279,21 +279,96 @@ func TestContextChunkConcurrentInsert(t *testing.T) {
 	}
 }
 
-func TestContextChunkSchemaV4Migration(t *testing.T) {
-	// Verify that the schema version is 4 after migrate.
+func TestContextChunkSchemaV5Migration(t *testing.T) {
+	// Verify that the schema version is 5 after migrate.
 	db := openTestDB(t)
 	var version int
 	if err := db.db.QueryRow(`SELECT version FROM schema_version LIMIT 1`).Scan(&version); err != nil {
 		t.Fatalf("read version: %v", err)
 	}
-	if version != 4 {
-		t.Errorf("schema version = %d, want 4", version)
+	if version != 5 {
+		t.Errorf("schema version = %d, want 5", version)
 	}
 
-	// Verify the table exists.
+	// Verify the context_chunks table exists.
 	var count int
 	err := db.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='context_chunks'`).Scan(&count)
 	if err != nil || count != 1 {
 		t.Errorf("context_chunks table not created: count=%d err=%v", count, err)
+	}
+
+	// Verify the FTS5 virtual table exists.
+	err = db.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='context_chunks_fts'`).Scan(&count)
+	if err != nil || count != 1 {
+		t.Errorf("context_chunks_fts table not created: count=%d err=%v", count, err)
+	}
+
+	// Verify FTS5 works: insert a chunk and query via MATCH.
+	_, err = db.InsertContextChunk(&ContextChunkRecord{
+		SessionID:  "fts-test",
+		Content:    "golang concurrency patterns with goroutines and channels",
+		Keywords:   "golang concurrency patterns goroutines channels",
+		TokenCount: 10,
+		Seq:        1,
+	})
+	if err != nil {
+		t.Fatalf("insert chunk: %v", err)
+	}
+
+	// FTS5 MATCH query should find it.
+	chunks, err := db.QueryContextChunks("fts-test", []string{"golang"}, 10)
+	if err != nil {
+		t.Fatalf("FTS5 query: %v", err)
+	}
+	if len(chunks) != 1 {
+		t.Errorf("expected 1 FTS5 match, got %d", len(chunks))
+	}
+
+	// Query for non-matching keyword should return empty.
+	chunks, err = db.QueryContextChunks("fts-test", []string{"python"}, 10)
+	if err != nil {
+		t.Fatalf("FTS5 query: %v", err)
+	}
+	if len(chunks) != 0 {
+		t.Errorf("expected 0 FTS5 matches, got %d", len(chunks))
+	}
+}
+
+func TestContextChunkFTS5Eviction(t *testing.T) {
+	// Verify that FTS5 index stays in sync when chunks are evicted.
+	db := openTestDB(t)
+
+	for i := 0; i < 5; i++ {
+		_, err := db.InsertContextChunk(&ContextChunkRecord{
+			SessionID:  "evict-fts",
+			Content:    fmt.Sprintf("document number %d about testing", i),
+			Keywords:   fmt.Sprintf("document number testing chunk%d", i),
+			TokenCount: 100,
+			Seq:        int64(i + 1),
+		})
+		if err != nil {
+			t.Fatalf("insert %d: %v", i, err)
+		}
+	}
+
+	// All 5 should be findable via FTS.
+	chunks, _ := db.QueryContextChunks("evict-fts", []string{"testing"}, 10)
+	if len(chunks) != 5 {
+		t.Fatalf("before eviction: expected 5 FTS matches, got %d", len(chunks))
+	}
+
+	// Evict to 200 tokens (should remove 3 oldest chunks: 500 - 200 = 300, need 3*100).
+	evicted, err := db.EvictOldestContextChunks("evict-fts", 200)
+	if err != nil {
+		t.Fatalf("evict: %v", err)
+	}
+	if evicted != 3 {
+		t.Errorf("evicted %d, want 3", evicted)
+	}
+
+	// Only 2 remaining should be findable via FTS.
+	chunks, _ = db.QueryContextChunks("evict-fts", []string{"testing"}, 10)
+	if len(chunks) != 2 {
+		t.Errorf("after eviction: expected 2 FTS matches, got %d", len(chunks))
 	}
 }

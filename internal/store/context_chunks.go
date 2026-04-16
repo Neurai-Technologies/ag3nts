@@ -118,9 +118,9 @@ func (d *DB) EvictOldestContextChunks(sessionID string, targetTokens int) (int, 
 	return len(idsToDelete), nil
 }
 
-// QueryContextChunks returns chunks matching any of the given keywords
-// (case-insensitive LIKE on the keywords column), ordered by recency DESC,
-// limited to the specified count.
+// QueryContextChunks returns chunks matching any of the given keywords,
+// ordered by FTS5 relevance (bm25), limited to the specified count.
+// Uses FTS5 MATCH for fast full-text search when keywords are provided.
 //
 // If keywords is empty, returns the most recent chunks (pure recency).
 func (d *DB) QueryContextChunks(sessionID string, keywords []string, limit int) ([]*ContextChunkRecord, error) {
@@ -128,36 +128,71 @@ func (d *DB) QueryContextChunks(sessionID string, keywords []string, limit int) 
 		limit = 40
 	}
 
-	var query string
-	args := []any{sessionID}
-
 	if len(keywords) == 0 {
-		query = `SELECT id, session_id, task_id, agent, kind, content, token_count, keywords, seq, created_at
+		// Pure recency fallback — no FTS needed.
+		rows, err := d.db.Query(`
+			SELECT id, session_id, task_id, agent, kind, content, token_count, keywords, seq, created_at
 			FROM context_chunks
 			WHERE session_id = ?
 			ORDER BY created_at DESC
-			LIMIT ?`
-		args = append(args, limit)
-	} else {
-		var clauses []string
-		for _, kw := range keywords {
-			clauses = append(clauses, "keywords LIKE ?")
-			args = append(args, "%"+strings.ToLower(kw)+"%")
+			LIMIT ?`, sessionID, limit)
+		if err != nil {
+			return nil, fmt.Errorf("query context chunks (recency): %w", err)
 		}
-		query = `SELECT id, session_id, task_id, agent, kind, content, token_count, keywords, seq, created_at
-			FROM context_chunks
-			WHERE session_id = ? AND (` + strings.Join(clauses, " OR ") + `)
-			ORDER BY created_at DESC
-			LIMIT ?`
-		args = append(args, limit)
+		defer rows.Close()
+		return scanContextChunks(rows)
 	}
+
+	// Build FTS5 query: join keywords with OR for any-match semantics.
+	// FTS5 syntax: "word1 OR word2 OR word3"
+	var ftsTerms []string
+	for _, kw := range keywords {
+		// Escape quotes in keywords to prevent FTS5 syntax injection.
+		escaped := strings.ReplaceAll(strings.ToLower(kw), `"`, `""`)
+		ftsTerms = append(ftsTerms, `"`+escaped+`"`)
+	}
+	ftsQuery := strings.Join(ftsTerms, " OR ")
+
+	// Join FTS results with the main table to filter by session_id and
+	// get the full row data. Order by bm25 relevance (lower = better match).
+	rows, err := d.db.Query(`
+		SELECT c.id, c.session_id, c.task_id, c.agent, c.kind, c.content,
+		       c.token_count, c.keywords, c.seq, c.created_at
+		FROM context_chunks_fts f
+		JOIN context_chunks c ON c.id = f.rowid
+		WHERE context_chunks_fts MATCH ?
+		  AND c.session_id = ?
+		ORDER BY bm25(context_chunks_fts)
+		LIMIT ?`, ftsQuery, sessionID, limit)
+	if err != nil {
+		// Fallback to LIKE if FTS5 fails (e.g., invalid query syntax).
+		return d.queryContextChunksLike(sessionID, keywords, limit)
+	}
+	defer rows.Close()
+	return scanContextChunks(rows)
+}
+
+// queryContextChunksLike is the legacy LIKE-based fallback used when
+// FTS5 is unavailable or the query fails. Kept for robustness.
+func (d *DB) queryContextChunksLike(sessionID string, keywords []string, limit int) ([]*ContextChunkRecord, error) {
+	args := []any{sessionID}
+	var clauses []string
+	for _, kw := range keywords {
+		clauses = append(clauses, "keywords LIKE ?")
+		args = append(args, "%"+strings.ToLower(kw)+"%")
+	}
+	query := `SELECT id, session_id, task_id, agent, kind, content, token_count, keywords, seq, created_at
+		FROM context_chunks
+		WHERE session_id = ? AND (` + strings.Join(clauses, " OR ") + `)
+		ORDER BY created_at DESC
+		LIMIT ?`
+	args = append(args, limit)
 
 	rows, err := d.db.Query(query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("query context chunks: %w", err)
+		return nil, fmt.Errorf("query context chunks (like fallback): %w", err)
 	}
 	defer rows.Close()
-
 	return scanContextChunks(rows)
 }
 

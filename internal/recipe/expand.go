@@ -83,11 +83,18 @@ func (r *Recipe) Expand(ec ExpansionContext) ([]*task.Task, error) {
 			taskType = r.Name + "." + st.ID
 		}
 
+		// Model: prefer sub-task override, fall back to recipe-level.
+		model := st.Model
+		if model == "" {
+			model = r.Model
+		}
+
 		t := &task.Task{
 			ID:          prefixed(st.ID),
 			Description: description,
 			Type:        taskType,
 			Agent:       st.Agent,
+			Model:       model,
 			Status:      task.StatusPending,
 			DependsOn:   depsOn,
 			ContextFrom: ctxFrom,
@@ -127,6 +134,7 @@ func (r *Recipe) Resolve(params map[string]string) (*task.Task, error) {
 		Description: prompt,
 		Type:        r.TaskType(),
 		Agent:       r.Agent,
+		Model:       r.Model,
 		Status:      task.StatusPending,
 		Timeout:     timeout,
 		CreatedAt:   time.Now(),

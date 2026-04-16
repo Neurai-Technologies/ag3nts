@@ -38,6 +38,10 @@ type Recipe struct {
 	// When present, the orchestrator expands this into a list of *task.Task
 	// with dependencies wired. Empty means single-task recipe.
 	Tasks []SubTask `yaml:"tasks"`
+
+	// MaxConcurrency overrides the orchestrator's default max parallel
+	// tasks for this recipe's execution. 0 = use global default.
+	MaxConcurrency int `yaml:"max_concurrency"`
 }
 
 // SubTask is one stage in a multi-task recipe. Each sub-task is dispatched

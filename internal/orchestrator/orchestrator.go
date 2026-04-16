@@ -68,6 +68,8 @@ type Orchestrator struct {
 	directSess map[string]*agent.Session // agentName → direct send session (for resume)
 	retryCount map[string]int            // taskID → retry attempts so far
 
+	taskDone chan struct{} // signalled when any task completes, triggers immediate re-dispatch
+
 	ctx    context.Context
 	cancel context.CancelFunc
 }
@@ -115,6 +117,7 @@ func New(cfg Config, agents *agent.Registry) (*Orchestrator, error) {
 		running:    make(map[string]*agent.Session),
 		directSess: make(map[string]*agent.Session),
 		retryCount: make(map[string]int),
+		taskDone:   make(chan struct{}, 16), // buffered to avoid blocking executeTask
 	}, nil
 }
 
@@ -430,6 +433,13 @@ func (o *Orchestrator) RunRecipe(r *recipe.Recipe, params map[string]string) (st
 		return "", fmt.Errorf("expand recipe: %w", err)
 	}
 
+	// Apply per-recipe concurrency override if specified.
+	if r.MaxConcurrency > 0 {
+		o.mu.Lock()
+		o.maxConc = r.MaxConcurrency
+		o.mu.Unlock()
+	}
+
 	for _, t := range tasks {
 		if err := o.queue.Add(t); err != nil {
 			return runID, fmt.Errorf("add task %s: %w", t.ID, err)
@@ -550,8 +560,11 @@ func (o *Orchestrator) RunningAgents() []string {
 	return names
 }
 
-// dispatchLoop runs in a goroutine, polling the queue for ready tasks
-// and dispatching them to agents in parallel.
+// dispatchLoop runs in a goroutine. It triggers on two signals:
+//   - taskDone channel: a task just completed, immediately check for
+//     newly-unblocked tasks (event-driven, zero latency).
+//   - 500ms ticker: fallback catch-all for tasks added externally,
+//     evaluator retries, or missed signals.
 func (o *Orchestrator) dispatchLoop() {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
@@ -560,6 +573,8 @@ func (o *Orchestrator) dispatchLoop() {
 		select {
 		case <-o.ctx.Done():
 			return
+		case <-o.taskDone:
+			o.dispatchReady()
 		case <-ticker.C:
 			o.dispatchReady()
 		}
@@ -673,6 +688,7 @@ func (o *Orchestrator) executeTask(t *task.Task, a agent.Agent, contextStr strin
 
 	sess, err := a.Start(ctx, t.Description, &agent.StartOpts{
 		TaskID:  t.ID,
+		Model:   t.Model,
 		Context: contextStr,
 		WorkDir: o.agentWorkDir,
 	})
@@ -861,6 +877,13 @@ func (o *Orchestrator) executeTask(t *task.Task, a agent.Agent, contextStr strin
 	o.mu.Lock()
 	delete(o.running, t.ID)
 	o.mu.Unlock()
+
+	// Signal dispatch loop to immediately check for newly-unblocked tasks.
+	select {
+	case o.taskDone <- struct{}{}:
+	default:
+		// Channel full — dispatchLoop will catch up via ticker.
+	}
 }
 
 // buildContext assembles context from cross-agent memory and completed task results.

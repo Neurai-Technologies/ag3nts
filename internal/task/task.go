@@ -58,6 +58,7 @@ type Task struct {
 	Description string        `json:"description"`
 	Type        string        `json:"type"`                  // matches routing patterns
 	Agent       string        `json:"agent,omitempty"`       // explicit agent override (empty = use router)
+	Model       string        `json:"model,omitempty"`       // model variant override (e.g. "opus", "sonnet", "flash")
 	Status      Status        `json:"status"`
 	DependsOn   []string      `json:"depends_on,omitempty"`  // task IDs that must complete first
 	ContextFrom []string      `json:"context_from,omitempty"` // task IDs whose results to inject as context

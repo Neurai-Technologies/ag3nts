@@ -2,7 +2,7 @@ package store
 
 import "fmt"
 
-const currentSchemaVersion = 4
+const currentSchemaVersion = 5
 
 // schema defines the DDL for all tables at schema version 1.
 const schema = `
@@ -103,6 +103,24 @@ CREATE TABLE IF NOT EXISTS context_chunks (
 
 CREATE INDEX IF NOT EXISTS idx_context_session_seq ON context_chunks(session_id, seq);
 CREATE INDEX IF NOT EXISTS idx_context_created ON context_chunks(created_at);
+
+-- FTS5 full-text search index over context_chunks.
+-- Uses external content mode: the FTS table mirrors the content and keywords
+-- columns from context_chunks. Triggers keep them in sync.
+CREATE VIRTUAL TABLE IF NOT EXISTS context_chunks_fts USING fts5(
+    content,
+    keywords,
+    content=context_chunks,
+    content_rowid=id
+);
+
+-- Auto-sync triggers: keep FTS5 index in sync with context_chunks.
+CREATE TRIGGER IF NOT EXISTS context_chunks_ai AFTER INSERT ON context_chunks BEGIN
+    INSERT INTO context_chunks_fts(rowid, content, keywords) VALUES (new.id, new.content, new.keywords);
+END;
+CREATE TRIGGER IF NOT EXISTS context_chunks_ad AFTER DELETE ON context_chunks BEGIN
+    INSERT INTO context_chunks_fts(context_chunks_fts, rowid, content, keywords) VALUES('delete', old.id, old.content, old.keywords);
+END;
 `
 
 // migrate runs idempotent schema migrations.
@@ -195,6 +213,32 @@ func (d *DB) migrate() error {
 		`)
 		if err != nil {
 			return fmt.Errorf("migrate v4 (context_chunks table): %w", err)
+		}
+	}
+
+	if version < 5 {
+		// FTS5 full-text search index + auto-sync triggers.
+		_, err = d.db.Exec(`
+			CREATE VIRTUAL TABLE IF NOT EXISTS context_chunks_fts USING fts5(
+				content,
+				keywords,
+				content=context_chunks,
+				content_rowid=id
+			);
+			CREATE TRIGGER IF NOT EXISTS context_chunks_ai AFTER INSERT ON context_chunks BEGIN
+				INSERT INTO context_chunks_fts(rowid, content, keywords) VALUES (new.id, new.content, new.keywords);
+			END;
+			CREATE TRIGGER IF NOT EXISTS context_chunks_ad AFTER DELETE ON context_chunks BEGIN
+				INSERT INTO context_chunks_fts(context_chunks_fts, rowid, content, keywords) VALUES('delete', old.id, old.content, old.keywords);
+			END;
+		`)
+		if err != nil {
+			return fmt.Errorf("migrate v5 (FTS5 index): %w", err)
+		}
+		// Backfill FTS index from existing data.
+		_, err = d.db.Exec(`INSERT INTO context_chunks_fts(rowid, content, keywords) SELECT id, content, keywords FROM context_chunks`)
+		if err != nil {
+			return fmt.Errorf("migrate v5 (FTS5 backfill): %w", err)
 		}
 	}
 
