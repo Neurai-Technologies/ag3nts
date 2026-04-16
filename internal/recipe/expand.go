@@ -7,11 +7,16 @@ import (
 	"github.com/rohanrgit/ag3nts/internal/task"
 )
 
+// RecipeResolver looks up a recipe by name. Used during expansion to
+// resolve sub_recipe references for recipe composition.
+type RecipeResolver func(name string) (*Recipe, error)
+
 // ExpansionContext configures how a multi-task recipe expands into tasks.
 type ExpansionContext struct {
 	RecipeRunID string            // prefix for rewritten task IDs (e.g. "R123456")
 	Params      map[string]string // top-level recipe params
 	BaseDir     string            // for "file:" and {{#include:}} resolution
+	Resolver    RecipeResolver    // resolve sub_recipe references (nil = sub-recipes disabled)
 }
 
 // Expand turns a multi-task recipe into concrete *task.Task instances with
@@ -36,6 +41,55 @@ func (r *Recipe) Expand(ec ExpansionContext) ([]*task.Task, error) {
 	tasks := make([]*task.Task, 0, len(r.Tasks))
 	for i := range r.Tasks {
 		st := &r.Tasks[i]
+
+		// Sub-recipe composition: resolve and inline another recipe's tasks.
+		if st.SubRecipe != "" {
+			if ec.Resolver == nil {
+				return nil, fmt.Errorf("sub-task %q references sub_recipe %q but no resolver is configured", st.ID, st.SubRecipe)
+			}
+			subR, err := ec.Resolver(st.SubRecipe)
+			if err != nil {
+				return nil, fmt.Errorf("resolve sub_recipe %q: %w", st.SubRecipe, err)
+			}
+			// Merge params: parent overrides sub-task, sub-task overrides sub-recipe defaults.
+			mergedParams := make(map[string]string)
+			for k, v := range ec.Params {
+				mergedParams[k] = v
+			}
+			for k, v := range st.Params {
+				mergedParams[k] = v
+			}
+			subEC := ExpansionContext{
+				RecipeRunID: prefixed(st.ID), // nest under this sub-task's ID
+				Params:      mergedParams,
+				BaseDir:     ec.BaseDir,
+				Resolver:    ec.Resolver, // allow further nesting
+			}
+			var subTasks []*task.Task
+			if subR.IsMultiTask() {
+				subTasks, err = subR.Expand(subEC)
+			} else {
+				t, resolveErr := subR.Resolve(mergedParams)
+				if resolveErr != nil {
+					return nil, fmt.Errorf("resolve sub_recipe %q: %w", st.SubRecipe, resolveErr)
+				}
+				t.ID = prefixed(st.ID)
+				subTasks = []*task.Task{t}
+			}
+			if err != nil {
+				return nil, fmt.Errorf("expand sub_recipe %q: %w", st.SubRecipe, err)
+			}
+			// Wire DependsOn from the sub-task spec onto the first sub-recipe task.
+			if len(st.DependsOn) > 0 && len(subTasks) > 0 {
+				rewrittenDeps := make([]string, len(st.DependsOn))
+				for j, dep := range st.DependsOn {
+					rewrittenDeps[j] = prefixed(dep)
+				}
+				subTasks[0].DependsOn = append(subTasks[0].DependsOn, rewrittenDeps...)
+			}
+			tasks = append(tasks, subTasks...)
+			continue
+		}
 
 		// Render prompt template with params and includes.
 		description, err := r.RenderSubTask(st, ec.Params, ec.BaseDir)

@@ -295,6 +295,26 @@ func runOrchestrate() error {
 		} else {
 			rollingCtx = rs
 			defer rollingCtx.Close()
+
+			// Wire embedding function if an embed model is configured.
+			// Uses the Ollama endpoint directly — independent of the LLM orchestrator.
+			embedModel := cfg.Context.EmbedModel
+			if embedModel == "" {
+				embedModel = "nomic-embed-text"
+			}
+			endpoint := cfg.LLM.Endpoint
+			if endpoint == "" {
+				endpoint = "http://localhost:11434"
+			}
+			embedClient, embedErr := llm.NewOllamaClient(endpoint, cfg.LLM.ModelsPath)
+			if embedErr == nil {
+				rollingCtx.Embed = func(text string) ([]float32, error) {
+					ctx, cancel := m3m0ry.EmbedContext()
+					defer cancel()
+					return embedClient.Embed(ctx, embedModel, text)
+				}
+				fmt.Fprintf(os.Stderr, "✓ Embeddings enabled (%s)\n", embedModel)
+			}
 		}
 	}
 

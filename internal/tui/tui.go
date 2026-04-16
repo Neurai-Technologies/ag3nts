@@ -255,6 +255,7 @@ func (a *App) Run(ctx context.Context) error {
 	// Reset the in-place streaming region on terminal resize so the
 	// next chunk render doesn't use stale cursor-math.
 	a.watchResize(ctx)
+	a.watchConfig(ctx)
 	a.updateTitle()
 
 	// Get the PasteReader for multi-line terminator tracking.

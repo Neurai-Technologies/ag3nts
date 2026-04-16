@@ -286,8 +286,8 @@ func TestContextChunkSchemaV5Migration(t *testing.T) {
 	if err := db.db.QueryRow(`SELECT version FROM schema_version LIMIT 1`).Scan(&version); err != nil {
 		t.Fatalf("read version: %v", err)
 	}
-	if version != 6 {
-		t.Errorf("schema version = %d, want 6", version)
+	if version != 7 {
+		t.Errorf("schema version = %d, want 7", version)
 	}
 
 	// Verify the context_chunks table exists.

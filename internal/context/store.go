@@ -38,14 +38,22 @@ func DefaultConfig() Config {
 	}
 }
 
+// EmbedFunc generates an embedding vector for the given text.
+// Returns nil if embedding is unavailable or the model isn't loaded.
+type EmbedFunc func(text string) ([]float32, error)
+
 // RollingStore is a dual-backed (SQLite + JSONL) token-bounded append log
-// with keyword + recency retrieval.
+// with keyword + recency + vector similarity retrieval.
 type RollingStore struct {
 	cfg    Config
 	db     *store.DB
 	sessID string
 	jsonl  *os.File
 	logger *logging.Logger
+
+	// Embed generates embeddings for chunks and queries. Set by the
+	// orchestrator after creation. If nil, retrieval uses keyword + recency only.
+	Embed EmbedFunc
 
 	jsonlMu sync.Mutex // serializes JSONL writes
 	writeMu sync.Mutex // serializes Append + maybeEvict
@@ -292,22 +300,37 @@ func (r *RollingStore) Retrieve(query string, now time.Time) ([]*Chunk, error) {
 	}
 	keywords := extractKeywords(query)
 
-	// Fetch 3x the limit so we can re-rank.
+	// Use embedding-aware query if embeddings are available.
+	useEmbeddings := r.Embed != nil
 	fetchLimit := r.cfg.RetrievalLimit * 3
-	records, err := r.db.QueryContextChunks(r.sessID, keywords, fetchLimit)
+
+	var records []*store.ContextChunkRecord
+	var err error
+	if useEmbeddings {
+		records, err = r.db.QueryContextChunksWithEmbedding(r.sessID, keywords, fetchLimit)
+	} else {
+		records, err = r.db.QueryContextChunks(r.sessID, keywords, fetchLimit)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("query chunks: %w", err)
 	}
 
 	// Recency fallback: zero keyword matches → most recent chunks.
-	// extractKeywords may return non-empty for the query but the LIKE
-	// search returns zero rows because no chunk contains those tokens.
-	// Re-issue with empty keywords to get pure recency.
 	if len(records) == 0 && len(keywords) > 0 {
-		records, err = r.db.QueryContextChunks(r.sessID, nil, fetchLimit)
+		if useEmbeddings {
+			records, err = r.db.QueryContextChunksWithEmbedding(r.sessID, nil, fetchLimit)
+		} else {
+			records, err = r.db.QueryContextChunks(r.sessID, nil, fetchLimit)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("recency fallback: %w", err)
 		}
+	}
+
+	// Embed the query once if embeddings are available.
+	var queryEmb []float32
+	if useEmbeddings && len(records) > 0 {
+		queryEmb, _ = r.Embed(query) // best-effort; nil on error
 	}
 
 	// Convert to Chunk and compute scores.
@@ -327,11 +350,12 @@ func (r *RollingStore) Retrieve(query string, now time.Time) ([]*Chunk, error) {
 			Content:    rec.Content,
 			TokenCount: rec.TokenCount,
 			Keywords:   kw,
+			Embedding:  rec.Embedding,
 			Seq:        rec.Seq,
 			CreatedAt:  rec.CreatedAt,
 		}
 
-		// Score = keywordHits * 10 + recencyBonus
+		// Score = keywordHits * 10 + recencyBonus + embeddingSimilarity * 20
 		hits := 0
 		kwSet := make(map[string]bool, len(kw))
 		for _, k := range kw {
@@ -348,6 +372,14 @@ func (r *RollingStore) Retrieve(query string, now time.Time) ([]*Chunk, error) {
 			recency = 0
 		}
 		score := float64(hits)*10.0 + recency
+
+		// Embedding similarity bonus: cosine similarity scaled to [0, 20].
+		if queryEmb != nil && len(rec.Embedding) > 0 {
+			sim := store.CosineSimilarity(queryEmb, rec.Embedding)
+			if sim > 0 {
+				score += float64(sim) * 20.0
+			}
+		}
 
 		scoredChunks = append(scoredChunks, scored{chunk: chunk, score: score})
 	}

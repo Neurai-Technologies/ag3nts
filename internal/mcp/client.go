@@ -165,6 +165,10 @@ type MCPClient struct {
 	// notifications/prompts/list_changed.
 	OnPromptsChanged func()
 
+	// OnResourceUpdated is called when the server sends
+	// notifications/resources/updated with the changed URI.
+	OnResourceUpdated func(uri string)
+
 	// OnSampling handles incoming sampling/createMessage requests.
 	// If nil, the client responds with an error to the server.
 	OnSampling SamplingHandler
@@ -470,6 +474,47 @@ func (c *MCPClient) GetPrompt(ctx context.Context, name string, arguments map[st
 	return result.Messages, result.Description, nil
 }
 
+// --- Resource subscription methods ---
+
+// SubscribeResource subscribes to change notifications for a resource URI.
+// Requires the server to declare resources.subscribe capability.
+func (c *MCPClient) SubscribeResource(ctx context.Context, uri string) error {
+	resp, err := c.sendRequest(ctx, "resources/subscribe", map[string]any{"uri": uri})
+	if err != nil {
+		return fmt.Errorf("resources/subscribe: %w", err)
+	}
+	if resp.Error != nil {
+		return fmt.Errorf("resources/subscribe error: %s", resp.Error.Message)
+	}
+	return nil
+}
+
+// UnsubscribeResource unsubscribes from change notifications for a resource URI.
+func (c *MCPClient) UnsubscribeResource(ctx context.Context, uri string) error {
+	resp, err := c.sendRequest(ctx, "resources/unsubscribe", map[string]any{"uri": uri})
+	if err != nil {
+		return fmt.Errorf("resources/unsubscribe: %w", err)
+	}
+	if resp.Error != nil {
+		return fmt.Errorf("resources/unsubscribe error: %s", resp.Error.Message)
+	}
+	return nil
+}
+
+// --- Logging method ---
+
+// SetLogLevel sends logging/setLevel to control server-side log verbosity.
+func (c *MCPClient) SetLogLevel(ctx context.Context, level string) error {
+	resp, err := c.sendRequest(ctx, "logging/setLevel", map[string]any{"level": level})
+	if err != nil {
+		return fmt.Errorf("logging/setLevel: %w", err)
+	}
+	if resp.Error != nil {
+		return fmt.Errorf("logging/setLevel error: %s", resp.Error.Message)
+	}
+	return nil
+}
+
 // Close gracefully shuts down the MCP server. Closes stdin (which
 // signals the server to exit), waits briefly, then kills if needed.
 func (c *MCPClient) Close() error {
@@ -631,6 +676,16 @@ func (c *MCPClient) readLoop() {
 			case "notifications/resources/list_changed":
 				if c.OnResourcesChanged != nil {
 					go c.OnResourcesChanged()
+				}
+			case "notifications/resources/updated":
+				if c.OnResourceUpdated != nil {
+					var params struct {
+						URI string `json:"uri"`
+					}
+					_ = json.Unmarshal(msg.Params, &params)
+					if params.URI != "" {
+						go c.OnResourceUpdated(params.URI)
+					}
 				}
 			case "notifications/prompts/list_changed":
 				if c.OnPromptsChanged != nil {

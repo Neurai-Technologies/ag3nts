@@ -61,6 +61,7 @@ type SubTask struct {
 	EvaluatorOf      string            `yaml:"evaluator_of"`      // sub-task ID being evaluated (enables GAN loop)
 	EvaluatorRetries int               `yaml:"evaluator_retries"` // max I⇄R loops (default 3)
 	Params           map[string]string `yaml:"params"`            // per-sub-task param overrides
+	SubRecipe        string            `yaml:"sub_recipe"`        // name of another recipe to inline (composition)
 }
 
 // Parameter is a typed input for a recipe.

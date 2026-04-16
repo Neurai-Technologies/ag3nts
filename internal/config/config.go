@@ -41,6 +41,7 @@ type ContextConfig struct {
 	EvictHeadroom   float64 `toml:"evict_headroom"`    // fraction to reserve after eviction (default 0.10)
 	RetrievalLimit  int     `toml:"retrieval_limit"`   // max chunks per retrieval (default 40)
 	RetrievalBudget int     `toml:"retrieval_budget"`  // max tokens per retrieval (default 50000)
+	EmbedModel      string  `toml:"embed_model"`       // Ollama model for embeddings (default: nomic-embed-text)
 }
 
 // ToolSetConfig defines a dynamically registered tool-set in ag3nts.toml.

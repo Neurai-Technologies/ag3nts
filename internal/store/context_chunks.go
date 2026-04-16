@@ -2,7 +2,9 @@ package store
 
 import (
 	"database/sql"
+	"encoding/binary"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 )
@@ -17,6 +19,7 @@ type ContextChunkRecord struct {
 	Content    string
 	TokenCount int
 	Keywords   string // space-delimited lowercase
+	Embedding  []float32 // embedding vector (nil = not yet embedded)
 	Seq        int64
 	CreatedAt  time.Time
 }
@@ -263,6 +266,139 @@ func (d *DB) MaxContextSeq(sessionID string) (int64, error) {
 	return maxSeq.Int64, nil
 }
 
+// SetChunkEmbedding stores an embedding vector for a chunk by ID.
+func (d *DB) SetChunkEmbedding(chunkID int64, embedding []float32) error {
+	blob := encodeFloat32s(embedding)
+	_, err := d.db.Exec(`UPDATE context_chunks SET embedding = ? WHERE id = ?`, blob, chunkID)
+	return err
+}
+
+// ChunksWithoutEmbedding returns chunk IDs and content for chunks in a
+// session that don't have embeddings yet. Used for lazy batch embedding.
+func (d *DB) ChunksWithoutEmbedding(sessionID string, limit int) ([]*ContextChunkRecord, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := d.db.Query(`
+		SELECT id, session_id, task_id, agent, kind, content, token_count, keywords, seq, created_at
+		FROM context_chunks
+		WHERE session_id = ? AND embedding IS NULL
+		ORDER BY id ASC
+		LIMIT ?`, sessionID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanContextChunks(rows)
+}
+
+// encodeFloat32s serializes a float32 slice to a compact binary blob.
+// 4 bytes per float, little-endian.
+func encodeFloat32s(v []float32) []byte {
+	buf := make([]byte, len(v)*4)
+	for i, f := range v {
+		binary.LittleEndian.PutUint32(buf[i*4:], math.Float32bits(f))
+	}
+	return buf
+}
+
+// decodeFloat32s deserializes a binary blob back to float32 slice.
+func decodeFloat32s(b []byte) []float32 {
+	if len(b) == 0 || len(b)%4 != 0 {
+		return nil
+	}
+	v := make([]float32, len(b)/4)
+	for i := range v {
+		v[i] = math.Float32frombits(binary.LittleEndian.Uint32(b[i*4:]))
+	}
+	return v
+}
+
+// CosineSimilarity computes the cosine similarity between two vectors.
+// Returns 0 if either vector is zero-length or they differ in length.
+func CosineSimilarity(a, b []float32) float32 {
+	if len(a) != len(b) || len(a) == 0 {
+		return 0
+	}
+	var dot, normA, normB float32
+	for i := range a {
+		dot += a[i] * b[i]
+		normA += a[i] * a[i]
+		normB += b[i] * b[i]
+	}
+	if normA == 0 || normB == 0 {
+		return 0
+	}
+	return dot / float32(math.Sqrt(float64(normA)*float64(normB)))
+}
+
+// QueryContextChunksWithEmbedding is like QueryContextChunks but also
+// returns the embedding vector for each chunk. Used when scoring
+// needs vector similarity alongside keyword/recency.
+func (d *DB) QueryContextChunksWithEmbedding(sessionID string, keywords []string, limit int) ([]*ContextChunkRecord, error) {
+	if limit <= 0 {
+		limit = 40
+	}
+
+	if len(keywords) == 0 {
+		rows, err := d.db.Query(`
+			SELECT id, session_id, task_id, agent, kind, content, token_count, keywords, embedding, seq, created_at
+			FROM context_chunks
+			WHERE session_id = ?
+			ORDER BY created_at DESC
+			LIMIT ?`, sessionID, limit)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		return scanContextChunksWithEmbedding(rows)
+	}
+
+	var ftsTerms []string
+	for _, kw := range keywords {
+		escaped := strings.ReplaceAll(strings.ToLower(kw), `"`, `""`)
+		ftsTerms = append(ftsTerms, `"`+escaped+`"`)
+	}
+	ftsQuery := strings.Join(ftsTerms, " OR ")
+
+	rows, err := d.db.Query(`
+		SELECT c.id, c.session_id, c.task_id, c.agent, c.kind, c.content,
+		       c.token_count, c.keywords, c.embedding, c.seq, c.created_at
+		FROM context_chunks_fts f
+		JOIN context_chunks c ON c.id = f.rowid
+		WHERE context_chunks_fts MATCH ?
+		  AND c.session_id = ?
+		ORDER BY bm25(context_chunks_fts)
+		LIMIT ?`, ftsQuery, sessionID, limit)
+	if err != nil {
+		// Fallback without embeddings.
+		return d.queryWithEmbeddingFallback(sessionID, keywords, limit)
+	}
+	defer rows.Close()
+	return scanContextChunksWithEmbedding(rows)
+}
+
+func (d *DB) queryWithEmbeddingFallback(sessionID string, keywords []string, limit int) ([]*ContextChunkRecord, error) {
+	args := []any{sessionID}
+	var clauses []string
+	for _, kw := range keywords {
+		clauses = append(clauses, "keywords LIKE ?")
+		args = append(args, "%"+strings.ToLower(kw)+"%")
+	}
+	query := `SELECT id, session_id, task_id, agent, kind, content, token_count, keywords, embedding, seq, created_at
+		FROM context_chunks
+		WHERE session_id = ? AND (` + strings.Join(clauses, " OR ") + `)
+		ORDER BY created_at DESC
+		LIMIT ?`
+	args = append(args, limit)
+	rows, err := d.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanContextChunksWithEmbedding(rows)
+}
+
 func scanContextChunks(rows *sql.Rows) ([]*ContextChunkRecord, error) {
 	var chunks []*ContextChunkRecord
 	for rows.Next() {
@@ -275,6 +411,25 @@ func scanContextChunks(rows *sql.Rows) ([]*ContextChunkRecord, error) {
 			return nil, fmt.Errorf("scan context chunk: %w", err)
 		}
 		rec.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdStr)
+		chunks = append(chunks, &rec)
+	}
+	return chunks, rows.Err()
+}
+
+func scanContextChunksWithEmbedding(rows *sql.Rows) ([]*ContextChunkRecord, error) {
+	var chunks []*ContextChunkRecord
+	for rows.Next() {
+		var rec ContextChunkRecord
+		var createdStr string
+		var embBlob []byte
+		if err := rows.Scan(
+			&rec.ID, &rec.SessionID, &rec.TaskID, &rec.Agent, &rec.Kind,
+			&rec.Content, &rec.TokenCount, &rec.Keywords, &embBlob, &rec.Seq, &createdStr,
+		); err != nil {
+			return nil, fmt.Errorf("scan context chunk: %w", err)
+		}
+		rec.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdStr)
+		rec.Embedding = decodeFloat32s(embBlob)
 		chunks = append(chunks, &rec)
 	}
 	return chunks, rows.Err()

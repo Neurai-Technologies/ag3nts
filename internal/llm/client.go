@@ -240,6 +240,58 @@ func (c *OllamaClient) Chat(ctx context.Context, req ChatRequest) (Message, Chat
 	return msg, chatResp, nil
 }
 
+// EmbedRequest is the request body for /api/embed.
+type EmbedRequest struct {
+	Model     string `json:"model"`
+	Input     string `json:"input"`
+	KeepAlive any    `json:"keep_alive,omitempty"`
+}
+
+// EmbedResponse is the response from /api/embed.
+type EmbedResponse struct {
+	Embeddings [][]float32 `json:"embeddings"`
+}
+
+// Embed generates an embedding vector for the given text using /api/embed.
+// Returns a single embedding vector (float32 slice).
+func (c *OllamaClient) Embed(ctx context.Context, model, text string) ([]float32, error) {
+	req := EmbedRequest{
+		Model:     model,
+		Input:     text,
+		KeepAlive: -1,
+	}
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("marshal embed request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.endpoint+"/api/embed", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create embed request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("embed request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		errBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("ollama embed returned %d: %s", resp.StatusCode, string(errBody))
+	}
+
+	var embedResp EmbedResponse
+	if err := json.NewDecoder(resp.Body).Decode(&embedResp); err != nil {
+		return nil, fmt.Errorf("decode embed response: %w", err)
+	}
+	if len(embedResp.Embeddings) == 0 {
+		return nil, fmt.Errorf("empty embedding response")
+	}
+	return embedResp.Embeddings[0], nil
+}
+
 // Available checks if Ollama is reachable.
 func (c *OllamaClient) Available() bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

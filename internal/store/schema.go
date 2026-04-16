@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-const currentSchemaVersion = 6
+const currentSchemaVersion = 7
 
 // schema defines the DDL for all tables at schema version 1.
 const schema = `
@@ -101,6 +101,7 @@ CREATE TABLE IF NOT EXISTS context_chunks (
     content     TEXT NOT NULL,
     token_count INTEGER NOT NULL DEFAULT 0,
     keywords    TEXT NOT NULL DEFAULT '',
+    embedding   BLOB,
     seq         INTEGER NOT NULL,
     created_at  TEXT NOT NULL
 );
@@ -255,6 +256,16 @@ func (d *DB) migrate() error {
 			// swallow "duplicate column" errors.
 			if !strings.Contains(err.Error(), "duplicate column") {
 				return fmt.Errorf("migrate v6 (resume_ids column): %w", err)
+			}
+		}
+	}
+
+	if version < 7 {
+		// Add embedding column for vector similarity search.
+		_, err = d.db.Exec(`ALTER TABLE context_chunks ADD COLUMN embedding BLOB`)
+		if err != nil {
+			if !strings.Contains(err.Error(), "duplicate column") {
+				return fmt.Errorf("migrate v7 (embedding column): %w", err)
 			}
 		}
 	}

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 )
 
 // watchResize starts a goroutine that listens for SIGWINCH (terminal
@@ -45,6 +46,41 @@ func (a *App) watchResize(ctx context.Context) {
 					}
 				}
 				a.streamRegionMu.Unlock()
+			}
+		}
+	}()
+}
+
+// watchConfig polls the config file for modifications and auto-reloads
+// hot-swappable settings (max_concurrency, routing, security, logging).
+// Runs every 10 seconds. No external dependency (no fsnotify).
+func (a *App) watchConfig(ctx context.Context) {
+	if a.configPath == "" {
+		return
+	}
+
+	var lastMod time.Time
+	if info, err := os.Stat(a.configPath); err == nil {
+		lastMod = info.ModTime()
+	}
+
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				info, err := os.Stat(a.configPath)
+				if err != nil {
+					continue
+				}
+				if info.ModTime().Equal(lastMod) {
+					continue
+				}
+				lastMod = info.ModTime()
+				a.handleReload(ctx)
 			}
 		}
 	}()
