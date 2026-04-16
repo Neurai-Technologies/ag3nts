@@ -362,6 +362,28 @@ func runOrchestrate() error {
 		if layout != nil {
 			customToolsDir = filepath.Join(layout.Config, "tools")
 		}
+		// Convert MCP tool-set configs into MCPServerConfig entries.
+		var mcpServers []llm.MCPServerConfig
+		for name, ts := range cfg.ToolSets {
+			if ts.Type != "mcp" {
+				continue
+			}
+			if ts.Command == "" {
+				fmt.Fprintf(os.Stderr, "⚠ toolset %q: mcp type requires command\n", name)
+				continue
+			}
+			env := make([]string, 0, len(ts.Env))
+			for k, v := range ts.Env {
+				env = append(env, k+"="+v)
+			}
+			mcpServers = append(mcpServers, llm.MCPServerConfig{
+				Name:    name,
+				Command: ts.Command,
+				Args:    ts.Args,
+				Env:     env,
+			})
+		}
+
 		lo, err := llm.NewLocalOrchestrator(llm.OrchestratorConfig{
 			Endpoint:       cfg.LLM.Endpoint,
 			ModelsPath:     cfg.LLM.ModelsPath,
@@ -371,6 +393,7 @@ func runOrchestrate() error {
 			MaxContext:     cfg.LLM.MaxContext,
 			Rolling:        rollingCtx,
 			CustomToolsDir: customToolsDir,
+			MCPServers:     mcpServers,
 		}, registry, orch.Bus())
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "⚠ local LLM unavailable: %v (falling back to CLI agents)\n", err)

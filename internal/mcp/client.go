@@ -1,0 +1,437 @@
+package mcp
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+)
+
+const (
+	// initTimeout is how long we wait for the MCP server to respond
+	// to the initialize handshake before giving up.
+	initTimeout = 10 * time.Second
+
+	// callTimeout is the default deadline for a tools/call invocation
+	// when the caller doesn't provide its own context deadline.
+	callTimeout = 2 * time.Minute
+)
+
+// MCPTool represents a tool as returned by an MCP server's tools/list
+// response. InputSchema is preserved as raw JSON to avoid lossy parsing
+// — the llm package converts it to ToolDef at registration time.
+type MCPTool struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	InputSchema json.RawMessage `json:"inputSchema"`
+}
+
+// MCPToolResult holds the response from a tools/call invocation.
+type MCPToolResult struct {
+	Content []MCPContent `json:"content"`
+	IsError bool         `json:"isError,omitempty"`
+}
+
+// MCPContent is one item in a tools/call result content array.
+type MCPContent struct {
+	Type string `json:"type"` // "text", "image", "resource"
+	Text string `json:"text,omitempty"`
+}
+
+// MCPClient manages a persistent JSON-RPC 2.0 connection to an MCP
+// server subprocess via stdin/stdout. The server stays alive for the
+// ag3nts session; tools/call requests are sent on demand.
+//
+// Thread-safe: multiple goroutines can call ListTools/CallTool
+// concurrently. Responses are demuxed by JSON-RPC request ID.
+type MCPClient struct {
+	name   string // human-readable name (config key)
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
+	stderr io.ReadCloser
+
+	// Response demux: readLoop dispatches responses by ID.
+	reader   *bufio.Scanner
+	pendMu   sync.Mutex // protects pending map only
+	writeMu  sync.Mutex // protects stdin writes only (separate to avoid deadlock when pipe blocks)
+	nextID   int64      // atomic
+	pending  map[int64]chan *jsonRPCResponse
+
+	serverInfo   map[string]any
+	capabilities map[string]any
+
+	done    chan struct{} // closed when readLoop exits
+	readErr error        // first read error
+}
+
+// NewMCPClient spawns the MCP server subprocess, performs the
+// initialize handshake, sends notifications/initialized, and returns
+// a ready-to-use client. Returns an error if the process fails to
+// start or the handshake times out.
+//
+// The env slice should contain pre-formatted "KEY=VALUE" strings.
+// They're overlaid on top of the filtered parent environment (SR-5).
+func NewMCPClient(name, command string, args, env []string) (*MCPClient, error) {
+	cmd := exec.Command(command, args...)
+
+	// Build environment: filtered base + caller-provided overlay.
+	cmdEnv := filteredEnv()
+	cmdEnv = append(cmdEnv, env...)
+	cmd.Env = cmdEnv
+
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, fmt.Errorf("stdin pipe: %w", err)
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("stdout pipe: %w", err)
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, fmt.Errorf("stderr pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("start %s: %w", command, err)
+	}
+
+	c := &MCPClient{
+		name:    name,
+		cmd:     cmd,
+		stdin:   stdin,
+		stderr:  stderr,
+		reader:  bufio.NewScanner(stdout),
+		pending: make(map[int64]chan *jsonRPCResponse),
+		done:    make(chan struct{}),
+	}
+	c.reader.Buffer(make([]byte, 0, 64*1024), 10*1024*1024) // 10MB max line
+
+	// Drain stderr in background to prevent subprocess blocking.
+	go c.drainStderr()
+
+	// Start the response reader goroutine.
+	go c.readLoop()
+
+	// Perform the initialize handshake with a timeout.
+	ctx, cancel := context.WithTimeout(context.Background(), initTimeout)
+	defer cancel()
+
+	if err := c.initialize(ctx); err != nil {
+		_ = c.Close()
+		return nil, fmt.Errorf("initialize %s: %w", name, err)
+	}
+
+	return c, nil
+}
+
+// newMCPClientFromPipes creates a client from pre-connected pipes.
+// Used by tests to avoid spawning real subprocesses.
+func newMCPClientFromPipes(name string, stdin io.WriteCloser, stdout io.Reader) *MCPClient {
+	c := &MCPClient{
+		name:    name,
+		stdin:   stdin,
+		reader:  bufio.NewScanner(stdout),
+		pending: make(map[int64]chan *jsonRPCResponse),
+		done:    make(chan struct{}),
+	}
+	c.reader.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
+	go c.readLoop()
+	return c
+}
+
+// initialize performs the MCP handshake: sends initialize, waits for
+// response, sends notifications/initialized.
+func (c *MCPClient) initialize(ctx context.Context) error {
+	resp, err := c.sendRequest(ctx, "initialize", map[string]any{
+		"protocolVersion": "2024-11-05",
+		"capabilities":    map[string]any{},
+		"clientInfo": map[string]any{
+			"name":    "ag3nts",
+			"version": "0.1",
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("handshake: %w", err)
+	}
+	if resp.Error != nil {
+		return fmt.Errorf("server error: %s", resp.Error.Message)
+	}
+
+	// Parse server capabilities.
+	if result, ok := resp.Result.(map[string]any); ok {
+		c.serverInfo, _ = result["serverInfo"].(map[string]any)
+		c.capabilities, _ = result["capabilities"].(map[string]any)
+	}
+
+	// Send the initialized notification (no response expected).
+	return c.sendNotification("notifications/initialized", nil)
+}
+
+// ListTools sends tools/list and returns the discovered tools with
+// full input schemas.
+func (c *MCPClient) ListTools(ctx context.Context) ([]MCPTool, error) {
+	resp, err := c.sendRequest(ctx, "tools/list", map[string]any{})
+	if err != nil {
+		return nil, fmt.Errorf("tools/list: %w", err)
+	}
+	if resp.Error != nil {
+		return nil, fmt.Errorf("tools/list error: %s", resp.Error.Message)
+	}
+
+	// The result is {"tools": [...]}. Re-marshal and parse into MCPTool.
+	resultBytes, err := json.Marshal(resp.Result)
+	if err != nil {
+		return nil, fmt.Errorf("marshal tools/list result: %w", err)
+	}
+	var toolsResp struct {
+		Tools []MCPTool `json:"tools"`
+	}
+	if err := json.Unmarshal(resultBytes, &toolsResp); err != nil {
+		return nil, fmt.Errorf("parse tools/list result: %w", err)
+	}
+	return toolsResp.Tools, nil
+}
+
+// CallTool invokes a tool on the MCP server and returns the result.
+func (c *MCPClient) CallTool(ctx context.Context, toolName string, arguments json.RawMessage) (*MCPToolResult, error) {
+	resp, err := c.sendRequest(ctx, "tools/call", map[string]any{
+		"name":      toolName,
+		"arguments": json.RawMessage(arguments), // pass through
+	})
+	if err != nil {
+		return nil, fmt.Errorf("tools/call %s: %w", toolName, err)
+	}
+	if resp.Error != nil {
+		return nil, fmt.Errorf("tools/call %s error: %s", toolName, resp.Error.Message)
+	}
+
+	resultBytes, err := json.Marshal(resp.Result)
+	if err != nil {
+		return nil, fmt.Errorf("marshal tools/call result: %w", err)
+	}
+	var result MCPToolResult
+	if err := json.Unmarshal(resultBytes, &result); err != nil {
+		return nil, fmt.Errorf("parse tools/call result: %w", err)
+	}
+	return &result, nil
+}
+
+// Close gracefully shuts down the MCP server. Closes stdin (which
+// signals the server to exit), waits briefly, then kills if needed.
+func (c *MCPClient) Close() error {
+	if c.stdin != nil {
+		_ = c.stdin.Close()
+	}
+
+	// Wait for readLoop to finish (server closes stdout on exit).
+	select {
+	case <-c.done:
+	case <-time.After(3 * time.Second):
+		// Server didn't exit gracefully — kill it.
+		if c.cmd != nil && c.cmd.Process != nil {
+			_ = c.cmd.Process.Kill()
+		}
+	}
+
+	if c.cmd != nil {
+		_ = c.cmd.Wait()
+	}
+	return nil
+}
+
+// Alive returns true if the readLoop is still running (subprocess
+// hasn't crashed).
+func (c *MCPClient) Alive() bool {
+	select {
+	case <-c.done:
+		return false
+	default:
+		return true
+	}
+}
+
+// Name returns the human-readable name of this MCP server.
+func (c *MCPClient) Name() string {
+	return c.name
+}
+
+// --- Internal JSON-RPC plumbing ---
+
+// sendRequest sends a JSON-RPC request and waits for the matching
+// response. Thread-safe — multiple goroutines can call concurrently.
+func (c *MCPClient) sendRequest(ctx context.Context, method string, params any) (*jsonRPCResponse, error) {
+	id := atomic.AddInt64(&c.nextID, 1)
+
+	// Register a response channel BEFORE writing the request so there's
+	// no window where a fast response arrives before the channel exists.
+	ch := make(chan *jsonRPCResponse, 1)
+	c.pendMu.Lock()
+	c.pending[id] = ch
+	c.pendMu.Unlock()
+
+	// Clean up on exit.
+	defer func() {
+		c.pendMu.Lock()
+		delete(c.pending, id)
+		c.pendMu.Unlock()
+	}()
+
+	// Marshal and write the request. writeMu is separate from pendMu
+	// so stdin pipe blocking (which can happen with in-memory pipes in
+	// tests) doesn't prevent other goroutines from registering their
+	// pending channels.
+	req := jsonRPCRequest{
+		JSONRPC: "2.0",
+		ID:      mustMarshal(id),
+		Method:  method,
+	}
+	if params != nil {
+		req.Params = mustMarshalRaw(params)
+	}
+
+	if err := c.writeJSON(req); err != nil {
+		return nil, fmt.Errorf("write request: %w", err)
+	}
+
+	// Wait for response, context cancellation, or server death.
+	select {
+	case resp := <-ch:
+		if resp == nil {
+			return nil, fmt.Errorf("server closed connection")
+		}
+		return resp, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-c.done:
+		return nil, fmt.Errorf("server exited: %v", c.readErr)
+	}
+}
+
+// sendNotification sends a JSON-RPC notification (no id, no response).
+func (c *MCPClient) sendNotification(method string, params any) error {
+	req := jsonRPCRequest{
+		JSONRPC: "2.0",
+		Method:  method,
+	}
+	if params != nil {
+		req.Params = mustMarshalRaw(params)
+	}
+	return c.writeJSON(req)
+}
+
+// writeJSON marshals and writes a JSON-RPC message to the server's stdin.
+// Uses writeMu (separate from pendMu) so pipe-blocking writes don't
+// prevent other goroutines from registering pending response channels.
+func (c *MCPClient) writeJSON(msg any) error {
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	_, err = fmt.Fprintf(c.stdin, "%s\n", data)
+	return err
+}
+
+// readLoop reads JSON-RPC responses from stdout and dispatches them
+// to pending request channels by matching IDs. Runs as a goroutine
+// for the lifetime of the client.
+func (c *MCPClient) readLoop() {
+	defer close(c.done)
+
+	for c.reader.Scan() {
+		line := c.reader.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+
+		var resp jsonRPCResponse
+		if err := json.Unmarshal(line, &resp); err != nil {
+			// Malformed line — skip silently. Could be a log line
+			// from the server that leaked to stdout.
+			continue
+		}
+
+		// Check if this is a response (has ID) or a notification (no ID).
+		if len(resp.ID) == 0 || string(resp.ID) == "null" {
+			// Server-initiated notification — ignore for now.
+			// Future: handle notifications/tools/list_changed.
+			continue
+		}
+
+		// Parse the ID as int64 to match our request IDs.
+		var id int64
+		if err := json.Unmarshal(resp.ID, &id); err != nil {
+			continue
+		}
+
+		c.pendMu.Lock()
+		ch, ok := c.pending[id]
+		c.pendMu.Unlock()
+
+		if ok {
+			ch <- &resp
+		}
+	}
+
+	// Scanner exited — server closed stdout or crashed.
+	c.readErr = c.reader.Err()
+	if c.readErr == nil {
+		c.readErr = io.EOF
+	}
+
+	// Wake up all pending callers with nil responses.
+	c.pendMu.Lock()
+	for id, ch := range c.pending {
+		close(ch)
+		delete(c.pending, id)
+	}
+	c.pendMu.Unlock()
+}
+
+// drainStderr reads the MCP server's stderr and logs it with a prefix.
+// Prevents the subprocess from blocking on a full stderr pipe.
+func (c *MCPClient) drainStderr() {
+	if c.stderr == nil {
+		return
+	}
+	scanner := bufio.NewScanner(c.stderr)
+	for scanner.Scan() {
+		fmt.Fprintf(os.Stderr, "[mcp:%s] %s\n", c.name, scanner.Text())
+	}
+}
+
+// --- Helpers ---
+
+func mustMarshal(v any) json.RawMessage {
+	data, _ := json.Marshal(v)
+	return data
+}
+
+func mustMarshalRaw(v any) json.RawMessage {
+	data, _ := json.Marshal(v)
+	return data
+}
+
+// ResultText concatenates all text content from an MCPToolResult
+// into a single string.
+func (r *MCPToolResult) ResultText() string {
+	var sb strings.Builder
+	for _, c := range r.Content {
+		if c.Text != "" {
+			if sb.Len() > 0 {
+				sb.WriteString("\n")
+			}
+			sb.WriteString(c.Text)
+		}
+	}
+	return sb.String()
+}

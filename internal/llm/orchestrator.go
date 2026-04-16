@@ -11,6 +11,7 @@ import (
 	"github.com/rohanrgit/ag3nts/internal/agent"
 	"github.com/rohanrgit/ag3nts/internal/bus"
 	m3m0ry "github.com/rohanrgit/ag3nts/internal/context"
+	"github.com/rohanrgit/ag3nts/internal/mcp"
 )
 
 // OrchestratorConfig holds configuration for the local LLM orchestrator.
@@ -28,6 +29,7 @@ type OrchestratorConfig struct {
 	AskPermission   PermissionFunc        // callback to ask user for permission (nil = auto-approve)
 	Rolling         *m3m0ry.RollingStore  // session-scoped rolling context (nil = recall falls back to llm.Memory)
 	CustomToolsDir  string                // directory to scan for user-defined tool YAML files (empty = none)
+	MCPServers      []MCPServerConfig     // MCP servers to connect to (empty = none)
 }
 
 const defaultSystemPrompt = `<|think|>
@@ -83,6 +85,7 @@ type LocalOrchestrator struct {
 	loop         *AgentLoop
 	bus          *bus.Bus
 	workDir      string
+	mcpManager   *mcp.MCPManager // nil if no MCP servers configured
 
 	mu      sync.Mutex
 	cancel  context.CancelFunc // cancels the current Run
@@ -201,6 +204,39 @@ func NewLocalOrchestrator(
 		}
 	}
 
+	// Start MCP servers and register their tools alongside the built-in
+	// and custom tools. Each server is a persistent subprocess that
+	// speaks JSON-RPC over stdio. Tools are qualified as
+	// "servername__toolname" to avoid cross-server collisions.
+	var mcpMgr *mcp.MCPManager
+	if len(cfg.MCPServers) > 0 {
+		mcpMgr = mcp.NewMCPManager()
+		ctx := context.Background()
+		for _, srv := range cfg.MCPServers {
+			count, err := mcpMgr.StartServer(ctx, mcp.MCPManagerConfig{
+				Name:    srv.Name,
+				Command: srv.Command,
+				Args:    srv.Args,
+				Env:     srv.Env,
+			})
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "⚠ MCP server %s: %v\n", srv.Name, err)
+				continue
+			}
+			fmt.Fprintf(os.Stderr, "✓ MCP: %s (%d tools)\n", srv.Name, count)
+		}
+
+		mcpDefs, mcpExecs := LoadMCPTools(mcpMgr, func(tool, action string) bool {
+			if loop.askPermission != nil {
+				return loop.askPermission(tool, action)
+			}
+			return true
+		})
+		if len(mcpDefs) > 0 {
+			loop.RegisterTools(mcpDefs, mcpExecs)
+		}
+	}
+
 	// Set up conversation summarizer using the head model.
 	conversation.SetSummarizer(func(ctx context.Context, text string) (string, error) {
 		msg, _, err := client.Chat(ctx, ChatRequest{
@@ -225,6 +261,7 @@ func NewLocalOrchestrator(
 		loop:         loop,
 		bus:          eventBus,
 		workDir:      cfg.WorkDir,
+		mcpManager:   mcpMgr,
 	}
 
 	return lo, nil
@@ -252,6 +289,10 @@ func (lo *LocalOrchestrator) WarmUp(ctx context.Context) error {
 
 // Shutdown unloads all models and stops Ollama.
 func (lo *LocalOrchestrator) Shutdown() {
+	// Stop MCP servers first (they may be mid-call).
+	if lo.mcpManager != nil {
+		lo.mcpManager.StopAll()
+	}
 	ctx := context.Background()
 	for _, role := range []ModelRole{ModelHead, ModelReasoner} {
 		_ = lo.models.Unload(ctx, role)
