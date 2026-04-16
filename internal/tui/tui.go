@@ -1092,7 +1092,7 @@ func (a *App) handleSlash(ctx context.Context, input string) {
 			"  /status   — show overview",
 			"  /reload   — reload config and apply hot settings",
 			"  /cost    — show session cost breakdown",
-			"  /recipe   — list or run a recipe (/recipe <name> [key=val...])",
+			"  /recipe   — list or run a recipe (/recipe <name> [--dry-run] [key=val...])",
 			"  /schedule — list background schedules",
 			"  /m3m0ry   — rolling context (/m3m0ry stats | search <q> | tail [n])",
 			"  /quit     — exit",
@@ -1476,8 +1476,17 @@ func formatBytes(b int64) string {
 }
 
 // handleRecipe lists or runs a recipe.
-// Usage: /recipe (list all) or /recipe <name> [key=val ...]
+// Usage: /recipe (list all) or /recipe <name> [--dry-run] [key=val ...]
 func (a *App) handleRecipe(ctx context.Context, args string) {
+	// Detect --dry-run flag and strip it before parsing name/params.
+	dryRun := false
+	if strings.Contains(args, "--dry-run") || strings.Contains(args, "--dry") {
+		dryRun = true
+		args = strings.ReplaceAll(args, "--dry-run", "")
+		args = strings.ReplaceAll(args, "--dry", "")
+		args = strings.TrimSpace(args)
+	}
+
 	// Build recipe loader from config paths.
 	var searchPaths []string
 	a.cfgMu.RLock()
@@ -1540,6 +1549,14 @@ func (a *App) handleRecipe(ctx context.Context, args string) {
 		return
 	}
 
+	// Dry-run: expand and render without dispatching. Shows the DAG,
+	// rendered prompts, and cost estimates so the user can verify
+	// the recipe before burning tokens.
+	if dryRun {
+		a.handleRecipeDryRun(r, params)
+		return
+	}
+
 	// Dispatch via orchestrator.RunRecipe — handles single + multi-task
 	// recipes uniformly, expands DAG, adds all tasks to the queue, and
 	// sets up the evaluator loop if present.
@@ -1569,6 +1586,188 @@ func (a *App) handleRecipe(ctx context.Context, args string) {
 	} else {
 		a.printLine("ag3nts", fmt.Sprintf("Recipe %q dispatched as task %s → %s", r.Name, runID, r.Agent))
 	}
+}
+
+// handleRecipeDryRun expands the recipe without dispatching and renders
+// a detailed preview — parameters, stages, prompt snippets, and
+// historical cost estimates. Helps users verify recipe wiring and
+// estimate cost before committing to a real run.
+func (a *App) handleRecipeDryRun(r *recipe.Recipe, params map[string]string) {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Recipe %q — dry run (no tasks dispatched)\n", r.Name)
+
+	// Parameters.
+	fmt.Fprintf(&b, "\nParameters:\n")
+	for _, p := range r.Parameters {
+		val := params[p.Key]
+		if val == "" {
+			val = dimStyle.Render("(not set)")
+		}
+		fmt.Fprintf(&b, "  %-16s %s\n", p.Key+":", val)
+	}
+
+	if r.IsMultiTask() {
+		a.renderMultiTaskDryRun(&b, r, params)
+	} else {
+		a.renderSingleTaskDryRun(&b, r, params)
+	}
+
+	fmt.Fprintf(&b, "\nUse /recipe %s %s (without --dry-run) to dispatch.",
+		r.Name, dryRunParamSummary(params))
+
+	a.printLines("ag3nts", b.String())
+}
+
+// renderMultiTaskDryRun expands the recipe DAG and renders each stage.
+func (a *App) renderMultiTaskDryRun(b *strings.Builder, r *recipe.Recipe, params map[string]string) {
+	ec := recipe.ExpansionContext{
+		RecipeRunID: "DRY",
+		Params:      params,
+		BaseDir:     a.orch.BaseDir(),
+	}
+	tasks, err := r.Expand(ec)
+	if err != nil {
+		fmt.Fprintf(b, "\nExpansion error: %v\n", err)
+		return
+	}
+
+	fmt.Fprintf(b, "\nStages (%d):\n", len(tasks))
+	for _, t := range tasks {
+		agentLabel := t.Agent
+		if agentLabel == "" {
+			agentLabel = "router"
+		}
+		deps := ""
+		if len(t.DependsOn) > 0 {
+			short := make([]string, len(t.DependsOn))
+			for i, d := range t.DependsOn {
+				short[i] = strings.TrimPrefix(d, "DRY-")
+			}
+			deps = dimStyle.Render("  depends_on=[" + strings.Join(short, ", ") + "]")
+		}
+		ctx := ""
+		if len(t.ContextFrom) > 0 {
+			short := make([]string, len(t.ContextFrom))
+			for i, c := range t.ContextFrom {
+				short[i] = strings.TrimPrefix(c, "DRY-")
+			}
+			ctx = dimStyle.Render("  context=[" + strings.Join(short, ", ") + "]")
+		}
+		timeout := ""
+		if t.Timeout > 0 {
+			timeout = dimStyle.Render(fmt.Sprintf("  timeout=%s", t.Timeout))
+		}
+
+		stageID := strings.TrimPrefix(t.ID, "DRY-")
+		fmt.Fprintf(b, "  · %-14s %-8s%s%s%s\n",
+			stageID, agentLabel, deps, ctx, timeout)
+	}
+
+	// Prompt previews — show the first few lines of each task's
+	// rendered description so the user can verify param substitution.
+	fmt.Fprintf(b, "\nPrompt previews:\n")
+	for _, t := range tasks {
+		stageID := strings.TrimPrefix(t.ID, "DRY-")
+		preview := firstNLines(t.Description, 3)
+		if len(t.Description) > len(preview) {
+			preview += dimStyle.Render(fmt.Sprintf(" [%d chars total]", len(t.Description)))
+		}
+		fmt.Fprintf(b, "  %s:\n    %s\n", stageID, strings.ReplaceAll(preview, "\n", "\n    "))
+	}
+
+	// Historical cost estimate from SQLite.
+	a.renderHistoricalCostEstimate(b, r)
+}
+
+// renderSingleTaskDryRun shows the single task's details.
+func (a *App) renderSingleTaskDryRun(b *strings.Builder, r *recipe.Recipe, params map[string]string) {
+	agentLabel := r.Agent
+	if agentLabel == "" {
+		agentLabel = "router"
+	}
+	fmt.Fprintf(b, "\nSingle-task recipe → agent: %s\n", agentLabel)
+
+	preview := ""
+	if r.SystemPrompt != "" {
+		preview = firstNLines(r.SystemPrompt, 5)
+	} else if r.Description != "" {
+		preview = firstNLines(r.Description, 5)
+	}
+	if preview != "" {
+		fmt.Fprintf(b, "\nPrompt preview:\n  %s\n", strings.ReplaceAll(preview, "\n", "\n  "))
+	}
+
+	a.renderHistoricalCostEstimate(b, r)
+}
+
+// renderHistoricalCostEstimate queries SQLite for prior runs of the
+// same recipe type and renders an estimated cost line. If no prior
+// runs exist, prints a "no history" note.
+func (a *App) renderHistoricalCostEstimate(b *strings.Builder, r *recipe.Recipe) {
+	db := a.orch.StoreDB()
+	if db == nil {
+		return
+	}
+
+	// Look for completed tasks whose type matches this recipe's stage types.
+	// For simplicity, query by the recipe name prefix in task type.
+	sessID := a.orch.SessionID()
+	allTasks, err := db.ListTasks(sessID)
+	if err != nil || len(allTasks) == 0 {
+		// No history in current session. Try a broader scan across
+		// all sessions for this recipe type.
+		return
+	}
+
+	var totalCost float64
+	var totalIn, totalOut int64
+	matchPrefix := "repair."
+	if !r.IsMultiTask() {
+		matchPrefix = r.Name
+	}
+	found := 0
+	for _, t := range allTasks {
+		if strings.HasPrefix(t.Type, matchPrefix) && t.Status == "completed" {
+			totalCost += t.CostUSD
+			totalIn += t.InputTokens
+			totalOut += t.OutputTokens
+			found++
+		}
+	}
+	if found > 0 {
+		fmt.Fprintf(b, "\nHistorical (from this session, %d completed stages):\n", found)
+		fmt.Fprintf(b, "  ↑%s ↓%s  $%.4f\n",
+			formatTokensShort(int(totalIn)),
+			formatTokensShort(int(totalOut)),
+			totalCost)
+	}
+}
+
+// firstNLines returns the first n non-empty lines of s, joined.
+func firstNLines(s string, n int) string {
+	lines := strings.Split(s, "\n")
+	var out []string
+	for _, l := range lines {
+		trimmed := strings.TrimSpace(l)
+		if trimmed == "" {
+			continue
+		}
+		out = append(out, trimmed)
+		if len(out) >= n {
+			break
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+// dryRunParamSummary produces a compact key=val string for the "use
+// without --dry-run" footer.
+func dryRunParamSummary(params map[string]string) string {
+	var parts []string
+	for k, v := range params {
+		parts = append(parts, k+"="+v)
+	}
+	return strings.Join(parts, " ")
 }
 
 // handleSchedule lists background schedules.

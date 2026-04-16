@@ -492,6 +492,13 @@ func (o *Orchestrator) TaskPersistDir() string {
 	return o.taskDir
 }
 
+// BaseDir returns the ag3nts install root used for recipe file:
+// template resolution. Used by the TUI dry-run renderer to expand
+// templates without actually dispatching.
+func (o *Orchestrator) BaseDir() string {
+	return o.baseDir
+}
+
 func (o *Orchestrator) Primary() string {
 	return o.primary
 }
