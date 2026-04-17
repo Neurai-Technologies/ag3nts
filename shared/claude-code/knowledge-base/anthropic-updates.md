@@ -1,6 +1,49 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-04-16
+## Latest Scan: 2026-04-17
+
+### Summary
+- Sources scanned: 4 (anthropic.com/news, /research, /engineering, docs.anthropic.com)
+- New findings: 2
+- Actionable integrations: 1
+
+### Findings
+
+#### Claude Opus 4.7 Released
+- **Source**: https://www.anthropic.com/news/claude-opus-4-7
+- **Published**: April 2026
+- **Category**: Model
+- **What Changed**: Opus 4.7 is now GA as the most capable generally available model. 13% lift on a 93-task coding benchmark over Opus 4.6, solving 4 tasks that neither Opus 4.6 nor Sonnet 4.6 could resolve. Pricing: $5/$25 per million input/output tokens. Claude Code can now run Opus 4.7 in the background for long-running autonomous tasks. A new Cyber Verification Program allows security professionals to use Opus 4.7 for vetted vulnerability research and penetration testing.
+- **Impact on ag3nts**: The `software-architect` and `security-engineer` agents declare `model: opus` in frontmatter. If the Claude Code alias resolves to latest Opus, they'll automatically gain 4.7's 13% coding improvement and background-task capability. The Cyber Verification Program is directly relevant to the `security-engineer` agent's use case for authorized security audits.
+- **Proposed Changes**:
+  - [ ] Verify `model: opus` alias resolves to Opus 4.7 in `shared/claude-code/files/agents/software-architect.md` and `security-engineer.md` — if not, update to explicit `claude-opus-4-7-*` model ID
+  - [ ] `shared/ag3nts.md` — update agent table note for `software-architect` and `security-engineer`: Opus 4.7 (GA) replaces 4.6; 13% coding improvement, background task support
+- **Priority**: High — Opus 4.7 is a significant improvement for the two highest-cost agents in ag3nts; alias verification needed before relying on the upgrade
+
+---
+
+#### Claude's New Constitution (Missed from January 2026)
+- **Source**: https://www.anthropic.com/news/claude-new-constitution
+- **Published**: January 21, 2026 (missed in previous scans)
+- **Category**: Safety
+- **What Changed**: Anthropic published a new model spec (constitution) for Claude, shifting from a list of standalone rules to a principles-based framework explaining *why* Claude behaves as it does. Claude itself uses the constitution to generate synthetic training data. Emphasizes understanding over rule-following and the ability to generalize to novel situations.
+- **Impact on ag3nts**: The `reality-checker`'s "defaults to NEEDS WORK" posture and the `security-engineer`'s minimal-permission design align with the constitution's emphasis on user agency and careful action. Agents handling novel edge cases will generalize more gracefully than under the old rule-list approach.
+- **Proposed Changes**: None
+- **Priority**: Low — safety/informational; reinforces existing agent design principles
+
+---
+
+### Recommendations
+
+Top 1 change to make now:
+
+1. **Verify Opus 4.7 alias resolution** — Check that `model: opus` in `software-architect.md` and `security-engineer.md` agent frontmatter resolves to Opus 4.7. The upgrade delivers 13% better coding performance and background-task capability — most impactful upgrade available for the two most expensive agents in ag3nts.
+
+Note: Most other April 2026 findings (Claude Agent SDK rename, Tool Search Tool, MCP Donation to AAIF, Agent Capabilities API, evals post) were already captured in the April 10–15 scans below.
+
+---
+
+## Scan: 2026-04-16
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/news, /research, /engineering, docs.anthropic.com)
