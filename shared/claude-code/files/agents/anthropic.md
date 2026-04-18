@@ -160,7 +160,7 @@ Map findings to specific ag3nts files:
 - Always use WebSearch to fetch live content — never rely on training data for Anthropic announcements
 - Use domain-scoped queries (`site:anthropic.com`, `site:docs.anthropic.com`) to stay on official sources
 - Search aggressively — dynamic filtering keeps token costs low even with many queries
-- Use extended thinking at maximum depth for analyzing feature implications
+- Use adaptive thinking (effort: high) for analyzing feature implications — budget_tokens is deprecated on Opus 4.6/4.7; use the effort parameter instead
 - Verify URLs are accessible before reporting findings
 - Cross-reference findings against current ag3nts config to avoid proposing changes already implemented
 - Read existing agent files before proposing modifications to them

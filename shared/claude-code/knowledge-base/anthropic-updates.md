@@ -1,5 +1,71 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-04-18
+
+### Summary
+- Sources scanned: 4 (anthropic.com/news, /research, /engineering, docs.anthropic.com)
+- New findings: 4
+- Actionable integrations: 1
+
+### Findings
+
+#### [High] `budget_tokens` Deprecated; `effort` Parameter Now GA
+- **Source**: https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking
+- **Published**: April 2026 (confirmed GA in Opus 4.7 release cycle)
+- **Category**: API
+- **What Changed**: `budget_tokens` is no longer supported on Opus 4.7 — API returns a 400 error. On Opus 4.6 and Sonnet 4.6 it still works but is deprecated. The replacement is adaptive thinking: `thinking: {type: "adaptive"}` with the `effort` parameter, which is now GA (no beta header required) on Opus 4.6+.
+- **Impact on ag3nts**: The `anthropic.md` agent instructs "Use extended thinking at maximum depth for analyzing feature implications" — if this is interpreted as a `budget_tokens`-based call on Opus 4.7 it will break. The main session already uses `"effortLevel": "high"` in settings.json, which is the correct effort-based pattern. Agent instructions referencing "maximum depth" should be updated to reference adaptive thinking / effort level explicitly to avoid confusion when agents migrate to Opus 4.7.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/files/agents/anthropic.md` line 163 — update "Use extended thinking at maximum depth" to "Use adaptive thinking (effort: high) for analyzing feature implications" to align with the effort-based API
+- **Priority**: High — `budget_tokens` is a hard 400 error on Opus 4.7; the setting is correct in settings.json but agent documentation is inconsistent
+
+---
+
+#### [Medium] Default API Model Switches to Opus 4.7 on April 23, 2026
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: April 2026
+- **Category**: Model / API
+- **What Changed**: On April 23, 2026 (5 days), the default model for Enterprise pay-as-you-go and Anthropic API users changes to Opus 4.7. Any call that omits the `model` field will get Opus 4.7. Can be overridden via `ANTHROPIC_MODEL` env var or explicit `model` field.
+- **Impact on ag3nts**: All ag3nts agents declare explicit model aliases (`model: haiku`, `model: sonnet`, `model: opus`) in frontmatter, so no change to agent behavior. The `--bare` scripted invocations in CI/cron should be verified to always pass an explicit model.
+- **Proposed Changes**:
+  - [ ] Verify any `claude --bare -p "..."` scripted invocations pass `--model` or rely on `ANTHROPIC_MODEL` — confirm no implicit default is used
+- **Priority**: Medium — ag3nts agents are safe by design; low residual risk in bare-mode scripts
+
+---
+
+#### [Low] Claude Sonnet 4 and Opus 4 (May 2025 releases) Retire June 15, 2026
+- **Source**: https://docs.anthropic.com/en/docs/resources/model-deprecations
+- **Published**: Notified April 14, 2026
+- **Category**: Model
+- **What Changed**: `claude-sonnet-4-20250514` and `claude-opus-4-20250514` will be retired from the API on June 15, 2026. Recommended migrations: Sonnet 4.6 and Opus 4.7 respectively.
+- **Impact on ag3nts**: Agents use aliases (`sonnet`, `opus`) not pinned version IDs, so no direct breakage. Informational only.
+- **Proposed Changes**: None
+- **Priority**: Low — ag3nts unaffected by design; aliases resolve to current generation
+
+---
+
+#### [Low] Claude Design Launched by Anthropic Labs
+- **Source**: https://www.anthropic.com/news/claude-design-anthropic-labs
+- **Published**: April 2026
+- **Category**: Tooling
+- **What Changed**: Anthropic Labs shipped Claude Design — a product for collaboratively creating polished visual work (interfaces, slides, one-pagers, prototypes) with Claude. Complements the visual reasoning improvements in Opus 4.7.
+- **Impact on ag3nts**: The `ux-architect` agent handles design tokens, theme scaffolding, and layout systems. Claude Design could serve as a companion tool for rapid visual prototyping before the `ux-architect` formalizes the design system. No code change needed; useful as a reference.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add Claude Design as a reference link for the `ux-architect` agent
+- **Priority**: Low — new product, not an API change; no breaking impact
+
+---
+
+### Recommendations
+
+Top 1 change to make now:
+
+1. **Update `anthropic.md` extended thinking instruction** — Change line 163 from "Use extended thinking at maximum depth" to "Use adaptive thinking (effort: high)" to align with the current API. `budget_tokens` returns a 400 error on Opus 4.7; using the effort-based language prevents confusion and future breakage when the `anthropic` agent is upgraded from Sonnet to Opus 4.7.
+
+**Haiku 3 deprecation follow-up (from April 15 scan)**: Confirmed resolved — the `feedback` and `version` agents use `model: haiku` alias, which Claude Code resolves to the latest Haiku (4.5 as of 2026). The Haiku 3 explicit model ID (`claude-3-haiku-20240307`) is not referenced in any agent file. No action needed.
+
+---
+
 ## Latest Scan: 2026-04-17
 
 ### Summary
