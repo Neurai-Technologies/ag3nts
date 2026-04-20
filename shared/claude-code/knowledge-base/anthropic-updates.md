@@ -1,5 +1,88 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-04-20
+
+### Summary
+- Sources scanned: 4 (anthropic.com/news, /research, /engineering, docs.anthropic.com)
+- New findings: 5
+- Actionable integrations: 3
+
+### Findings
+
+#### [High] Agent Skills — Open Standard for Portable Specialized Agents
+- **Source**: https://www.anthropic.com/news/skills
+- **Published**: April 2026
+- **Category**: Agent patterns / Tooling
+- **What Changed**: Agent Skills are organized folders of instructions, scripts, and resources that agents can discover and load dynamically for specialized tasks. Supported across Claude.ai, Claude Code, Claude Agent SDK, and the Claude Developer Platform. Published as an open standard for cross-platform portability. Companion engineering post: https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills
+- **Impact on ag3nts**: The ag3nts system already uses a `~/.claude/agents/` folder pattern that is structurally analogous to Agent Skills. Formally adopting the Agent Skills format would make ag3nts agents portable to Claude.ai and other Claude platforms without modification. The existing agent `.md` files (feedback, code-reviewer, security-engineer, etc.) should be reviewed for conformance with the Agent Skills open standard.
+- **Proposed Changes**:
+  - [ ] Review Agent Skills open standard format at https://www.anthropic.com/news/skills and compare to existing `shared/claude-code/files/agents/*.md` structure
+  - [ ] Add Agent Skills reference to `shared/claude-code/knowledge-base/repos.md`
+- **Priority**: High — direct architectural alignment; conforming agents become portable to all Claude platforms
+
+---
+
+#### [Medium] New API Agent Capabilities: Code Execution, MCP Connector, Files API, 1hr Cache
+- **Source**: https://www.anthropic.com/news/agent-capabilities-api
+- **Published**: April 2026 (public beta)
+- **Category**: API
+- **What Changed**: Four new API capabilities now in public beta: (1) **Code execution tool** — Python sandbox inside API calls for data analysis and visualization; (2) **API-managed MCP connector** — pass a remote MCP server URL directly in the API request; Anthropic handles connection management, tool discovery, and error handling (no custom client harness required); (3) **Files API** — upload documents once, reference across many conversations by ID; (4) **Extended prompt caching TTL** — 1-hour TTL (vs. 5 min default) at additional cost, reduces latency up to 85% and costs up to 90%.
+- **Impact on ag3nts**: (a) The MCP connector simplification may reduce boilerplate in any ag3nts scripts that manually manage MCP connections. (b) The Files API could simplify large-context passing between pipeline stages (e.g., passing full repo diffs across REPAIR stages). (c) Extended caching is directly beneficial for the code-reviewer's 4-parallel-agent pattern, which currently re-sends system prompts to each sub-agent.
+- **Proposed Changes**:
+  - [ ] Evaluate Files API for REPAIR pipeline stage-to-stage context passing (upload diff once, reference by ID in sub-agents)
+  - [ ] Evaluate extended 1-hour caching TTL for code-reviewer parallel sub-agent system prompts
+- **Priority**: Medium — beta features, no breaking changes; cost/performance wins available now
+
+---
+
+#### [Medium] Token-Saving Updates: Cache-Aware Rate Limits + Token-Efficient Tool Use GA
+- **Source**: https://www.anthropic.com/news/token-saving-updates
+- **Published**: April 2026
+- **Category**: API
+- **What Changed**: Three improvements: (1) **Cache-aware rate limits** — cached token reads no longer count against Input Tokens Per Minute (ITPM) limit, allowing higher throughput without rate-limit hits; (2) **Simplified prompt caching** — setting a cache breakpoint automatically reads from the longest previously cached prefix (no manual cache key management); (3) **Token-efficient tool use** — new beta header `anthropic-beta: token-efficient-tool-use-2025-02-19` reduces tokens consumed by tool definitions.
+- **Impact on ag3nts**: The code-reviewer agent dispatches 4 parallel sub-agents — cache-aware rate limits directly benefit this high-throughput pattern. Token-efficient tool use is applicable to any SDK-based agent that uses tools (security-engineer, code-reviewer). Combined with the simplified caching, agents no longer need to manually manage cache breakpoint positions.
+- **Proposed Changes**:
+  - [ ] Add `anthropic-beta: token-efficient-tool-use-2025-02-19` to any SDK-invoked agents that send tool definitions (check `shared/claude-code/hooks/*.sh`)
+- **Priority**: Medium — no breaking changes; reduces cost and rate-limit friction for parallel agent workflows
+
+---
+
+#### [Medium] Context Engineering Guide for AI Agents
+- **Source**: https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents
+- **Published**: April 2026
+- **Category**: Agent patterns
+- **What Changed**: Anthropic published a comprehensive guide defining "context engineering" — managing the full context state (system instructions, tools, MCP servers, external data, message history) for long-running agents. Key principle: find the smallest possible set of high-signal tokens that maximize the probability of desired behavior. The folder/file structure of an agent is itself a form of context engineering.
+- **Impact on ag3nts**: This directly validates and extends the ag3nts design philosophy. The ag3nts use of `--bare` mode for scripted runs (strips unnecessary context), short focused agent `.md` files, and modular stage-by-stage context in the REPAIR pipeline all align with these principles. Useful as a reference for future agent design decisions.
+- **Proposed Changes**:
+  - [ ] Add to `shared/claude-code/knowledge-base/repos.md` as a reference for agent design
+- **Priority**: Medium — no code changes; valuable architectural reference
+
+---
+
+#### [Low] Claude Agent SDK (Renamed from Claude Code SDK)
+- **Source**: https://www.anthropic.com/engineering/building-agents-with-the-claude-agent-sdk
+- **Published**: April 2026
+- **Category**: Tooling
+- **What Changed**: The Claude Code SDK has been renamed to the Claude Agent SDK to reflect broader applicability beyond coding. Same infrastructure; same API. Documentation at https://docs.anthropic.com/en/docs/claude-code/sdk remains under the claude-code path but the product is now called Claude Agent SDK. Xcode 26.3 integrates the Claude Agent SDK natively.
+- **Impact on ag3nts**: The `ag3nts.md` "Scripted / Automated Runs" section references Claude Code CLI (`claude --bare`) which is correct, but any documentation referring to "Claude Code SDK" should now read "Claude Agent SDK". The `repos.md` link to the Agent SDK overview should be verified.
+- **Proposed Changes**:
+  - [ ] Search `shared/` for "Claude Code SDK" references and update to "Claude Agent SDK"
+- **Priority**: Low — naming only; no functional change
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **Review Agent Skills conformance** (`shared/claude-code/files/agents/*.md`) — The Agent Skills open standard means ag3nts agents can be made portable to Claude.ai and the Claude Developer Platform without custom tooling. Review the standard's required folder structure and update agent files to conform. High leverage: one refactor, multi-platform reach.
+
+2. **Add Files API + 1-hour cache to REPAIR pipeline eval** — The code-reviewer's 4-agent parallel dispatch sends the same large diff to each sub-agent. Using the Files API to upload the diff once and the extended caching TTL for shared system prompts could meaningfully reduce both cost and rate-limit pressure. Medium effort, measurable savings.
+
+3. **Add repos.md references** for: Agent Skills standard, Context Engineering guide, and token-saving updates announcement — keeps the knowledge base current for future agent design decisions.
+
+---
+
 ## Latest Scan: 2026-04-18
 
 ### Summary
