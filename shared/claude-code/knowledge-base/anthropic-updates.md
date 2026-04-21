@@ -1,6 +1,102 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-04-20
+## Latest Scan: 2026-04-21
+
+### Summary
+- Sources scanned: 4 (anthropic.com/news, /research, /engineering, docs.anthropic.com)
+- New findings: 6
+- Actionable integrations: 4
+
+### Findings
+
+#### [High] Claude Managed Agents Launched in Public Beta
+- **Source**: https://www.anthropic.com/engineering/managed-agents
+- **Published**: April 2026
+- **Category**: API / Agent
+- **What Changed**: Anthropic launched Claude Managed Agents (`managed-agents-2026-04-01` beta header required) — a fully hosted agent harness that virtualizes three components: a **session** (append-only log), a **harness** (tool-call routing loop), and a **sandbox** (secure code-execution environment). Agents run as long-horizon autonomous sessions with server-sent event streaming. Interfaces stay stable as internal harness implementations change.
+- **Impact on ag3nts**: The ag3nts system implements its own harness via PreToolUse/PostToolUse hooks in settings.json with scripts in `shared/claude-code/hooks/`. Managed Agents is an alternative execution model offering hosted sandboxing — most relevant for ag3nts workflows that run outside a local developer machine (CI/CD, cron, scripted automation). The `--bare -p` scripted invocation pattern could be augmented or replaced for headless tasks. Agents like `code-reviewer` (4 parallel specialists) and the REPAIR pipeline stages are the best candidates to evaluate against Managed Agents sessions.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add Managed Agents engineering post and API docs as references for harness architecture
+  - [ ] `shared/ag3nts.md` → Scripted / Automated Runs section — add a note that Claude Managed Agents (beta) is an alternative to `--bare -p` for hosted/sandboxed long-horizon agent sessions
+- **Priority**: High — new hosting primitive that directly competes with/complements the custom ag3nts harness; foundational for any future move to cloud-hosted agent runs
+
+---
+
+#### [High] Advisor Tool Launched in Public Beta
+- **Source**: https://www.anthropic.com/news/agent-capabilities-api
+- **Published**: April 2026
+- **Category**: API / Agent
+- **What Changed**: The **advisor tool** is now in public beta. It pairs a faster, cheaper **executor model** with a higher-intelligence **advisor model** that provides strategic guidance mid-generation. Long-horizon agentic workloads get close to advisor-solo quality at executor-model token rates — the bulk of generation happens at the executor's cost.
+- **Impact on ag3nts**: The `software-architect` (Opus) and `security-engineer` (Opus) agents are the most expensive in the system. Both run long-horizon analysis tasks where quality matters more than speed. The advisor pattern maps naturally: Sonnet 4.6 as executor + Opus 4.7 as advisor would reduce cost while maintaining Opus-level reasoning quality. The `code-reviewer` (4 parallel specialists at Sonnet) could also benefit from an Opus advisor for the final synthesis step.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/files/agents/software-architect.md` — add a note on advisor tool usage pattern for long-horizon architectural analysis (executor: sonnet, advisor: opus)
+  - [ ] `shared/claude-code/files/agents/security-engineer.md` — same advisor pattern note for threat modeling and OWASP audit phases
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add agent-capabilities-api announcement as a reference
+- **Priority**: High — direct cost-reduction opportunity for the two most expensive Opus agents without sacrificing quality
+
+---
+
+#### [Medium] `ant` CLI Launched — YAML-Versioned Claude API Client
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: April 2026
+- **Category**: Tooling
+- **What Changed**: Anthropic launched **`ant`**, a command-line client for the Claude API. Features: faster direct API interaction, native Claude Code integration, and **versioning of API resources in YAML files** (agents, prompts, configs stored as code).
+- **Impact on ag3nts**: The ag3nts system uses `claude --bare -p "..."` for scripted/automated non-interactive runs. The `ant` CLI is a complementary tool for API-level operations (prompt management, resource versioning). YAML-versioned resources align with ag3nts' portable SSD/git-based config philosophy. Worth evaluating as a replacement or companion for bare-mode scripted calls that only need API access (no hooks, no CLAUDE.md context).
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` → Commands table — add `ant` as a CLI entry once evaluated (verify availability via the Anthropic console)
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add ant CLI docs as a reference
+- **Priority**: Medium — new tooling that could streamline scripted runs; evaluate before adopting
+
+---
+
+#### [Medium] 300k Output Tokens on Message Batches API (Opus 4.7, 4.6, Sonnet 4.6)
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: April 2026 (beta header: `output-300k-2026-03-24`)
+- **Category**: API
+- **What Changed**: The `max_tokens` cap on the **Message Batches API** has been raised to **300,000** for Claude Opus 4.7, Opus 4.6, and Sonnet 4.6. Enabled via the `output-300k-2026-03-24` beta header. Supports long-form content, large structured data, and large code generation tasks in batch mode.
+- **Impact on ag3nts**: The ag3nts `code-reviewer` dispatches 4 parallel specialist sub-agents. Running these as a Message Batch (instead of 4 live API calls) would reduce cost by ~50% (batch pricing). The 300k output cap removes the previous constraint for large diff analysis.
+- **Proposed Changes**:
+  - [ ] Document in `shared/ag3nts.md` → Scripted / Automated Runs — note that Message Batches API with `output-300k-2026-03-24` header is available for bulk/offline agent tasks at reduced cost
+- **Priority**: Medium — cost optimization opportunity for parallel agent workflows; not urgent but on the roadmap
+
+---
+
+#### [Medium] Engineering Post: Harness Design for Long-Running Application Development
+- **Source**: https://www.anthropic.com/engineering/harness-design-long-running-apps
+- **Published**: April 2026
+- **Category**: Agent / Tooling
+- **What Changed**: New Anthropic engineering post on how harness design substantially impacts agentic coding performance — sometimes more than the leaderboard gap between top models. Covers patterns applied to frontend design and long-running autonomous software engineering. Companion to the earlier "Effective harnesses for long-running agents" post.
+- **Impact on ag3nts**: Directly relevant to the ag3nts REPAIR pipeline (Stages 4 and 6) and the PreToolUse/PostToolUse hook architecture. The post likely contains patterns applicable to the existing harness scripts in `shared/claude-code/hooks/`.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add this post as a reference alongside the existing "effective-harnesses" entry
+- **Priority**: Medium — knowledge-base enrichment; no code change, but informs harness architecture decisions
+
+---
+
+#### [Low] Research: Automated Alignment Researchers (April 14, 2026)
+- **Source**: https://www.anthropic.com/research
+- **Published**: April 14, 2026
+- **Category**: Safety / Research
+- **What Changed**: Anthropic published research on using LLMs to scale scalable oversight — automated alignment researchers that help address the challenge of supervising AI systems that may exceed human expertise in specific domains.
+- **Impact on ag3nts**: Informational. The `reality-checker` and `security-engineer` agents embody the spirit of automated oversight. This research may inform future evaluation agent designs.
+- **Proposed Changes**: None — informational only
+- **Priority**: Low — safety research; no direct integration needed
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **Add advisor tool pattern to Opus agent instructions** — Both `software-architect.md` and `security-engineer.md` should document the advisor tool pattern (executor: Sonnet 4.6, advisor: Opus 4.7). Most actionable cost-reduction for the two most expensive agents without sacrificing analysis quality.
+
+2. **Add Managed Agents and new engineering posts to repos.md** — The Managed Agents engineering post, agent-capabilities-api announcement, and harness-design-long-running-apps post are all directly relevant reference material for ag3nts harness architecture.
+
+3. **Evaluate `ant` CLI for scripted runs** — Check availability and test `ant` as an alternative to `claude --bare -p` for API-level scripted calls; update the Commands table in `ag3nts.md` if it fits the workflow.
+
+---
+
+## Scan: 2026-04-20
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/news, /research, /engineering, docs.anthropic.com)
