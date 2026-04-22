@@ -1,5 +1,72 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-04-22
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 4
+- Actionable integrations: 2
+
+### Findings
+
+#### [Medium] `xhigh` Effort Level — Missed Detail from Opus 4.7 Release
+- **Source**: https://www.anthropic.com/news/claude-opus-4-7
+- **Published**: April 16, 2026 (missed in April 17 scan)
+- **Category**: Model / API
+- **What Changed**: Opus 4.7 introduced `xhigh` as a new effort level sitting between the existing `high` and `max` settings. The full effort ladder is now `low → medium → high → xhigh → max`. Anthropic describes `xhigh` as giving finer control over the reasoning depth vs. latency tradeoff on hard problems — most useful for complex multi-step analysis where `high` is insufficient but `max` is cost-prohibitive.
+- **Impact on ag3nts**: The `anthropic.md` agent instruction (line 163) says "Use adaptive thinking (effort: high) for analyzing feature implications." The `software-architect` (Opus) runs deep architectural analysis; `security-engineer` (Opus in Stage 4) runs threat modeling. Both are candidates for `xhigh` on the most complex tasks (e.g., REPAIR pipeline on a large architecture, security audit of a new auth subsystem). The April 13 scan confirmed `settings.json` uses `"effortLevel": "high"` as the session default — `xhigh` would need to be set per-agent or per-call when warranted.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/files/agents/anthropic.md` line 163 — append "; use `xhigh` for deeply ambiguous multi-source findings where `high` leaves uncertainty" to the adaptive thinking instruction
+  - [ ] `shared/claude-code/files/agents/software-architect.md` — add a note that `xhigh` effort is available for particularly complex architectural decisions (multi-bounded-context designs, large refactors)
+- **Priority**: Medium — enhancement; `high` remains valid and correct for most tasks; `xhigh` is a precision tool for the deepest analysis
+
+---
+
+#### [Medium] Compaction API — Server-Side Context Summarization (Previously Unlogged)
+- **Source**: https://docs.anthropic.com/en/build-with-claude/compaction; https://platform.claude.com/cookbook/tool-use-automatic-context-compaction
+- **Published**: January 2026 (beta, `compact-2026-01-12` header); supported on Opus 4.6 and Sonnet 4.6
+- **Category**: API / Agent
+- **What Changed**: Anthropic's Compaction API automatically summarizes older conversation segments when input tokens approach a configured threshold. Claude generates the summary itself (using full understanding of the conversation), producing significantly better results than naive truncation. The API detects when input tokens exceed the trigger threshold, generates a compaction block, then continues from the compacted state. Enable via the `compact-2026-01-12` beta header.
+- **Impact on ag3nts**: The ag3nts `CLAUDE.md` instructs "Use `/compact` when context usage exceeds 80%" — this is the correct pattern for interactive Claude Code sessions, where the `/compact` slash command triggers the same mechanism. For SDK-based and `--bare` scripted invocations (cron, CI/CD), there is no `/compact` command available. The Compaction API fills that gap: any `claude --bare -p` script or future SDK agent call that risks context limits can add the `compact-2026-01-12` header to get automatic server-side compaction. This is most relevant to long REPAIR pipeline scripted runs and multi-hour autonomous sessions.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` → Scripted / Automated Runs section — add note that the `compact-2026-01-12` beta header enables automatic server-side context compaction for API-level scripts (the `--bare` equivalent of the interactive `/compact` command); supported on Opus 4.6 and Sonnet 4.6
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add Compaction API docs and cookbook link as reference
+- **Priority**: Medium — not urgent for interactive sessions (which have `/compact`); fills a real gap for scripted/bare-mode automation; low implementation cost (one beta header)
+
+---
+
+#### [Low] Research: Emergent Introspective Awareness in Claude
+- **Source**: https://www.anthropic.com/research/introspection
+- **Published**: 2026
+- **Category**: Safety / Research
+- **What Changed**: Anthropic published research providing evidence that Claude models exhibit emergent introspective awareness and a measurable degree of control over their own internal states. Claude's self-reports about its reasoning correlate with observable behavior more than would be expected by chance.
+- **Impact on ag3nts**: Informational. Reinforces the `reality-checker` agent's design philosophy — its deliberate conservatism (defaults to NEEDS WORK) is appropriate precisely because self-assessment by a model with introspective tendencies can be miscalibrated. No config change needed.
+- **Proposed Changes**: None
+- **Priority**: Low — safety research; validates existing conservative agent design
+
+---
+
+#### [Low] Research: How AI Assistance Shapes Coding Skill Formation
+- **Source**: https://www.anthropic.com/research/AI-assistance-coding-skills
+- **Published**: 2026
+- **Category**: Research
+- **What Changed**: Anthropic published a randomized controlled trial studying how AI coding assistance affects developers' ability to acquire and retain new skills. Findings: AI assistance accelerates short-term task completion but may slow deep skill internalization when used without deliberate practice scaffolding.
+- **Impact on ag3nts**: Informational. Relevant context for how ag3nts agents should be positioned — as amplifiers of developer judgment, not replacements for it. The ag3nts `code-reviewer` and `reality-checker` agents surface findings for human review rather than auto-fixing, which aligns with this finding.
+- **Proposed Changes**: None
+- **Priority**: Low — research context; no direct integration
+
+---
+
+### Recommendations
+
+Top 2 changes to make now:
+
+1. **Update `anthropic.md` line 163 to mention `xhigh`** — Add "; use `xhigh` for deeply ambiguous multi-source findings" to the adaptive thinking instruction. One-line edit that gives the agent (and any future Opus-tier session) the full picture of available effort levels. Also update `software-architect.md` with the same note.
+
+2. **Document Compaction API in `ag3nts.md` + `repos.md`** — Add one sentence to the Scripted / Automated Runs section noting that `compact-2026-01-12` beta header enables automatic server-side compaction for `--bare` scripts. Add doc link to `repos.md`. Fills the context-management gap for scripted automation without any architectural change.
+
+---
+
 ## Latest Scan: 2026-04-21
 
 ### Summary
