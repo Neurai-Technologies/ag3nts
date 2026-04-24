@@ -1,5 +1,79 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-04-24
+
+### Summary
+- Sources scanned: 4 (anthropic.com/news, /research, /engineering, docs.anthropic.com)
+- New findings: 4
+- Actionable integrations: 3
+
+### Findings
+
+#### [Critical] 1M Token Context Window Beta Retires April 30, 2026
+- **Source**: https://docs.anthropic.com/en/release-notes/overview
+- **Published**: April 2026
+- **Category**: API / Model
+- **What Changed**: The `context-1m-2025-08-07` beta header is being retired on April 30, 2026 (6 days from now). After that date, requests passing this header for Claude Sonnet 4.5 or Claude Sonnet 4 will have the header ignored, and requests exceeding the standard 200k context window will return an error. Migration path: Sonnet 4.6 and Opus 4.6 support 1M token context natively at standard pricing — no beta header required.
+- **Impact on ag3nts**: The `model: sonnet` alias in all agent frontmatter resolves to Sonnet 4.6, so agents are not affected by design. However, any `claude --bare -p` scripted invocations that explicitly pin `claude-sonnet-4-20250514` or `claude-sonnet-4-5-*` and pass the `context-1m` header will break on April 30. Audit any cron/CI scripts using pinned model IDs.
+- **Proposed Changes**:
+  - [ ] Grep `shared/` and platform scripts for `context-1m-2025-08-07` — remove any usage; 1M context is standard on 4.6+ models
+  - [ ] Grep `shared/` and platform scripts for `claude-sonnet-4-20250514` or `claude-sonnet-4-5` — verify no pinned IDs are used in bare-mode scripts
+- **Priority**: Critical — hard deadline April 30 (6 days); after that, pinned old model IDs + 1M header silently degrade to 200k
+
+---
+
+#### [Medium] Opus 4.7 Is Now the Default API Model (Confirmed April 23)
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: April 23, 2026 (effective as of yesterday)
+- **Category**: API / Model
+- **What Changed**: The April 18 scan predicted the default model switch to Opus 4.7 on April 23. That switch has now occurred. Any call omitting the `model` field now receives Opus 4.7 ($5/$25 per MTok), not Opus 4.6.
+- **Impact on ag3nts**: All ag3nts agent frontmatter uses explicit `model: haiku/sonnet/opus` aliases — no implicit model lookups. The residual risk flagged in the April 18 scan (bare-mode scripts without `--model`) is now live: any scripted invocation omitting the model defaults to Opus 4.7 pricing.
+- **Proposed Changes**:
+  - [ ] Audit any `claude --bare -p` invocations in `shared/` and platform directories to confirm they pass `--model` or rely on `ANTHROPIC_MODEL` env var
+- **Priority**: Medium — ag3nts agents safe by design; cost risk only in bare-mode scripts that omit model
+
+---
+
+#### [High] Claude Managed Agents Memory — Now in Public Beta
+- **Source**: https://docs.anthropic.com/en/release-notes/overview; https://www.anthropic.com/engineering/managed-agents
+- **Published**: April 2026 (available under `managed-agents-2026-04-01` header)
+- **Category**: API / Agent
+- **What Changed**: Memory for Claude Managed Agents entered public beta (separate from the general Managed Agents launch noted in the April 21 scan). The memory tool lets agents write context to files in a dedicated directory that persists across conversations — enabling knowledge bases, project state across sessions, and cross-session learning without in-context window reliance.
+- **Impact on ag3nts**:
+  - The `feedback` agent (Haiku) captures user preferences across sessions — currently relies on in-context injection. Managed Agents Memory is the first first-party API feature that could replace or augment this with durable server-side persistence.
+  - The REPAIR pipeline's multi-stage state lives entirely in context; Managed Agents Memory could enable stage checkpointing for long-running pipelines.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/files/agents/feedback.md` — add a note documenting that Managed Agents Memory (`managed-agents-2026-04-01`) is the recommended upgrade path for durable cross-session preference storage
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add link to Managed Agents memory docs as reference for agent persistence patterns
+- **Priority**: High — first-party persistent memory API directly addresses cross-session state; `feedback` agent is the most obvious beneficiary
+
+---
+
+#### [Low] Models API Now Returns Capability Fields
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: April 2026
+- **Category**: API
+- **What Changed**: `GET /v1/models` and `GET /v1/models/{model_id}` now return `max_input_tokens`, `max_tokens`, and a `capabilities` object. Previously the endpoint returned only basic metadata.
+- **Impact on ag3nts**: The `version` agent performs inventory audits and consistency checks. The capabilities endpoint could verify that model aliases (`haiku`, `sonnet`, `opus`) resolve to models with the features those agents rely on (context windows, tool use, extended thinking).
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/files/agents/version.md` — add a note suggesting `GET /v1/models` capabilities as a data source for model alias verification during inventory audits
+- **Priority**: Low — useful enhancement to `version` agent; no breaking impact
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **Audit for `context-1m-2025-08-07` header usage** — Run `grep -r "context-1m" shared/` and check platform scripts. Deadline: April 30 (6 days). Sonnet 4.6+ supports 1M context natively — no header needed.
+
+2. **Audit bare-mode scripts for explicit model** — Check all `claude --bare -p` invocations in `shared/` and platform directories. Since April 23 the default is Opus 4.7 ($5/$25 MTok); any script omitting `--model` now incurs Opus-level cost silently.
+
+3. **Update `feedback.md` with Managed Agents Memory note** — Add one line to `shared/claude-code/files/agents/feedback.md` documenting `managed-agents-2026-04-01` as the recommended upgrade path for durable cross-session preference storage.
+
+Note: `ant` CLI and Managed Agents general launch were already logged in the April 21 scan. `xhigh` effort level and Compaction API were logged in the April 22 scan. This scan focuses on items not yet in the log.
+
+---
 ## Latest Scan: 2026-04-22
 
 ### Summary
