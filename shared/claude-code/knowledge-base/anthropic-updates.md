@@ -1,5 +1,53 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-04-25
+
+### Summary
+- Sources scanned: 4 (anthropic.com/news, /research, /engineering, docs.anthropic.com)
+- New findings: 2
+- Actionable integrations: 1
+
+### Findings
+
+#### [Medium] Claude Code CLI — April 2026 Changelog Updates
+- **Source**: https://docs.anthropic.com/en/release-notes/claude-code; https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md
+- **Published**: April 2026
+- **Category**: Tooling
+- **What Changed**: Several Claude Code CLI updates shipped in April 2026:
+  - **`/team-onboarding`** — new slash command that generates a teammate ramp-up guide from your local Claude Code usage history; useful for portable/multi-machine setups
+  - **OS CA cert store trusted by default** — enterprise TLS proxies now work without extra config; override with `CLAUDE_CODE_CERT_STORE=bundled` to use only bundled CAs
+  - **Write tool 60% faster** on large files containing tabs, `&`, or `$`
+  - **`/tui fullscreen`** command added for flicker-free rendering in the same conversation
+  - **`/vim` and `/tag` removed** — vim mode is now toggled via `/config` → Editor mode; `/tag` is gone
+  - **`/color` command** syncs session accent color to claude.ai/code when Remote Control is connected
+- **Impact on ag3nts**: The `/vim` and `/tag` removal is a correctness concern — if any ag3nts docs or hook scripts reference these commands they will silently fail. The `/team-onboarding` command is useful for onboarding to the ag3nts portable SSD setup on a new machine. The CA cert change improves reliability in corporate CI/CD environments. No changes needed to existing hook scripts, but worth documenting the `/vim` removal in case any setup guides reference it.
+- **Proposed Changes**:
+  - [ ] Search `shared/` for any references to `/vim` or `/tag` CLI commands — remove or replace (vim mode is now `/config` → Editor mode)
+  - [ ] `shared/ag3nts.md` — add `/team-onboarding` to the Commands table as a useful onboarding tool for new machines
+- **Priority**: Medium — `/vim`/`/tag` removal is a silent correctness issue in any docs that reference them; `/team-onboarding` is a low-effort add to the commands table
+
+---
+
+#### [Low] Research: Anthropic Economic Index Survey — Monthly AI Labor Impact Tracking
+- **Source**: https://www.anthropic.com/research/economic-index-survey-announcement
+- **Published**: April 22, 2026
+- **Category**: Research
+- **What Changed**: Anthropic launched the Anthropic Economic Index Survey, a monthly survey conducted via Anthropic Interviewer that tracks how AI is affecting employment and labor markets. Companion to the earlier Economic Index report.
+- **Impact on ag3nts**: Informational only. Not directly relevant to agent configuration or API usage.
+- **Proposed Changes**: None
+- **Priority**: Low — economic research; no integration needed
+
+---
+
+### Recommendations
+
+Top 1 change to make now:
+
+1. **Grep `shared/` for `/vim` and `/tag` command references** — Both were removed from Claude Code in April 2026. Run `grep -r '/vim\|/tag' shared/` to identify any setup guides, hook scripts, or onboarding docs that reference these commands, and replace with the `/config` → Editor mode equivalent. Silent failure risk for anyone following old instructions.
+
+Note: No new API changes, model releases, agent pattern announcements, or engineering posts were detected since the April 24 scan. The NEC partnership (April 24) and Economic Index Survey (April 22) are business/economic items with no direct ag3nts integration. All major April 2026 API and model changes (1M beta retirement, Opus 4.7 default switch, Managed Agents Memory, Models API capability fields) were fully logged in the April 24 scan.
+
+---
 ## Latest Scan: 2026-04-24
 
 ### Summary
