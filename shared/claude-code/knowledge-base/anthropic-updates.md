@@ -1,5 +1,48 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-04-26
+
+### Summary
+- Sources scanned: 4 (anthropic.com/news, /research, /engineering, docs.anthropic.com)
+- New findings: 1 (+ 1 previously missed)
+- Actionable integrations: 2
+
+### Findings
+
+#### [High] Claude Mythos Preview + Project Glasswing — Previously Unlogged (Announced April 7)
+- **Source**: https://red.anthropic.com/2026/mythos-preview/ | https://www.anthropic.com/glasswing
+- **Published**: April 7, 2026 (missed in all prior scans; red.anthropic.com subdomain not in prior scan scope)
+- **Category**: Model / Security
+- **What Changed**: Anthropic announced **Claude Mythos Preview** (codename: Capybara) — a new frontier model that dramatically outperforms Opus 4.6 on security tasks: 181 working Firefox exploits vs. Opus 4.6's 2, plus identification of thousands of zero-day vulnerabilities across every major OS and browser. Mythos Preview is **not publicly released**. Instead, Anthropic launched **Project Glasswing** — a restricted program giving access only to vetted partners (Amazon, Apple, Google, Microsoft, Nvidia, CrowdStrike, JPMorgan Chase, Cisco, Broadcom, Palo Alto Networks, Linux Foundation) to use the model defensively for critical software security. The model reads code, runs it, hypothesizes vulnerabilities, confirms them with proof-of-concept exploits, and outputs structured bug reports.
+- **Impact on ag3nts**:
+  - **security-engineer agent**: The existence of Mythos-class models means AI-assisted offensive security (zero-day discovery, exploit generation) is now a production-grade threat vector. The `security-engineer`'s OWASP audit scope should acknowledge AI-assisted attacks as a threat category in addition to traditional OWASP Top 10.
+  - **red.anthropic.com**: This subdomain (Anthropic's security research blog) is a new canonical source for security-relevant AI research. It was not in the prior scan scope and caused this finding to be missed for 19 days.
+  - **Cyber Verification Program** (logged April 17 from Opus 4.7 release): Mythos Preview is the model behind this program. The `security-engineer` agent running vetted audits is precisely the authorized use case this program targets.
+- **Proposed Changes**:
+  - [ ] Add `https://red.anthropic.com` to the list of sources scanned by the `anthropic` agent in `shared/claude-code/files/agents/anthropic.md`
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add Project Glasswing page and red.anthropic.com as references
+  - [ ] `shared/claude-code/files/agents/security-engineer.md` — add a note that frontier AI models (Claude Mythos-class) represent a new offensive security threat vector; OWASP audits should include AI-assisted attack surface assessment
+- **Priority**: High — the red.anthropic.com miss caused a 19-day gap on a major security-relevant announcement; fixing the scan source list is the most important corrective action
+
+---
+
+#### [Low] No New Items Since April 25
+- All four sources (anthropic.com/news, /research, /engineering, docs.anthropic.com) returned no new posts or announcements dated April 25–26, 2026.
+- Most recent items across sources: NEC partnership (April 24, already logged), Economic Index Survey (April 22, already logged).
+- **Priority**: Low — no action needed; scan cadence is current
+
+---
+
+### Recommendations
+
+Top 2 changes to make now:
+
+1. **Add `red.anthropic.com` to the `anthropic` agent's scan sources** (`shared/claude-code/files/agents/anthropic.md`) — The subdomain hosts Anthropic's security research blog and caused a 19-day miss on the highest-profile security AI announcement of 2026. One-line addition to the scan instruction. This is the most important corrective action from this scan.
+
+2. **Add Mythos/Glasswing note to `security-engineer.md`** — Add one sentence noting that Mythos-class models (and AI-assisted vulnerability discovery at scale) represent a new threat vector that security audits should consider. Aligns the agent's threat model with the current state of AI-assisted offense.
+
+---
+
 ## Latest Scan: 2026-04-25
 
 ### Summary
