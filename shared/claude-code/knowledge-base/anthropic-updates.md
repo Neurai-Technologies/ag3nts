@@ -1,5 +1,77 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-04-27
+
+### Summary
+- Sources scanned: 5 (anthropic.com/news, /research, /engineering, docs.anthropic.com, red.anthropic.com [newly in scope per April 26 recommendation])
+- New findings: 3 (2 previously missed + 1 from new source)
+- Actionable integrations: 2
+
+### Findings
+
+#### [High] MCP Design Vulnerability: RCE on 200k+ Servers — Missed from April 15–20
+- **Source**: https://thehackernews.com/2026/04/anthropic-mcp-design-vulnerability.html; https://www.theregister.com/2026/04/16/anthropic_mcp_design_flaw/; https://www.ox.security/blog/mcp-supply-chain-advisory-rce-vulnerabilities-across-the-ai-ecosystem/
+- **Published**: April 15–20, 2026 (OX Security advisory April 15; widely reported April 20)
+- **Category**: Security / Tooling
+- **What Changed**: OX Security disclosed a design flaw in Anthropic's MCP STDIO interface that allows arbitrary OS command execution on any server hosting an MCP STDIO server. The STDIO interface passes a direct configuration-to-command-execution path that executes the supplied command regardless of intent. Anthropic reviewed the report and declined to modify the protocol architecture, stating the behavior is "expected." Multiple downstream CVEs were issued (LiteLLM, LangFlow, Windsurf, Flowise, and others). 150M+ MCP SDK downloads are affected across Python, TypeScript, Java, and Rust implementations.
+- **Impact on ag3nts**: ag3nts uses MCP via `.mcp.json` (GitHub MCP server). The vulnerability is specific to STDIO-mode MCP servers exposed to untrusted inputs — HTTP/SSE transports are not affected. Anthropic will NOT patch the protocol architecture; mitigation is deployment-level only. The `security-engineer` agent's threat model should include MCP STDIO RCE as a known attack vector for any ag3nts workflows that expose STDIO MCP servers.
+- **Proposed Changes**:
+  - [ ] Review ag3nts `.mcp.json` to confirm the GitHub MCP server uses HTTP/SSE transport, not STDIO exposed to untrusted inputs
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add OX Security MCP advisory link as a security reference
+  - [ ] `shared/claude-code/files/agents/security-engineer.md` — add MCP STDIO RCE (architecture-level, unpatched by Anthropic) to the known threat vector list
+- **Priority**: High — unpatched by design; mitigation is deployment-level; directly relevant to ag3nts MCP configuration
+
+---
+
+#### [Medium] Engineering Postmortem: Three Claude Code Quality Regressions — Missed from April 23
+- **Source**: https://www.anthropic.com/engineering/april-23-postmortem
+- **Published**: April 23, 2026
+- **Category**: Tooling / Agent
+- **What Changed**: Anthropic documented three sequential quality regressions that affected Claude Code, Claude Agent SDK, and Claude Cowork between March 4 and April 20, 2026 (API was not impacted):
+  1. **March 4 — Reasoning effort lowered**: Default effort changed from `high` to `medium` to cut latency → reverted April 7. New default as of April 7: **`xhigh` for Opus 4.7, `high` for all other models**.
+  2. **March 26 — Session clearing bug**: A change to clear idle session thinking every hour contained a bug that cleared it every turn → fixed April 10 (v2.1.101).
+  3. **April 16 — Verbosity system prompt**: Added `"≤25 words between tool calls, ≤100 words final response"` instruction → caused outsized intelligence regressions in coding tasks → reverted April 20 (v2.1.116).
+  All three issues resolved as of v2.1.116. Usage limits reset for all subscribers April 23.
+- **Impact on ag3nts**:
+  - Confirms Opus 4.7 now defaults to `xhigh` reasoning effort in Claude Code (not `high`). The `xhigh` addition was logged April 22 as a new effort level, but this postmortem confirms it is now the **live default** for Opus 4.7 in Claude Code sessions — not just an option.
+  - The failed verbosity system prompt (≤25/≤100 words) is an anti-pattern reference: hard word-count limits in agent system prompts demonstrably hurt coding quality. ag3nts agent `.md` files should avoid word-count caps.
+  - Session clearing bug is resolved; no action needed, but worth knowing for diagnosing any future forgetfulness in Opus/Sonnet sessions.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add postmortem URL as a reference for Claude Code quality regression history
+  - [ ] Verify ag3nts `settings.json` `effortLevel` reflects `xhigh` for Opus 4.7 sessions (consistent with new Claude Code default)
+- **Priority**: Medium — all issues resolved; key action is confirming `xhigh` is set in `settings.json` and adding postmortem as reference
+
+---
+
+#### [Low] red.anthropic.com: Reverse Engineering Claude's CVE-2026-2796 Exploit (New Source)
+- **Source**: https://red.anthropic.com/2026/exploit/
+- **Published**: ~March 6, 2026 (newly in scan scope — red.anthropic.com added per April 26 recommendation)
+- **Category**: Security / Research
+- **What Changed**: Anthropic's security research blog deep-dived into how Claude wrote a working exploit for CVE-2026-2796 (JIT miscompilation in JavaScript WebAssembly, CVSS 9.8). Claude decomposed the goal into classical browser exploit primitives — using type confusion via `Function.prototype.call.bind()` wrappers to build `addrof`/`fakeobj` primitives — and maintained a consistent exploitation strategy throughout. The exploit was produced in a controlled testing environment with security features intentionally disabled.
+- **Impact on ag3nts**: Informational. Demonstrates that Claude Mythos-class models can reason about browser exploit internals at expert level. Reinforces the `security-engineer` agent's threat model note (added in April 26 scan) that AI-assisted offensive security is a real and demonstrated capability. red.anthropic.com is now an active scan source.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add red.anthropic.com CVE-2026-2796 post as a security research reference alongside the Mythos Preview entry
+- **Priority**: Low — informational; no config change needed; new source now in scope
+
+---
+
+#### [Low] No New Anthropic Announcements — April 27, 2026
+- All five sources (anthropic.com/news, /research, /engineering, docs.anthropic.com, red.anthropic.com) returned no new items for April 27, 2026.
+- Most recent items: Claude Code v2.1.120 crash on `--resume`/`--continue` flags (April 25, service-level bug — resolved); NEC partnership (April 24, already logged).
+- **Priority**: Low — no action needed; scan cadence is current
+
+---
+
+### Recommendations
+
+Top 2 changes to make now:
+
+1. **Review ag3nts MCP configuration for STDIO transport exposure** — Check `.mcp.json` to confirm the GitHub MCP server uses HTTP/SSE, not STDIO exposed to untrusted inputs. Anthropic confirmed it will NOT patch the MCP STDIO RCE architecture. Add the OX Security advisory to `repos.md` and add MCP STDIO RCE to `security-engineer.md`'s known threat vectors. Most important corrective from this scan.
+
+2. **Verify `settings.json` `effortLevel` is `xhigh` for Opus 4.7** — The April 23 postmortem confirms Opus 4.7 in Claude Code now defaults to `xhigh` reasoning effort (not `high`). Check that the ag3nts `settings.json` reflects this. The April 22 scan logged `xhigh` as a new level; this postmortem confirms it is now the live default.
+
+---
+
 ## Latest Scan: 2026-04-26
 
 ### Summary
