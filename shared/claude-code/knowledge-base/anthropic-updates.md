@@ -1,5 +1,54 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-04-28
+
+### Summary
+- Sources scanned: 4 (anthropic.com/news, /research, /engineering, docs.anthropic.com)
+- New findings: 2 (1 previously unlogged technical item + 1 batch of business news)
+- Actionable integrations: 1
+
+### Findings
+
+#### [Medium] Advanced Tool Use — Tool Search Tool, Programmatic Calling, Tool Use Examples (Previously Unlogged)
+- **Source**: https://www.anthropic.com/engineering/advanced-tool-use
+- **Published**: ~November 2025 (beta header: `advanced-tool-use-2025-11-20`); missed in all prior scans
+- **Category**: API / Agent
+- **What Changed**: Anthropic added three beta features for large tool libraries via the `advanced-tool-use-2025-11-20` header:
+  1. **Tool Search Tool** — Claude discovers tools on-demand via search rather than loading all definitions upfront. Saves 85% context (191k tokens preserved vs. 122k with full-load) while maintaining access to thousands of tools. Accuracy on MCP evaluations improved from 49% → 74% (Opus 4) and 79.5% → 88.1% (Opus 4.5) on large tool libraries.
+  2. **Programmatic Tool Calling** — Claude can invoke tools inside a code execution environment, reducing tool results' footprint on the context window.
+  3. **Tool Use Examples** — A standard format for documenting how to effectively use each tool, improving reliability on complex tool calls.
+- **Impact on ag3nts**: ag3nts uses MCP tool definitions (GitHub MCP server, plus any future MCP servers). As the tool library grows, loading all tool definitions per turn becomes a context tax. Tool Search Tool directly addresses this: only relevant tools enter context. The `code-reviewer` dispatches 4 parallel agents each with their own tool context — Tool Search Tool would reduce per-agent context consumption. Most directly applicable to any scripted `--bare` or Managed Agent invocation that needs a large MCP tool set.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add `https://www.anthropic.com/engineering/advanced-tool-use` as a reference alongside the existing tool use entries
+  - [ ] `shared/ag3nts.md` → Scripted / Automated Runs section — add a note that the `advanced-tool-use-2025-11-20` beta header enables Tool Search Tool for large MCP tool libraries (85% context reduction)
+- **Priority**: Medium — high-value context optimization for any agent workflow that grows to 10+ MCP tools; easy to enable via beta header; was missed for ~5 months
+
+---
+
+#### [Low] Late-April Business News — No Technical Integration
+- **Source**: https://www.anthropic.com/news (multiple items, April 24–28, 2026)
+- **Published**: April 24–28, 2026
+- **Category**: Business / Partnerships
+- **What Changed**: Several commercial announcements in late April:
+  - **Snowflake partnership** ($200M, multi-year) — Claude powers Snowflake Intelligence (enterprise data agent) and Cortex AI Functions for multimodal SQL queries; 12,600 enterprise customers
+  - **Claude Partner Network** ($100M investment) — new partner program with technical certifications (Claude Certified Architect), Applied AI engineer support, and a Code Modernization starter kit for enterprise partners
+  - **Series G funding** ($30B round at $380B post-money valuation)
+  - **Australia/NZ expansion** — Sydney office opened, Theo Hourmouzis named GM (April 27)
+  - **Google/Broadcom compute partnership** — expanded compute commitments
+- **Impact on ag3nts**: None directly. The Code Modernization starter kit in the Partner Network is adjacent to ag3nts' agentic coding focus but is an enterprise partner resource, not a developer API. Snowflake integration uses Sonnet 4.5 and Opus 4.5 — already-logged models. Business news only.
+- **Proposed Changes**: None
+- **Priority**: Low — commercial/distribution news; no API, model, or agent pattern changes
+
+---
+
+### Recommendations
+
+No actionable changes needed today beyond the one carried forward item:
+
+1. **Add Advanced Tool Use to `repos.md` + `ag3nts.md`** — The `advanced-tool-use-2025-11-20` beta header (Tool Search Tool + Programmatic Tool Calling) was missed for ~5 months. Add the engineering post URL to `repos.md` and add a one-line note to the Scripted / Automated Runs section in `ag3nts.md` noting the header's 85% context reduction for large tool libraries. Low-effort documentation catch-up with meaningful future payoff as the MCP tool library grows.
+
+---
+
 ## Latest Scan: 2026-04-27
 
 ### Summary
