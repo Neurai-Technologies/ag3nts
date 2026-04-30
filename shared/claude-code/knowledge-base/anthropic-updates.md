@@ -1,5 +1,119 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-04-30
+
+### Summary
+- Sources scanned: 4 (anthropic.com/news, /research, /engineering, docs.anthropic.com)
+- New findings: 7
+- Actionable integrations: 4
+
+### Findings
+
+#### [Critical] Opus 4.7 Breaking Changes — Extended Thinking Removed + New Tokenizer
+- **Source**: https://www.anthropic.com/news/claude-opus-4-7 | https://docs.anthropic.com/en/docs/about-claude/models/migrating-to-claude-4
+- **Published**: Mid-April 2026 (general availability); breaking-changes migration guide concurrent
+- **Category**: Model / API
+- **What Changed**: Two API-breaking changes shipped with Opus 4.7 (`claude-opus-4-7`):
+  1. **Extended thinking removed** — the `extended_thinking` API parameter is no longer supported and returns a `400` error on Opus 4.7 and later. Reasoning is now controlled exclusively via the `effort` parameter (values: `low`, `medium`, `high`, `xhigh`).
+  2. **New tokenizer** — same input produces 1.0–1.35× more tokens than Opus 4.6 (content-dependent). The `/v1/messages/count_tokens` endpoint returns different values for Opus 4.7.
+  Note: Opus 4.7 launch (general capability improvements, 13% coding benchmark gain) was logged April 17. This entry focuses on the breaking changes and their downstream impact on ag3nts.
+- **Impact on ag3nts**:
+  - **Pipeline files** — `plan.md`, `architecture.md`, `review.md`, `implement.md`, `evaluate.md`, `research.md` all contain "Extended Thinking: adaptive" in their model config tables and body text. This language needs to change to `effort: xhigh` / `effort: high` terminology now that the `extended_thinking` API parameter is gone.
+  - **`settings.json` `effortLevel`** — current value is `"high"`. Opus 4.7's Claude Code default is `"xhigh"` (confirmed by April 23 postmortem, logged April 27 scan — still not updated). This is now overdue.
+  - **Tokenizer impact on cost/rate-limit estimates** — any prompt-length estimates or token budget calculations for Opus 4.7 sessions will be off by up to 35%.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/settings.json` — change `"effortLevel": "high"` → `"effortLevel": "xhigh"`
+  - [ ] `shared/claude-code/files/pipeline/plan.md`, `architecture.md`, `review.md`, `implement.md`, `evaluate.md`, `research.md` — replace "Extended Thinking: adaptive" rows with "Effort: xhigh (Opus) / high (Sonnet)" to reflect the live API parameter
+  - [ ] `shared/ag3nts.md` — add a note in the Agents table that Opus 4.7 uses `effort` not `extended_thinking`; warn that tokenizer produces up to 35% more tokens vs 4.6
+- **Priority**: Critical — `extended_thinking` returns 400 on Opus 4.7; `effortLevel: "high"` is below the model's live default; pipeline docs are misleading
+
+---
+
+#### [Critical] 1M Context Window Beta Retiring TODAY (April 30, 2026)
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: April 2026 (retiring April 30, 2026)
+- **Category**: API
+- **What Changed**: The `context-1m-2025-08-07` beta header is being retired today for Claude Sonnet 4.5 and Claude Sonnet 4. Requests exceeding 200k tokens on these two models will return an error starting today. Claude Opus 4.6 is unaffected (has native 1M context window). Claude Haiku 3 (`claude-3-haiku-20240307`) is also retired — all requests now return an error.
+- **Impact on ag3nts**:
+  - Grep of ag3nts codebase shows no usage of `context-1m-2025-08-07` header — no immediate breakage expected.
+  - `feedback.md` and `version.md` use `model: haiku` alias. If any downstream invocation hardcodes `claude-3-haiku-20240307`, it will break. The current Haiku is `claude-haiku-4-5`. Claude Code's `haiku` alias should auto-resolve to the latest but warrants verification.
+- **Proposed Changes**:
+  - [ ] Verify no `context-1m-2025-08-07` header in `.mcp.json`, hook scripts, or automation config
+  - [ ] Verify `model: haiku` alias in agent files resolves to `claude-haiku-4-5`, not the retired `claude-3-haiku-20240307`
+- **Priority**: Critical (time-sensitive — deadline is today) → Low once confirmed ag3nts has no direct usage
+
+---
+
+#### [Medium] Memory for Claude Managed Agents — Public Beta
+- **Source**: https://docs.anthropic.com/en/release-notes/api | https://docs.anthropic.com/en/docs/claude-code/sdk
+- **Published**: April 1, 2026 (`managed-agents-2026-04-01` beta header date)
+- **Category**: API / Agent
+- **What Changed**: Memory for Claude Managed Agents entered public beta. The `managed-agents-2026-04-01` header enables persistent memory across sessions in Managed Agent workflows — agents can store state as objects outside the context window and retrieve them programmatically across turns.
+- **Impact on ag3nts**: ag3nts does not currently use the Managed Agents API. However, long-running pipeline stages (architecture, review) currently lose state on context compaction. The memory feature could enable multi-session pipeline continuity for the REPAIR pipeline. Not immediately actionable without a migration to the Managed Agents harness, but relevant for future pipeline development.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add managed agents memory docs link as a reference
+- **Priority**: Medium — not immediately actionable; relevant for future stateful pipeline work
+
+---
+
+#### [Medium] Engineering: Scaling Managed Agents — Decoupling Brain from Execution
+- **Source**: https://www.anthropic.com/engineering/managed-agents
+- **Published**: 2026 (exact date unconfirmed; appeared in April scan)
+- **Category**: Agent
+- **What Changed**: New engineering post describing Anthropic's meta-harness architecture for Managed Agents. Key design principle: separate the "brain" (Claude reasoning) from the "hands" (tool execution) via a single `execute(name, input) → string` interface. Every tool — custom tools, MCP servers, Anthropic's own tools — conforms to this interface. Context/state is stored as a session object outside the LLM's context window and accessed programmatically. The meta-harness is designed for horizontal scaling: many brains (LLM instances) × many hands (tool executors) over long time horizons.
+- **Impact on ag3nts**: Validates ag3nts' existing pipeline design pattern (specialized sub-agents as stateless workers). The `execute(name, input) → string` interface is what ag3nts' hooks and sub-agent invocations effectively implement. Useful reference for extending the pipeline to Managed Agents infrastructure.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add engineering post URL
+- **Priority**: Medium — reference architecture; no config change needed
+
+---
+
+#### [Medium] Engineering: Writing Effective Tools for AI Agents
+- **Source**: https://www.anthropic.com/engineering/writing-tools-for-agents
+- **Published**: 2026 (appeared in April scan)
+- **Category**: Agent / Tooling
+- **What Changed**: New engineering post on evaluation-driven tool design. Core recommendations: (1) Prompt-engineer tool descriptions — they steer agent behavior; even small description refinements yielded SWE-bench Verified state-of-the-art results. (2) Design error responses to communicate specific, actionable corrections rather than opaque codes/tracebacks. (3) Use agent-aware error handling to nudge toward token-efficient strategies (e.g., many small targeted searches instead of one broad search). The post emphasizes that tools designed for human APIs behave suboptimally when consumed by agents.
+- **Impact on ag3nts**: ag3nts uses the GitHub MCP server and will grow its MCP tool library. The tool description quality directly affects how well sub-agents in the code-reviewer and security-engineer flows use those tools. Also relevant to any custom tools in ag3nts hook scripts.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add engineering post URL as a reference
+- **Priority**: Medium — reference for future MCP tool improvements; no immediate change needed
+
+---
+
+#### [Low] Rate Limits API — Programmatic Rate Limit Querying
+- **Source**: https://docs.anthropic.com/en/api/usage-cost-api
+- **Published**: April 2026
+- **Category**: API
+- **What Changed**: New API endpoint allowing administrators to programmatically query the rate limits configured for their organization and workspaces.
+- **Impact on ag3nts**: Not currently used. Useful if ag3nts adds automated rate-limit monitoring to its CI/automation layer.
+- **Proposed Changes**: None
+- **Priority**: Low — informational; no immediate integration path
+
+---
+
+#### [Low] Research: Next-Generation Constitutional Classifiers++
+- **Source**: https://www.anthropic.com/research/next-generation-constitutional-classifiers
+- **Published**: January 9, 2026
+- **Category**: Safety
+- **What Changed**: Anthropic published Constitutional Classifiers++ — a two-stage ensemble (probe on internal activations + classifier) that improves on the original. Key stats: jailbreak success rate reduced from 86% to 4.4%; ~1% additional compute overhead (vs. 23.7% for the original); lower false-positive/refusal rate. The system withstood 3,000+ hours of expert red teaming with no universal jailbreaks found.
+- **Impact on ag3nts**: Informational. Confirms that safety guardrails on Anthropic API calls are more robust and cheaper than prior versions. The `security-engineer` agent's threat model should note that constitutional classifiers are the deployed mechanism for content filtering at the API layer.
+- **Proposed Changes**: None
+- **Priority**: Low — informational; no direct integration change
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **Update `settings.json` `effortLevel: "high"` → `"xhigh"`** (`shared/claude-code/settings.json` line 48) — Opus 4.7 is the current model and its Claude Code default is `xhigh`. This setting has been at `"high"` since at least the April 23 postmortem flagged it (April 27 scan). The `extended_thinking` removal makes the `effort` parameter the only reasoning control — getting this right is now more important than ever.
+
+2. **Update pipeline files: replace "Extended Thinking: adaptive" with `effort` terminology** — All six pipeline files (`plan.md`, `architecture.md`, `review.md`, `implement.md`, `evaluate.md`, `research.md`) reference "Extended Thinking: adaptive" in their model config tables. Since `extended_thinking` returns 400 on Opus 4.7, this language is now incorrect. Change to "Effort: xhigh" for Opus-class agents and "Effort: high" for Sonnet-class agents.
+
+3. **Verify Haiku alias and 1M context header** — Confirm `model: haiku` in `feedback.md`/`version.md` routes to `claude-haiku-4-5` (not the retired `claude-3-haiku-20240307`), and confirm no ag3nts tooling uses the `context-1m-2025-08-07` header (deadline: today). Then add the three new engineering/API references to `repos.md`.
+
+---
+
 ## Latest Scan: 2026-04-28
 
 ### Summary
