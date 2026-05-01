@@ -1,5 +1,124 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-05-01
+
+### Summary
+- Sources scanned: 4 (anthropic.com/news, /research, /engineering, docs.anthropic.com)
+- New findings: 8
+- Actionable integrations: 4
+
+### Findings
+
+#### [High] Claude Sonnet 4 / Opus 4 Retirement — June 15, 2026
+- **Source**: https://docs.anthropic.com/en/docs/about-claude/models/overview | https://docs.anthropic.com/en/docs/resources/model-deprecations
+- **Published**: April 2026 (retirement deadline June 15, 2026)
+- **Category**: Model / API
+- **What Changed**: `claude-sonnet-4-20250514` and `claude-opus-4-20250514` are scheduled for retirement on June 15, 2026 — 45 days from today. After that date all requests to these model IDs will return an error. Recommended replacements: Sonnet 4.5 or Sonnet 4.6 for Sonnet 4, Opus 4.6 or Opus 4.7 for Opus 4.
+- **Impact on ag3nts**: ag3nts agent `.md` files use named model aliases (`sonnet`, `opus`, `haiku`) rather than hardcoded version strings — this should auto-resolve correctly. However, any `--bare` scripts, cron invocations, or `.mcp.json` that hardcode the `20250514` model ID will break. The `version` agent's inventory audits should catch drift, but a targeted grep is warranted.
+- **Proposed Changes**:
+  - [ ] `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514" shared/ .mcp.json` — confirm no hardcoded retired model IDs
+  - [ ] `shared/ag3nts.md` — add a note in the Agents table that model aliases resolve to the current latest; warn about June 15 retirement of `20250514` IDs
+- **Priority**: High — hard error on June 15; 45-day window to find and migrate any hardcoded IDs
+
+---
+
+#### [High] Advisor Tool — Public Beta
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: May 2026 (public beta)
+- **Category**: API / Agent
+- **What Changed**: The Advisor Tool entered public beta. It pairs a fast executor model with a higher-intelligence advisor model that provides strategic guidance mid-generation. Long-horizon agentic workloads get close to advisor-solo quality while the bulk of token generation runs at executor-model speed. Access via the API with the advisor beta header.
+- **Impact on ag3nts**: Directly applicable to the REPAIR pipeline stages that use Opus for reasoning-heavy work (software-architect Stage 4, security-engineer Stage 6). With the Advisor Tool, these stages could run Haiku as executor + Opus 4.7 as advisor — maintaining quality while reducing cost by ~70% on token throughput. Also relevant to `code-reviewer` parallel sub-agents where correctness + security reviewers are reasoning-heavy but generation-light. This is the most architecturally significant new primitive since the effort parameter.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add Advisor Tool release notes link
+  - [ ] `shared/claude-code/files/agents/software-architect.md` — add note on Advisor Tool as an optional cost-quality tradeoff for Stage 4 reasoning
+  - [ ] `shared/claude-code/files/agents/security-engineer.md` — same note for Stage 6 threat modeling
+- **Priority**: High — new API primitive with direct cost/quality tradeoff applicability to the ag3nts pipeline; worth evaluating in beta
+
+---
+
+#### [Medium] Claude Agent SDK — Formal Rename + New Engineering Post
+- **Source**: https://www.anthropic.com/engineering/building-agents-with-the-claude-agent-sdk | https://docs.anthropic.com/en/docs/claude-code/sdk
+- **Published**: 2026 (engineering post; SDK doc URL updated)
+- **Category**: Agent / Tooling
+- **What Changed**: The Claude Code SDK has been formally renamed to the **Claude Agent SDK**, reflecting its broader use beyond coding tasks (deep research, video creation, note-taking). The SDK now provides the same core tools, context management systems, and permissions frameworks that power Claude Code — packaged as a general-purpose agent harness. A new engineering post ("Building agents with the Claude Agent SDK") describes recommended patterns.
+- **Impact on ag3nts**: ag3nts currently references the SDK as "Claude Code SDK" in comments and knowledge-base entries. The new name is now canonical. More importantly, the engineering post may contain updated best practices for the sub-agent dispatch pattern used by `code-reviewer` and `security-engineer`. Worth reading for any harness improvements.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add `https://www.anthropic.com/engineering/building-agents-with-the-claude-agent-sdk`
+  - [ ] Any references to "Claude Code SDK" in agent files → update to "Claude Agent SDK"
+- **Priority**: Medium — naming update + useful reference; no breaking changes
+
+---
+
+#### [Medium] 300k Output Tokens Beta — Message Batches API
+- **Source**: https://docs.anthropic.com/en/release-notes/api | https://docs.anthropic.com/en/api/creating-message-batches
+- **Published**: March 24, 2026 (beta header date: `output-300k-2026-03-24`)
+- **Category**: API
+- **What Changed**: The `output-300k-2026-03-24` beta header raises `max_tokens` to 300,000 on the Message Batches API for Opus 4.7, Opus 4.6, and Sonnet 4.6. Only applies to Message Batches (not synchronous `/v1/messages`). Not available on Bedrock, Vertex, or Foundry. `budget_tokens` must be less than `max_tokens`.
+- **Impact on ag3nts**: If ag3nts uses Message Batches for batch code review or large diff analysis (e.g., `code-reviewer` on a large PR), 300k output tokens would allow complete reviews without truncation. Currently ag3nts runs sub-agents interactively, not via Message Batches — so this is forward-looking. If a scripted `--bare` batch workflow is added, this header should be included.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` → Scripted / Automated Runs section — add a note that `output-300k-2026-03-24` beta header raises output ceiling to 300k on Message Batches (Opus 4.7, Opus 4.6, Sonnet 4.6 only)
+- **Priority**: Medium — not immediately actionable for interactive sessions; valuable for any future batch automation layer
+
+---
+
+#### [Medium] Engineering: Harness Design for Long-Running Application Development
+- **Source**: https://www.anthropic.com/engineering/harness-design-long-running-apps
+- **Published**: March 2026 (appeared in May search)
+- **Category**: Agent
+- **What Changed**: Anthropic engineering post on harness design for autonomous long-running app development. Key insights: (1) Models lose coherence as context fills — context resets (not just compaction) are essential for tasks spanning many hours. (2) A **progress file alongside git history** is the key mechanism for agents to understand work state after a context reset. (3) Agents that self-evaluate their own output exhibit confident self-praise even for low-quality work — external evaluators are essential. (4) Anthropic's Managed Agents service provides stable interfaces as harnesses change.
+- **Impact on ag3nts**: The progress-file + git-history pattern directly maps to the REPAIR pipeline's inter-stage handoff. Currently stages pass context via the conversation; adding a progress file (structured state outside the LLM context) would improve multi-session pipeline continuity — especially for Stage 4 (architecture) and Stage 6 (review) which can run for hours. The self-evaluation anti-pattern also validates ag3nts' decision to use separate `reality-checker` and `code-reviewer` agents rather than asking the implementing agent to self-review.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add `https://www.anthropic.com/engineering/harness-design-long-running-apps`
+- **Priority**: Medium — validates existing design; progress-file pattern is a concrete improvement for the REPAIR pipeline
+
+---
+
+#### [Medium] Engineering: Code Execution with MCP
+- **Source**: https://www.anthropic.com/engineering/code-execution-with-mcp
+- **Published**: 2026
+- **Category**: Agent / Tooling
+- **What Changed**: New engineering post on combining the code execution tool with MCP servers to build more efficient agents. Describes patterns for agents that can both execute code and call MCP tools in the same workflow, reducing round-trips and context overhead.
+- **Impact on ag3nts**: ag3nts uses MCP (GitHub MCP server) and hook scripts that run bash. Combining code execution + MCP in a single agent turn could reduce the number of turns needed for tasks like PR creation (currently: multiple tool calls → review → commit → pr). Worth reviewing for any automation layer refactors.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add `https://www.anthropic.com/engineering/code-execution-with-mcp`
+- **Priority**: Medium — reference for future MCP + execution workflow optimizations
+
+---
+
+#### [Low] ant CLI — Command-Line Client for the Claude API
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: 2026 (public beta)
+- **Category**: Tooling
+- **What Changed**: Anthropic launched `ant`, a command-line client for the Claude API. Features: faster API interaction, native Claude Code integration, and YAML-based versioning of API resources (prompts, configs). Part of the official SDK family alongside Python, TypeScript, Go, Java, Ruby, C#, and PHP SDKs.
+- **Impact on ag3nts**: The YAML versioning of API resources could complement ag3nts' existing file-based agent config system (`shared/claude-code/files/agents/*.md`). If ag3nts adds direct API calls (e.g., a lightweight harness for the Advisor Tool evaluation), `ant` provides a CLI path. Not immediately actionable — ag3nts uses Claude Code CLI, not raw API calls.
+- **Proposed Changes**: None immediately
+- **Priority**: Low — new tooling in the ecosystem; not a drop-in replacement for Claude Code CLI in ag3nts' current architecture
+
+---
+
+#### [Low] Anthropic Labs — Experimental Products Team
+- **Source**: https://www.anthropic.com/news/introducing-anthropic-labs
+- **Published**: 2026
+- **Category**: Tooling / Business
+- **What Changed**: Anthropic formalized an internal "Labs" team focused on incubating experimental products at the frontier of Claude's capabilities. Previous Labs outputs include Claude Code, MCP, Agent Skills, Claude in Chrome, and Cowork. The team follows a test-with-early-users → scale-what-lands model.
+- **Impact on ag3nts**: Informational. Signals that future early-access experimental features (Agent Skills successors, new harness primitives) will emerge from Labs before becoming GA API features. Worth watching Labs announcements as a leading indicator.
+- **Proposed Changes**: None
+- **Priority**: Low — structural/organizational announcement; no immediate integration
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **Grep for retired model IDs** (`claude-sonnet-4-20250514`, `claude-opus-4-20250514`) across all ag3nts files, `.mcp.json`, and any automation scripts. June 15, 2026 is a hard error deadline — 45 days out. If found, update to `claude-sonnet-4-5`/`claude-opus-4-6` or the named alias. (`grep -r "20250514" shared/ .`)
+
+2. **Evaluate the Advisor Tool beta** for the software-architect and security-engineer agents. These are the two Opus-class reasoning agents in the REPAIR pipeline — pairing Haiku executor + Opus advisor could maintain quality at ~30% of current Opus cost. Add the beta header to a test invocation of `software-architect` Stage 4 and compare output quality. (`shared/claude-code/files/agents/software-architect.md`, `security-engineer.md`)
+
+3. **Add three new engineering references to `repos.md`**: `harness-design-long-running-apps`, `code-execution-with-mcp`, and `building-agents-with-the-claude-agent-sdk`. These are directly relevant to the ag3nts REPAIR pipeline design and MCP workflows. One-line additions, high reference value.
+
+---
+
 ## Latest Scan: 2026-04-30
 
 ### Summary
