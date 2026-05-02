@@ -1,5 +1,99 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-05-02
+
+### Summary
+- Sources scanned: 5 (anthropic.com/news, /research, /engineering, docs.anthropic.com, alignment.anthropic.com [newly added])
+- New findings: 6
+- Actionable integrations: 3
+
+### Findings
+
+#### [Medium] Trustworthy Agents in Practice — Five-Principle Security & Oversight Framework
+- **Source**: https://www.anthropic.com/research/trustworthy-agents
+- **Published**: April 9, 2026 (missed in prior scans)
+- **Category**: Agent / Safety
+- **What Changed**: Anthropic published a detailed practical framework for building trustworthy AI agents, organized around five principles: (1) keep humans in control, (2) align with human values, (3) secure agent interactions, (4) maintain transparency, (5) protect privacy. The paper identifies **prompt injection as the primary attack vector for deployed agents** and argues that no single defense is sufficient — effective mitigation requires defense-in-depth plus post-deployment monitoring infrastructure. It also documents the observed shift in experienced users from approving individual actions to monitoring-and-intervening, recommending that agent UX be designed around this pattern rather than per-action approval flows.
+- **Impact on ag3nts**: Directly applicable to the `security-engineer` agent's threat model and the `code-reviewer` oversight design. The five principles are a reference checklist for ag3nts agent design. The prompt injection framing reinforces the MCP STDIO RCE finding (April 27) — prompt injection + tool execution is the critical attack chain. The monitoring-over-approval finding validates ag3nts' auto-mode classifier design (classifier reviews, doesn't block; humans monitor and interrupt).
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add `https://www.anthropic.com/research/trustworthy-agents`
+  - [ ] `shared/claude-code/files/agents/security-engineer.md` — add note referencing the five-principle framework and prompt injection as a top agent threat vector (distinct from traditional OWASP Top 10)
+- **Priority**: Medium — strong reference for agent security design; prompt injection emphasis is actionable for security-engineer threat model; was missed for 23 days
+
+---
+
+#### [Medium] Measuring AI Agent Autonomy in Practice — Co-Constructed Autonomy Model
+- **Source**: https://www.anthropic.com/research/measuring-agent-autonomy
+- **Published**: Q1 2026 (exact date unconfirmed; reflects Oct 2025–Jan 2026 data)
+- **Category**: Agent / Research
+- **What Changed**: Anthropic's research team analyzed real-world Claude Code usage patterns to measure how autonomy works in practice. Key findings: (1) The 99.9th percentile turn duration nearly doubled from ~25 min to ~45 min between October 2025 and January 2026 — demonstrating rapid growth in long-horizon agent use. (2) **Autonomy is co-constructed** by model, user, and product — not solely a property of the model. (3) Experienced users shift from per-action approval to monitoring + intervention; Claude's own check-in rate doubles on complex tasks. (4) Policy frameworks requiring per-action human approval create friction without proportionate safety benefit — oversight should focus on positioning humans to monitor and intervene effectively.
+- **Impact on ag3nts**: Validates ag3nts' auto-mode design philosophy. The auto-mode classifier (approves in real-time, blocks dangerous actions, relies on human monitoring rather than per-action approval) maps directly to the "monitoring-and-intervention" model this research endorses. The finding that Claude should double its check-in rate on complex tasks is also relevant to pipeline agent verbosity settings — agents should be allowed to surface uncertainty rather than be silenced by word-count caps (reinforces the April 23 postmortem anti-pattern).
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add `https://www.anthropic.com/research/measuring-agent-autonomy`
+- **Priority**: Medium — validates existing design decisions; useful reference when explaining ag3nts' auto-mode to new contributors
+
+---
+
+#### [Medium] Long-Running Claude for Scientific Computing — Practical Patterns for Multi-Session Agents
+- **Source**: https://www.anthropic.com/research/long-running-Claude
+- **Published**: 2026 (exact date unconfirmed)
+- **Category**: Agent / Research
+- **What Changed**: Anthropic published a detailed guide on running Claude Code agents for extended, multi-session scientific computing tasks. Concrete example: a differentiable Boltzmann solver (physics simulation) implemented across many Claude sessions. The guide identifies four essential practices for long-horizon agent work: (1) **CLAUDE.md for project context** — ensures consistent instructions across sessions; (2) **progress tracking files alongside git history** — enables context reconstruction after resets without relying on LLM memory; (3) **test oracles** — automated validation that the agent's output is correct; (4) **version control as agent monitoring** — git diff/log lets humans understand what the agent has done. References an earlier project where Claude worked across ~2,000 sessions to build a C compiler capable of compiling the Linux kernel.
+- **Impact on ag3nts**: These four patterns directly map to the REPAIR pipeline's multi-stage handoff design. The "progress tracking file + git history" pattern (recommended in the April 30 harness-design post) is now independently validated by this scientific computing research. The REPAIR pipeline currently relies on conversation context for inter-stage state — adding a structured progress file to the pipeline output directory would improve multi-session continuity. CLAUDE.md usage is already standard in ag3nts; test oracles and version-control monitoring are also standard. The main gap is the progress-file pattern.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add `https://www.anthropic.com/research/long-running-Claude`
+- **Priority**: Medium — progress-file pattern is a concrete REPAIR pipeline improvement; validates existing practices and surfaces one gap
+
+---
+
+#### [Low] Automated Alignment Researcher (AAR) — Parallel Claude Agents for Research Automation
+- **Source**: https://alignment.anthropic.com/2026/automated-w2s-researcher/ | https://www.anthropic.com/research/automated-alignment-researchers
+- **Published**: April 14, 2026
+- **Category**: Agent / Research / Safety
+- **What Changed**: Anthropic's alignment team published results from the Automated Alignment Researcher (AAR) — parallel teams of Claude Opus 4.6 agents that autonomously conduct alignment research. Each AAR proposes ideas, runs experiments, analyzes results, and shares findings and code with peer AARs in separate sandboxes. Result: starting from 23% PGR improvement after 7 days of human iteration, AARs closed almost the entire remaining performance gap to 97% PGR in 5 additional days of automated research. Cost: ~$18,000 total (~$22/AAR-hour, ~800 cumulative agent-hours). The research demonstrates that automated research on outcome-gradable problems is already practical, with important caveats about human oversight and verification of results.
+- **Impact on ag3nts**: Informational. The AAR parallel-agent pattern (independent sandboxed agents sharing findings) is structurally similar to ag3nts' `code-reviewer` parallel sub-agent dispatch (4 specialists, each reviewing independently). The $22/agent-hour cost metric is a useful reference for calibrating expectations on autonomous agent workflows. **New source added to scan scope**: `alignment.anthropic.com` is Anthropic's alignment science blog and was not previously in scan scope — this entry was found via a search hit on that subdomain.
+- **Proposed Changes**:
+  - [ ] Add `https://alignment.anthropic.com` to the scan sources in `shared/claude-code/files/agents/anthropic.md` (alongside the newly added `red.anthropic.com`)
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add AAR post as a reference for parallel agent patterns
+- **Priority**: Low — informational; new scan source is the key corrective action; no immediate integration
+
+---
+
+#### [Low] Project Deal — Agent-on-Agent Commerce Experiment
+- **Source**: https://techcrunch.com/2026/04/25/anthropic-created-a-test-marketplace-for-agent-on-agent-commerce/ (reported; not on anthropic.com directly)
+- **Published**: April 25, 2026 (missed in April 28 business news sweep)
+- **Category**: Research / Agent
+- **What Changed**: Anthropic ran "Project Deal," a controlled marketplace experiment where Claude agents represented 69 employees as buyers and sellers, making real deals for real goods. Results: 186 deals, $4,000+ in value. Key findings: (1) Users represented by more advanced models got **objectively better outcomes** — but users on the losing end did not perceive the disparity ("agent quality gap"). (2) Initial instructions given to agents did not significantly affect sale likelihood or negotiated prices. The experiment used web search, note-taking, Slack-style messaging, and dynamic pricing tools.
+- **Impact on ag3nts**: Informational. The "agent quality gap" finding has indirect relevance to ag3nts — if ag3nts' sub-agents operate on behalf of users in contexts where counterparties use different models, the quality differential may not be visible to either side. Not immediately actionable; context for future agent-to-agent workflow design.
+- **Proposed Changes**: None
+- **Priority**: Low — research experiment; no API or config change
+
+---
+
+#### [Low] Web Search Tool + Programmatic Tool Calling — Now Generally Available
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: 2026 (exact date unconfirmed; beta header no longer required)
+- **Category**: API
+- **What Changed**: The web search tool and programmatic tool calling are now **generally available** — the beta header is no longer required to use either. Additionally, API code execution is **free** when used together with web search or web fetch (sandboxed execution improves model capability and token efficiency at no extra cost in this combination). Web search and web fetch also now support **dynamic filtering**: code execution filters search/fetch results before they reach the context window, reducing token cost and improving result quality.
+- **Impact on ag3nts**: The `anthropic` agent and `accessibility-auditor` agent both use web search (`Web: Heavy` and `Web: WCAG refs` respectively). If either was previously configured with the beta header, that header can now be removed. Dynamic filtering is relevant to the `anthropic` agent's multi-source scan workflow — filtering search results in-context before loading them could reduce per-scan token cost. The free code execution + web search combination is worth noting in the Scripted / Automated Runs section if ag3nts ever adds a batch research workflow.
+- **Proposed Changes**:
+  - [ ] Verify no ag3nts agent files or `.mcp.json` contain a now-unnecessary web search beta header
+- **Priority**: Low — GA status is a cleanup opportunity; dynamic filtering is a useful future optimization for the `anthropic` agent's scan workflow
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **Add `alignment.anthropic.com` to `anthropic` agent scan sources** (`shared/claude-code/files/agents/anthropic.md`) — The alignment science blog was not in prior scan scope and caused the AAR finding (April 14) to be missed for 18 days. One-line addition alongside the `red.anthropic.com` source added in the April 26 scan. Prevents future gaps on alignment-relevant research.
+
+2. **Add "Trustworthy Agents in Practice" prompt-injection threat to `security-engineer.md`** — The five-principle framework identifies prompt injection as the primary agent attack vector, distinct from traditional OWASP Top 10. Add a reference to `https://www.anthropic.com/research/trustworthy-agents` and a note that ag3nts agents processing external content (GitHub PR comments, web search results, user files) should treat that content as a potential prompt injection vector. Directly extends the MCP STDIO RCE threat entry added in the April 27 scan.
+
+3. **Add three new research references to `repos.md`**: `trustworthy-agents`, `measuring-agent-autonomy`, and `long-running-Claude`. These are directly relevant to the REPAIR pipeline design and ag3nts' auto-mode philosophy. One-line additions, high reference value. Carry over the `alignment.anthropic.com` AAR post as a fourth entry.
+
+---
+
 ## Latest Scan: 2026-05-01
 
 ### Summary
