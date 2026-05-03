@@ -1,5 +1,52 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-05-03
+
+### Summary
+- Sources scanned: 6 (anthropic.com/research, /news, /engineering, docs.anthropic.com, red.anthropic.com, alignment.anthropic.com)
+- New findings: 2
+- Actionable integrations: 0 (carry-forward from May 2 scan)
+
+### Context
+
+The seven consecutive daily scans from April 26 through May 2 were comprehensive, cataloguing all major model releases, API changes, agent patterns, and safety updates from the prior 30 days. Today's scan (May 3) found no new announcements in the 24-hour window since the May 2 scan. Two items from within the 30-day window may have been missed in the unread pre-April 26 scan archive and are noted below.
+
+### Findings
+
+#### [Low] RSP v3.1 Update + Frontier Safety Roadmap Milestones
+- **Source**: https://www.anthropic.com/responsible-scaling-policy/updates | https://www.anthropic.com/responsible-scaling-policy/roadmap
+- **Published**: April 2, 2026 (RSP v3.1 effective date); roadmap updated concurrently
+- **Category**: Safety
+- **What Changed**: Anthropic published RSP v3.1 (supersedes v3.0 from February 24, 2026). Key change: clearer definition of the AI R&D capability threshold used to trigger higher-level safety commitments. The Frontier Safety Roadmap was updated simultaneously to reflect two completed goals (moonshot R&D projects launched; data-retention internal report completed) and added concrete near-term milestones: (1) publish a data-retention policy update or declare no update by May 11, 2026; (2) complete Phase 1 inventory of provable inference components by May 15, 2026; (3) ship a prototype for provable inference (cryptographic model-output attribution) by September 30, 2026.
+- **Impact on ag3nts**: Informational. The clearer AI R&D capability threshold may affect when Anthropic applies more restrictive safeguards to models used in ag3nts (e.g., `software-architect` Opus 4.7 sessions doing autonomous development). The September 2026 provable inference prototype could eventually provide attribution guarantees for ag3nts-generated code — relevant to the `code-reviewer` and `security-engineer` audit chain if model outputs become cryptographically attributable. Likely covered in a pre-April 26 scan; noted here in case it was missed.
+- **Proposed Changes**: None
+- **Priority**: Low — informational; no API or config change; provable inference is too far out to integrate now
+
+---
+
+#### [Low] Claude for Creative Work — MCP Connectors for Creative Tools
+- **Source**: https://www.anthropic.com/news/claude-for-creative-work
+- **Published**: April/May 2026 (updated May 1, 2026 with Blender donation correction)
+- **Category**: Tooling / API
+- **What Changed**: Anthropic announced Claude for Creative Work — a set of MCP connectors for professional creative software: Ableton (music production), Affinity by Canva (photo/design batch processing), Autodesk Fusion (3D CAD via natural language), Blender (Python API natural-language interface), Resolume Arena/Wire (live VJ control), SketchUp (3D modeling). Claude connects to these tools via the Model Context Protocol, enabling natural-language control over creative software. The announcement demonstrates MCP connectors as a distribution pattern for Claude capabilities into domain-specific tooling.
+- **Impact on ag3nts**: Low direct relevance — ag3nts is a developer-workflow system, not a creative tools platform. However, the pattern is instructive: the MCP connector model used here (Claude → MCP server → domain-specific tool) is the same pattern ag3nts uses for the GitHub MCP server. If ag3nts expands to new tool domains (e.g., a design token MCP server for the `ux-architect` agent), the creative connectors demonstrate how Anthropic structures tool-specific MCP integrations. Likely covered in a pre-April 26 scan; noted here in case it was missed.
+- **Proposed Changes**: None
+- **Priority**: Low — no direct integration; useful pattern reference for future MCP connector work
+
+---
+
+### Recommendations
+
+No new actions required from today's scan. Carry forward the top 3 from May 2:
+
+1. **Add `alignment.anthropic.com` to `anthropic` agent scan sources** (`shared/claude-code/files/agents/anthropic.md`) — The alignment science blog was not in prior scan scope and caused the AAR finding (April 14) to be missed for 18 days.
+
+2. **Add "Trustworthy Agents" prompt-injection threat to `security-engineer.md`** — The five-principle framework identifies prompt injection as the primary agent attack vector; add reference to `https://www.anthropic.com/research/trustworthy-agents` and a note that content from external sources (GitHub PR comments, web search results, user files) processed by ag3nts agents is a potential injection vector.
+
+3. **Add three research references to `repos.md`**: `trustworthy-agents`, `measuring-agent-autonomy`, and `long-running-Claude` — directly relevant to the REPAIR pipeline design and ag3nts' auto-mode philosophy.
+
+---
+
 ## Latest Scan: 2026-05-02
 
 ### Summary
