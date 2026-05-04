@@ -1,5 +1,57 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-05-04
+
+### Summary
+- Sources scanned: 6 (anthropic.com/research, /news, /engineering, docs.anthropic.com, red.anthropic.com, alignment.anthropic.com)
+- New findings (within 30-day window): 0
+- Previously-missed items (outside 30-day window, uncovered sources): 3
+- Actionable integrations: 0 new; 3 carry-forward from May 3
+
+### Context
+
+No new announcements were found in the 24-hour window since the May 3 scan. This scan surfaced three informational catch-up items from `red.anthropic.com` posts published January–March 2026 (before that source was added on April 26), plus the Anthropic Science Blog as a new source to add to scan scope. The three carry-forward recommendations from May 3 remain the top priorities.
+
+### Findings
+
+#### [Informational] red.anthropic.com Catch-Up — Three Posts from January–March 2026
+- **Source**: https://red.anthropic.com/2026/zero-days/ | https://red.anthropic.com/2026/cyber-toolkits-update/ | https://red.anthropic.com/2026/firefox/
+- **Published**: February 6 (0-Days), January 16 (Cyber Ranges), March 6 (Mozilla/Firefox)
+- **Category**: Security / Research
+- **What Changed**: Three `red.anthropic.com` posts published before that source was added to scan scope (April 26 scan). They extend the Glasswing/Mythos safety research thread already logged on April 26–27:
+  1. **"0-Days"** (Feb 6): Claude Opus 4.6 discovered three exploitable vulnerabilities in open-source projects (now patched). Opus 4.6 is notably better at finding high-severity bugs than prior models.
+  2. **"AI Models on Realistic Cyber Ranges"** (Jan 16): Current Claude models can execute multi-stage attacks on networks using only standard open-source tools, demonstrating practical offensive capability at scale.
+  3. **"Partnering with Mozilla to improve Firefox's security"** (Mar 6): Claude Opus 4.6 found 22 Firefox vulnerabilities over two weeks in a controlled defensive collaboration — same session that produced CVE-2026-2796 (already logged April 27).
+- **Impact on ag3nts**: Reinforces the threat model note already recommended for `security-engineer.md`: AI-assisted offensive security is now production-grade (not theoretical). These three posts are supporting evidence for that recommendation. No new action beyond what the April 26–27 scan already proposed.
+- **Proposed Changes**: None beyond the April 26–27 carry-forward items already in the recommendation list.
+- **Priority**: Low — informational catch-up; these posts predate the scan window; no new integration action
+
+---
+
+#### [Informational] Anthropic Science Blog — New Source Candidate
+- **Source**: https://www.anthropic.com/research/introducing-anthropic-science
+- **Published**: 2026 (exact date unconfirmed)
+- **Category**: Research
+- **What Changed**: Anthropic launched a dedicated science blog covering AI-and-science work, external research collaborations, and practical workflows for scientists using Claude. Separate from the alignment science blog (`alignment.anthropic.com`) and the main research page. Content includes AI-assisted scientific computing, multi-session agent workflows, and Claude usage in physics/biology/chemistry domains.
+- **Impact on ag3nts**: Informational. The science blog's focus on multi-session agent workflows and long-running computing tasks is adjacent to the REPAIR pipeline design and the `long-running-Claude` research already in `repos.md`. Adding it to scan scope would give earlier visibility into practical multi-session agent patterns validated in scientific contexts.
+- **Proposed Changes**:
+  - [ ] Add `https://www.anthropic.com/research/introducing-anthropic-science` to scan sources in `shared/claude-code/files/agents/anthropic.md`
+- **Priority**: Low — new source candidate; no current actionable integration; adds breadth to agent workflow coverage
+
+---
+
+### Recommendations
+
+No new actions required from today's scan. Carry forward the top 3 from May 3:
+
+1. **Add `alignment.anthropic.com` to `anthropic` agent scan sources** (`shared/claude-code/files/agents/anthropic.md`) — The alignment science blog was not in prior scan scope and caused the AAR finding (April 14) to be missed for 18 days. One-line addition alongside the `red.anthropic.com` source added in the April 26 scan. Prevents future gaps on alignment-relevant research.
+
+2. **Add "Trustworthy Agents" prompt-injection threat to `security-engineer.md`** — The five-principle framework identifies prompt injection as the primary agent attack vector; add reference to `https://www.anthropic.com/research/trustworthy-agents` and a note that content from external sources (GitHub PR comments, web search results, user files) processed by ag3nts agents is a potential injection vector.
+
+3. **Add three research references to `repos.md`**: `trustworthy-agents`, `measuring-agent-autonomy`, and `long-running-Claude` — directly relevant to the REPAIR pipeline design and ag3nts' auto-mode philosophy. One-line additions, high reference value. Carry over the `alignment.anthropic.com` AAR post as a fourth entry.
+
+---
+
 ## Latest Scan: 2026-05-03
 
 ### Summary
