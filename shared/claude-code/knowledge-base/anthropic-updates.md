@@ -1,5 +1,61 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-05-05
+
+### Summary
+- Sources scanned: 5 (anthropic.com/news, /research, /engineering, docs.anthropic.com, red.anthropic.com)
+- New findings: 3
+- Actionable integrations: 1
+
+### Findings
+
+#### [Medium] Claude Code v2.1.126 — `claude project purge` Command
+- **Source**: https://github.com/anthropics/claude-code/releases; https://docs.anthropic.com/en/release-notes/claude-code
+- **Published**: May 1, 2026 (v2.1.126)
+- **Category**: Tooling
+- **What Changed**: Claude Code v2.1.126 shipped three notable updates:
+  1. **`claude project purge [path]`** — new command that deletes all Claude Code state for a project (transcripts, tasks, file history, config entry) in one shot. Supports `--dry-run`, `-y/--yes`, `-i/--interactive`, and `--all` flags. Does not touch project source files.
+  2. **PR URL in `/resume` search** — pasting a GitHub/GitLab/Bitbucket PR URL into the `/resume` search box now finds the session that created that PR.
+  3. **`ANTHROPIC_BEDROCK_SERVICE_TIER` env var** — selects a Bedrock service tier (`default`, `flex`, or `priority`), sent as the `X-Amzn-Bedrock-Service-Tier` header.
+- **Impact on ag3nts**: The portable SSD setup (`ag3nts/`) accumulates Claude Code project state (`~/.claude/projects/<hash>/`) across many machines over time — 30–200 MB per project of transcripts, tasks, and file history. `claude project purge` is a first-class maintenance tool for the ag3nts multi-machine setup. It should be added to the `ag3nts.md` Commands table for reference. The PR URL in `/resume` is a quality-of-life improvement with no config impact. The Bedrock tier env var is only relevant if the ag3nts setup uses Amazon Bedrock as the API provider (currently not the case).
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — add `claude project purge` to the Commands table (e.g., "Purge Claude Code state for a project: `claude project purge [path]`")
+- **Priority**: Medium — no breaking change; `project purge` is a useful maintenance command for the portable SSD setup and worth documenting so it isn't forgotten
+
+---
+
+#### [Low] Enterprise AI Services Company: Anthropic + Blackstone + H&F + Goldman Sachs
+- **Source**: https://www.anthropic.com/news/enterprise-ai-services-company
+- **Published**: May 4, 2026
+- **Category**: Business / Partnership
+- **What Changed**: Anthropic announced it is building a new enterprise AI services company in partnership with Blackstone, Hellman & Friedman, and Goldman Sachs (backed also by General Atlantic, Leonard Green, Apollo, GIC, and Sequoia). The company will deploy Applied AI engineers alongside Anthropic staff to build custom Claude-powered systems for mid-size enterprises across sectors.
+- **Impact on ag3nts**: Informational / business announcement. No API, model, or tooling changes. No direct impact on ag3nts configuration or agent workflows.
+- **Proposed Changes**: None
+- **Priority**: Low — corporate announcement; no integration needed
+
+---
+
+#### [Low] API Service Outage — April 28, 2026 (Resolved)
+- **Source**: https://status.anthropic.com/
+- **Published**: April 28, 2026 (18:33 UTC; resolved same day)
+- **Category**: Infrastructure
+- **What Changed**: Elevated errors on the Anthropic API and Claude.ai login paths (including Claude Code auth). Resolved within hours.
+- **Impact on ag3nts**: Informational. No configuration changes needed. Note for context: the outage affected the Claude Code login flow, which could surface in automated scripts using OAuth-based auth. The `--bare` mode scripts documented in `ag3nts.md` use `ANTHROPIC_API_KEY` directly and would have been less affected (API key auth bypasses the login path that was impacted).
+- **Proposed Changes**: None
+- **Priority**: Low — resolved; reinforces that scripted/bare-mode scripts with `ANTHROPIC_API_KEY` are more resilient to login-path outages
+
+---
+
+### Recommendations
+
+Top 1 change to make now:
+
+1. **Add `claude project purge` to the `ag3nts.md` Commands table** (`shared/ag3nts.md`) — v2.1.126 (May 1) ships `claude project purge [path]` as a first-class maintenance command. The ag3nts portable SSD setup accumulates project state across machines; documenting this command alongside `pnpm install`, `pytest`, etc. ensures it is discoverable. Low-effort, one-line addition.
+
+Note: All other significant April–May 2026 items (Claude Opus 4.7, Managed Agents Memory, 1M context beta retirement, Models API capability fields, `xhigh` effort level, Compaction API, MCP STDIO vulnerability, Claude Code quality postmortem) were fully logged in the April 22–27 scans. No new research papers (interpretability, alignment, safety) were published in the April 28–May 5 window. red.anthropic.com returned no new posts since the April 15–20 CVE-2026-2796 exploit post logged April 27.
+
+---
+
 ## Latest Scan: 2026-05-04
 
 ### Summary
