@@ -153,6 +153,9 @@ func renderMarkdown(text string) string {
 		r, err := glamour.NewTermRenderer(
 			glamour.WithStyles(ag3ntsStyle()),
 			glamour.WithWordWrap(100),
+			// terminal16m emits 24-bit truecolor ANSI escapes for syntax
+			// highlighting in code blocks. Default is terminal256 (quantized).
+			glamour.WithChromaFormatter("terminal16m"),
 		)
 		if err != nil {
 			return

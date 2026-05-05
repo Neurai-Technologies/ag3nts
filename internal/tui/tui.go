@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/colorprofile"
 	"github.com/chzyer/readline"
 
 	"github.com/rohanrgit/ag3nts/internal/agent"
@@ -131,6 +132,15 @@ func newSlashCompleter() *readline.PrefixCompleter {
 }
 
 func New(orch *orchestrator.Orchestrator, localOrch *llm.LocalOrchestrator, configPath string) *App {
+	// Lock lipgloss's color profile to 24-bit truecolor so hex colors
+	// (#RRGGBB) used across the TUI render as-is instead of being quantized
+	// to the 256-color palette by terminal auto-detection. Terminals that
+	// don't support truecolor will still render, just with visual artifacts
+	// on tmux-over-ssh; an env override remains respected.
+	if os.Getenv("AG3NTS_COLOR_PROFILE") != "auto" {
+		lipgloss.Writer.Profile = colorprofile.TrueColor
+	}
+
 	currentCfg := config.Default()
 	if configPath != "" {
 		if loaded, err := config.Load(configPath); err == nil {
