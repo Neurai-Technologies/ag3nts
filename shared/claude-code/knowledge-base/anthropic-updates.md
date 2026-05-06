@@ -1,5 +1,80 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-05-06
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 3
+- Actionable integrations: 0 (0 new; carry-forward from May 5 and earlier)
+
+### Context
+
+No major new announcements since the May 5 scan. Three items surfaced: one genuine gap on `alignment.anthropic.com` (Introspection Adapters, April 29), one catch-up from January (Next-gen Constitutional Classifiers), and one minor SDK release. All prior pending carry-forward recommendations remain outstanding.
+
+### Findings
+
+#### [Low] Introspection Adapters / AuditBench — Detecting Learned Behaviors in Fine-Tuned LLMs
+- **Source**: https://alignment.anthropic.com/2026/introspection-adapters/ | https://alignment.anthropic.com/2026/auditbench/
+- **Published**: April 29, 2026 (missed by May 2–5 scans despite `alignment.anthropic.com` being in scope since May 2)
+- **Category**: Safety / Research
+- **What Changed**: Anthropic researchers published two linked posts on the alignment science blog:
+  1. **Introspection Adapters (IA)** — a technique for training a single LoRA adapter that causes fine-tuned LLMs to self-report the behaviors they learned during fine-tuning. Generalizes across many different fine-tuning styles without per-model training.
+  2. **AuditBench** — a benchmark of 56 models each implanted with one of 14 concerning behaviors (sycophantic deference, opposition to AI regulation, covert geopolitical loyalties, etc.). IAs achieve 59% audit success vs. 53% for the next-best method. The study also examines conditions needed for constitutional-classifier backdoors installed via fine-tuning data poisoning to evade black-box red-teaming.
+- **Impact on ag3nts**: Informational. ag3nts uses foundation Claude models (not fine-tuned variants), so IA is not directly applicable. However, the backdoor-in-classifier finding is relevant context for the `security-engineer` agent's threat model: prompt injection into a classifier (e.g., injecting into the ag3nts auto-mode classifier via a malicious tool result) could in principle be analyzed through this lens. No concrete integration action today.
+- **Proposed Changes**: None
+- **Priority**: Low — safety research catch-up; no direct integration; reinforces existing prompt-injection threat awareness
+
+---
+
+#### [Low] Next-Generation Constitutional Classifiers — Catch-Up (Jan 9, 2026)
+- **Source**: https://www.anthropic.com/research/next-generation-constitutional-classifiers
+- **Published**: January 9, 2026 (outside 30-day window; may have been missed before scans started April 26)
+- **Category**: Safety / Research
+- **What Changed**: Anthropic published Constitutional Classifiers++ — the next iteration of its jailbreak-defense system. Key improvements over the first-generation:
+  1. **Two-stage probe architecture** — a lightweight probe examines Claude's internal activations on every turn; suspicious exchanges escalate to a more powerful full-conversation classifier. Only the escalated cases incur significant compute cost.
+  2. **~1% additional compute overhead** vs. ~23.7% for the first-generation (>20× more efficient).
+  3. **No universal jailbreak discovered** in red-team testing; still vulnerable to reconstruction attacks (splitting harmful information across benign-seeming segments and reassembling).
+- **Impact on ag3nts**: Informational. The efficiency improvement means safety classifiers of this type are now practical at production scale, which has long-term implications for how Anthropic may layer safety checks onto API responses. No configuration changes for ag3nts.
+- **Proposed Changes**: None
+- **Priority**: Low — catch-up item outside the 30-day window; no integration action
+
+---
+
+#### [Low] Anthropic Python SDK v0.99.0 — OIDC Federation Token Exchange
+- **Source**: https://github.com/anthropics/anthropic-sdk-python/releases
+- **Published**: May 5, 2026
+- **Category**: Tooling
+- **What Changed**: Anthropic Python SDK v0.99.0 released with one notable addition: the ability to target a specific workspace for OIDC federation token exchange. Relevant only to multi-workspace enterprise setups using identity federation for API access.
+- **Impact on ag3nts**: None. ag3nts uses `ANTHROPIC_API_KEY` (standard key auth), not OIDC federation. No changes needed.
+- **Proposed Changes**: None
+- **Priority**: Low — minor SDK release; no impact on ag3nts
+
+---
+
+### Verification: Haiku 3 Retirement Impact (Confirmed Clear)
+The April 30 scan logged Haiku 3 (`claude-3-haiku-20240307`) as retired and flagged two action items: (1) verify no `context-1m-2025-08-07` header in config, (2) verify `model: haiku` alias resolves to Haiku 4.5, not the retired model. Both are now confirmed clear:
+- `grep -r "claude-3-haiku-20240307"` across ag3nts: zero matches.
+- `feedback.md` and `version.md` use `model: haiku` (alias, not version string) — Claude Code resolves this to `claude-haiku-4-5-20251001`.
+- No action required; close the April 30 Haiku 3 action items.
+
+---
+
+### Recommendations
+
+No new changes required from today's scan. Carry-forward priorities (in order):
+
+1. **Add `claude project purge` to `ag3nts.md` Commands table** (`shared/ag3nts.md`) — v2.1.126 ships first-class project state cleanup; one-line addition. [From May 5]
+
+2. **Evaluate Advisor Tool beta for `software-architect` + `security-engineer`** — pair Haiku executor + Opus 4.7 advisor to maintain quality at ~30% Opus cost on REPAIR pipeline Stages 4 and 6. Add the beta header to a test invocation and compare output. [From May 1]
+
+3. **Add research references to `repos.md`**: `trustworthy-agents`, `measuring-agent-autonomy`, `long-running-Claude`, and the AAR post. High reference value for REPAIR pipeline design and ag3nts auto-mode philosophy. [From May 2–3]
+
+4. **Grep for June 15 retirement deadline** (`claude-sonnet-4-20250514`, `claude-opus-4-20250514`) across all ag3nts files. Hard error in 40 days. [From May 1]
+
+5. **Add `alignment.anthropic.com` to `anthropic` agent scan sources** (`shared/claude-code/files/agents/anthropic.md`) — the April 29 introspection adapters post demonstrates the gap is still active. [From May 2–3]
+
+---
+
 ## Latest Scan: 2026-05-05
 
 ### Summary
