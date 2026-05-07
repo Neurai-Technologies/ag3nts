@@ -1,5 +1,45 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-05-07
+
+### Summary
+- Sources scanned: 5 (anthropic.com/research, /news, /engineering, docs.anthropic.com, alignment.anthropic.com)
+- New findings: 1 (Finance Agents templates — possibly missed in May 5 scan)
+- Actionable integrations: 0
+
+### Context
+
+No new announcements were published on May 6–7, 2026 in the period since the previous scan. One item from May 5 — the Finance Agents templates — was not present in the May 5 scan log and may have been published after that scan ran; it is logged below as a catch-up. All other surfaced items (Claude Opus 4.7, Managed Agents Memory, Claude Code quality postmortem, Claude Mythos Preview, Claude Code auto mode, web search dynamic filtering, ant CLI) were confirmed as already logged in the April 22–27 or May 5 scans.
+
+### Findings
+
+#### [Low] Finance Agents — Ten Agent Templates for Financial Services
+- **Source**: https://www.anthropic.com/news/finance-agents
+- **Published**: May 5, 2026
+- **Category**: Agent
+- **What Changed**: Anthropic released ten ready-to-run agent templates targeting the most time-consuming financial-services workflows: building pitchbooks, screening KYC files, month-end close, and similar structured tasks. Templates ship as Skills-compatible agent definitions using the Claude API and are designed to be deployed via Claude Managed Agents or adapted for custom harnesses.
+- **Impact on ag3nts**: Low direct relevance — ag3nts is a developer-workflow system, not a financial-services platform. However, the template set demonstrates how Anthropic is productizing vertical-specific agent packages as reference implementations. The agent definition format (Skills-compatible) may be instructive if ag3nts ever expands to domain-specific sub-agents beyond the current engineering/design/testing division.
+- **Proposed Changes**: None
+- **Priority**: Low — vertical-specific templates; no integration needed for the current ag3nts developer workflow
+
+---
+
+### Recommendations
+
+No new changes required from today's scan. Carry-forward priorities (in order):
+
+1. **Add `claude project purge` to `ag3nts.md` Commands table** (`shared/ag3nts.md`) — v2.1.126 ships first-class project state cleanup; one-line addition. [From May 5]
+
+2. **Evaluate Advisor Tool beta for `software-architect` + `security-engineer`** — pair Haiku executor + Opus 4.7 advisor to maintain quality at ~30% Opus cost on REPAIR pipeline Stages 4 and 6. [From May 1]
+
+3. **Add research references to `repos.md`**: `trustworthy-agents`, `measuring-agent-autonomy`, `long-running-Claude`, and the AAR post. High reference value for REPAIR pipeline design. [From May 2–3]
+
+4. **Grep for June 15 retirement deadline** (`claude-sonnet-4-20250514`, `claude-opus-4-20250514`) across all ag3nts files. Hard error in ~39 days. [From May 1]
+
+5. **Add `alignment.anthropic.com` to `anthropic` agent scan sources** (`shared/claude-code/files/agents/anthropic.md`) — the April 29 introspection adapters post demonstrates the gap is still active. [From May 2–3]
+
+---
+
 ## Latest Scan: 2026-05-06
 
 ### Summary
