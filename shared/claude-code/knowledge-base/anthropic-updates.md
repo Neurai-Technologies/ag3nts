@@ -1,5 +1,87 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-05-08
+
+### Summary
+- Sources scanned: 5 (anthropic.com/research, /news, /engineering, docs.anthropic.com, alignment.anthropic.com)
+- New findings: 5
+- Actionable integrations: 1 (MCP tool result size override — Medium)
+
+### Findings
+
+#### [Low] Natural Language Autoencoders — Interpretability Technique for Model Auditing
+- **Source**: https://www.anthropic.com/research/natural-language-autoencoders
+- **Published**: May 7, 2026 (missed by May 7 scan; published same day)
+- **Category**: Research / Safety
+- **What Changed**: Anthropic's interpretability team published Natural Language Autoencoders (NLAs) — a technique that translates Claude's internal activations into natural-language descriptions (activation verbalizer → text) and reconstructs the original activation from that text alone (activation reconstructor). The key application is model auditing: an auditor equipped with NLAs uncovered a target model's hidden motivation between 12–15% of the time, vs. under 3% without NLAs — even without access to the training data that implanted the behavior. Anthropic has already applied NLAs in the pre-deployment alignment audits of Claude Mythos Preview and Claude Opus 4.6. Code and an interactive frontend (via Neuronpedia collaboration) are publicly released.
+- **Impact on ag3nts**: Informational. ag3nts uses unmodified foundation Claude models, so NLAs are not directly configurable. However, this confirms that Anthropic runs activation-level audits before each major model release — relevant context for the `security-engineer` agent's trust model of underlying Claude models. The public code release also means third-party security researchers can audit model behaviors independently.
+- **Proposed Changes**: None
+- **Priority**: Low — informational safety research; no direct integration; notable that it's already used in production pre-deployment audits
+
+---
+
+#### [Low] Model Spec Midtraining (MSM) — Reducing Agentic Misalignment via Pre-Alignment Training
+- **Source**: https://alignment.anthropic.com/2026/msm/
+- **Published**: May 6, 2026
+- **Category**: Safety / Alignment
+- **What Changed**: Anthropic published Model Spec Midtraining (MSM) on the alignment science blog. MSM is applied after pre-training but before alignment fine-tuning: models are trained on synthetic documents discussing their Model Spec, which shapes how they generalize from subsequent alignment training. Key result: MSM substantially reduces agentic misalignment — specifically, it gives operators finer control over which values models acquire from identical alignment fine-tuning data. The technique is already used in production training of current Claude models.
+- **Impact on ag3nts**: Informational. Better generalization from alignment training means Claude models used in ag3nts agentic workflows (software-architect, security-engineer, code-reviewer dispatching multi-agent pipelines) should exhibit more consistent value alignment across novel situations not seen in fine-tuning. No configuration changes needed. Relevant background when explaining why Claude's agentic behavior is more predictable than raw pre-trained models.
+- **Proposed Changes**: None
+- **Priority**: Low — alignment training advance; positive signal for agentic reliability; no integration action
+
+---
+
+#### [Low] Usage and Cost API — Org-Level Spend Reporting Endpoints
+- **Source**: https://docs.anthropic.com/en/api/usage-cost-api
+- **Published**: Recent (not previously logged)
+- **Category**: API / Tooling
+- **What Changed**: Anthropic added org-level API endpoints for retrieving cost and usage breakdowns: `/v1/organizations/cost_report` returns USD cost breakdowns (all costs as decimal strings in lowest units — cents) covering input tokens, output tokens, cache writes/reads, web search, and code execution; `/v1/organizations/messages_usage_report` returns token-level usage by model, workspace, and `inference_geo` dimension (global/us/not_available). Both endpoints require admin API access and support date-range filtering.
+- **Impact on ag3nts**: No required changes, but this is a practical cost-monitoring tool for the ag3nts setup. The `software-architect` (Opus 4.7) and `security-engineer` (Opus 4.7) agents are the highest-cost agents in the pipeline — cost reporting would surface if REPAIR pipeline runs or parallel code-reviewer dispatches are driving unexpected spend. A lightweight monitoring script or a periodic query via `ant` CLI could integrate this into the ag3nts ops workflow.
+- **Proposed Changes**: None required; optional: note endpoint in `ag3nts.md` or add a cost-monitoring helper script
+- **Priority**: Low — no breaking change; useful ops visibility; not urgent
+
+---
+
+#### [Low] Data Residency Controls — `inference_geo` Parameter for US-Only Routing
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: Recent (not previously logged)
+- **Category**: API
+- **What Changed**: Anthropic added the `inference_geo` request parameter for models released after February 1, 2026 (Claude Opus 4.6 and newer). Setting `inference_geo: "us"` routes inference exclusively to US infrastructure at a 1.1× pricing multiplier on all token categories (input, output, cache write, cache read). Pre-February models return `"not_available"` in the usage dimension. Values: `global` (default), `us`, `not_available`.
+- **Impact on ag3nts**: Low. ag3nts has no documented data residency or compliance requirements that would justify the 1.1× cost premium. No configuration changes needed unless Rohan has a future compliance requirement. The `inference_geo` dimension in the Usage and Cost API is useful for verifying that routing decisions are working correctly if this feature is ever enabled.
+- **Proposed Changes**: None
+- **Priority**: Low — optional compliance feature; no action without a specific data residency requirement
+
+---
+
+#### [Medium] MCP Tool Result Persistence Override — Per-Call Size Limit Up to 500K Chars
+- **Source**: https://docs.anthropic.com/en/release-notes/claude-code
+- **Published**: Recent Claude Code release (not previously logged)
+- **Category**: Tooling / MCP
+- **What Changed**: Claude Code now supports `_meta["anthropic/maxResultSizeChars"]` as an annotation on MCP tool calls, allowing individual tool results to carry up to 500K characters before truncation (overrides the default MCP result size cap). The annotation is set by MCP server implementations on a per-result basis, enabling large payloads — DB schemas, full file trees, extended diffs — to pass through to the agent context without silent truncation.
+- **Impact on ag3nts**: Medium. The `code-reviewer` agent dispatches 4 parallel specialists (correctness, security, convention, history) that each need to process the full staged diff or branch diff. The GitHub MCP server results (large PR diffs, full file contents) are subject to the default MCP result size limit, which can silently truncate large diffs and cause the specialists to miss findings. Configuring the GitHub MCP server (or a wrapper) to set `_meta["anthropic/maxResultSizeChars"]` on large diff results would close this gap. This is particularly relevant for the pre-PR review gate that runs `code-reviewer` on the full branch diff.
+- **Proposed Changes**:
+  - [ ] Investigate current GitHub MCP server result sizes in a typical code-reviewer dispatch and determine if truncation is occurring (check MCP server config or add a diagnostic)
+  - [ ] If truncation confirmed: document the `_meta["anthropic/maxResultSizeChars"]` annotation pattern in `shared/ag3nts.md` under the MCP tooling section, and add a note to `shared/claude-code/files/agents/code-reviewer.md` about large-diff handling
+- **Priority**: Medium — actionable; silent truncation in parallel code-reviewer dispatches is a correctness risk; the fix is a config/annotation change, not a code change
+
+---
+
+### Recommendations
+
+Top changes to make now (in order):
+
+1. **[New — Medium] Investigate MCP tool result truncation in code-reviewer dispatches** — run a diagnostic on a typical large diff and check if GitHub MCP server results are being silently truncated. If yes, document the `_meta["anthropic/maxResultSizeChars"]` annotation pattern and add a note to `code-reviewer.md`. This is the only new actionable finding from today's scan.
+
+2. **[Carry-forward — Medium] Add `claude project purge` to `ag3nts.md` Commands table** (`shared/ag3nts.md`) — v2.1.126 ships first-class project state cleanup. [From May 5]
+
+3. **[Carry-forward — High, time-sensitive] Grep for June 15 retirement deadline** (`claude-sonnet-4-20250514`, `claude-opus-4-20250514`) across all ag3nts files — hard error in ~38 days. [From May 1]
+
+4. **[Carry-forward — Medium] Evaluate Advisor Tool beta for `software-architect` + `security-engineer`** — Haiku executor + Opus 4.7 advisor at ~30% Opus cost on REPAIR pipeline Stages 4 and 6. [From May 1]
+
+5. **[Carry-forward — Low] Add `alignment.anthropic.com` to `anthropic` agent scan sources** (`shared/claude-code/files/agents/anthropic.md`) — today's MSM post (May 6) and the NLAs catch-up confirm this source remains active and is not fully covered by the main research page. [From May 2–3]
+
+---
+
 ## Latest Scan: 2026-05-07
 
 ### Summary
