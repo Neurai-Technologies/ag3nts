@@ -1,5 +1,65 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-05-09
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 3
+- Actionable integrations: 1 (Claude Code Plugins packaging — Medium)
+
+### Findings
+
+#### [Medium] Claude Code Plugins — Formal Public Beta Announcement
+- **Source**: https://www.anthropic.com/news/claude-code-plugins
+- **Published**: Recent (not previously logged; prior log only captured plugin executables in v2.1.90–92 release notes)
+- **Category**: Tooling
+- **What Changed**: Anthropic published a formal news article announcing Claude Code plugins in public beta. Plugins are installable packages that combine slash commands, sub-agents, MCP servers, and hooks — installed with a single `/plugin` command. Discovery via `/plugin marketplace add user-or-org/repo-name`. Plugins toggle on/off to control context size. Target use cases: enforcing team standards, sharing workflows, distributing tool integrations.
+- **Impact on ag3nts**: Medium. The ag3nts toolset — custom agents (`code-reviewer`, `security-engineer`, `software-architect`, etc.), hooks (`pre-commit-secrets-scan.sh`, `pre-commit-review-gate.sh`, `pre-pr-review-gate.sh`, `security-sensitive-file-check.sh`), and skills — already follows the plugin composition pattern. The current distribution mechanism is symlink-based setup scripts (`windows/setup.ps1`, `macos/setup.sh`) targeting `~/.claude/`. Packaging ag3nts as a formal plugin would: (1) replace the symlink setup with a one-command install; (2) enable toggle on/off per project; (3) make the toolset distributable via the Claude Code marketplace. The agent YAML files in `shared/claude-code/files/agents/` and hooks in `shared/claude-code/hooks/` map cleanly to the plugin bundle format.
+- **Proposed Changes**:
+  - [ ] Evaluate whether ag3nts setup scripts should be migrated to a plugin bundle structure — assess if the plugin format supports the full set of hooks, agent overrides, and settings.json config currently handled by `setup.ps1` / `setup.sh`
+  - [ ] If viable: draft `shared/claude-code/plugin.json` (or equivalent manifest) as a plugin entry point for the ag3nts toolset
+- **Priority**: Medium — plugin system is production-ready public beta; migration could simplify cross-machine setup; requires investigation of format constraints before committing to migration
+
+---
+
+#### [Low] Managed Agents — Multiagent Sessions + Outcomes in Public Beta
+- **Source**: https://docs.anthropic.com/en/release-notes/overview
+- **Published**: Recent (not previously logged; Memory feature was logged April 27 scan)
+- **Category**: API / Agent
+- **What Changed**: Multiagent sessions and Outcomes entered public beta under the existing `managed-agents-2026-04-01` beta header. Multiagent sessions enable Claude → Claude delegation through the Managed Agents API (a Claude instance can spawn and delegate to sub-agents). Outcomes provide structured tracking of session results across multi-step agent workflows.
+- **Impact on ag3nts**: Low (no immediate migration path). The `code-reviewer` agent today manually dispatches 4 parallel specialists via prompt engineering and hook orchestration. Managed Agents multiagent sessions would formalize this with proper API-level delegation and outcome tracking. Not actionable without migrating the harness to the Managed Agents API. However, this closes the gap between ag3nts' custom orchestration and a first-class Anthropic-supported pattern — relevant context for future pipeline evolution.
+- **Proposed Changes**: None required now
+- **Priority**: Low — relevant future direction; current hook-based orchestration is fully functional; no urgent migration
+
+---
+
+#### [Low] The Anthropic Institute (TAI) — Economic + Social Impact Research Body
+- **Source**: https://www.anthropic.com/research/anthropic-institute-agenda
+- **Published**: May 7, 2026 (not captured in May 8 scan; published same day)
+- **Category**: Research
+- **What Changed**: Anthropic launched The Anthropic Institute to investigate AI's economic and social impact using data accessible from within a frontier lab. Committed to public research sharing. Current focus: labor market impacts, AI in education, and survey-based usage studies (the Anthropic Economic Index).
+- **Impact on ag3nts**: Informational only. No technical changes or API impact.
+- **Proposed Changes**: None
+- **Priority**: Low — informational; no integration action
+
+---
+
+### Recommendations
+
+Top changes to make now (in order):
+
+1. **[New — Medium] Evaluate Claude Code plugin packaging for ag3nts** — investigate whether the plugin bundle format supports the full hook + agent + settings.json config currently managed by setup scripts. If viable, draft a plugin manifest. Start with the docs at `anthropic.com/news/claude-code-plugins`.
+
+2. **[Carry-forward — Medium] Investigate MCP tool result truncation in code-reviewer dispatches** — run a diagnostic on a typical large diff and check if GitHub MCP server results are being silently truncated. If yes, document the `_meta["anthropic/maxResultSizeChars"]` annotation pattern and add a note to `code-reviewer.md`. [From May 8]
+
+3. **[Carry-forward — Critical, time-sensitive] Grep for June 15 retirement deadline** (`claude-sonnet-4-20250514`, `claude-opus-4-20250514`) across all ag3nts files — hard error in ~37 days. [From May 1]
+
+4. **[Carry-forward — Medium] Add `claude project purge` to `ag3nts.md` Commands table** (`shared/ag3nts.md`) — v2.1.126 ships first-class project state cleanup. [From May 5]
+
+5. **[Carry-forward — Low] Add `alignment.anthropic.com` to `anthropic` agent scan sources** (`shared/claude-code/files/agents/anthropic.md`) — MSM (May 6) and NLAs (May 7) confirm this source remains active and missed by the main research page. [From May 2–3]
+
+---
+
 ## Latest Scan: 2026-05-08
 
 ### Summary
