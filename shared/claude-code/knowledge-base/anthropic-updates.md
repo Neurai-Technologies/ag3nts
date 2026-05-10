@@ -1,5 +1,91 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-05-10
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 5
+- Actionable integrations: 2 (Claude Code Routines — High; Demystifying Evals reference — Medium)
+
+### Findings
+
+#### [High] Claude Code Routines — Async Automation Framework
+- **Source**: https://www.anthropic.com/news (Code with Claude conference, May 6, 2026)
+- **Published**: May 6, 2026
+- **Category**: Tooling / Agent
+- **What Changed**: Anthropic announced Claude Code Routines at the Code with Claude developer conference. Routines are async Claude Code automations — developers set up recurring workflows that run in the background and surface completed results (e.g., PRs ready to merge) without blocking interactive sessions. Distinct from hooks (which are event-triggered, synchronous) — Routines are time- or condition-triggered, fully async.
+- **Impact on ag3nts**: High. The `anthropic` agent currently runs as a daily scan prompt invoked non-interactively via `claude --bare -p`. Routines would provide a first-class harness for this pattern: define the scan as a Routine, schedule it daily, have it surface the updated `anthropic-updates.md` as a completed PR. Similarly, the pre-commit protocol (lint → security → marker) could be expressed as a Routine rather than relying on shell hooks. This is the most directly applicable new Claude Code feature for the ag3nts automation pattern since hooks were introduced.
+- **Proposed Changes**:
+  - [ ] Investigate Routines documentation to determine: (1) scheduling syntax (cron vs. event-based), (2) how they differ from `--bare` scripted invocations, (3) whether they support the same `--allowedTools`/`--mcp-config` flags, (4) compatibility with existing pre-commit hooks
+  - [ ] If viable: draft a Routine definition for the daily `anthropic` agent scan and add to `shared/claude-code/` as `routines/anthropic-scan.routine` (or equivalent manifest)
+  - [ ] Update `shared/ag3nts.md` Scripted/Automated Runs section to reference Routines as the preferred mechanism for scheduled tasks
+- **Priority**: High — first-class async automation is the natural next step for ag3nts' scheduled and CI/CD workflows; investigation required before any migration
+
+---
+
+#### [Medium] Managed Agents Dreaming — Scheduled Memory Curation (Research Preview)
+- **Source**: https://www.anthropic.com/news (Code with Claude conference, May 6, 2026); https://venturebeat.com/technology/anthropic-introduces-dreaming-a-system-that-lets-ai-agents-learn-from-self-mistakes
+- **Published**: May 6, 2026
+- **Category**: Agent / API
+- **What Changed**: Anthropic launched Dreaming as a research preview within the Managed Agents platform (Claude Opus 4.7 and Sonnet 4.6 only). Dreaming is a scheduled background process that reviews an agent's past sessions and memory stores, merges duplicate entries, removes stale information, and surfaces recurring patterns (repeated mistakes, convergent workflows, team-wide preferences). It does not modify model weights — all learning is stored in external memory. Announced alongside multiagent sessions and Outcomes (already logged May 8 scan).
+- **Impact on ag3nts**: Medium — not immediately actionable (requires Managed Agents API), but structurally parallel to the `feedback` agent's function. The `feedback` agent captures preferences across sessions via in-context memory; Dreaming would provide a systematic memory-curation layer on top of that if ag3nts migrated to Managed Agents. The pattern of reviewing past sessions to extract recurring patterns directly maps to the `feedback` agent's purpose. Research preview status limits immediate adoption.
+- **Proposed Changes**: None required now
+- **Priority**: Medium — research preview; relevant future direction for `feedback` agent evolution; revisit when Dreaming exits preview
+
+---
+
+#### [Medium] "Demystifying Evals for AI Agents" — Engineering Post
+- **Source**: https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents
+- **Published**: May 2026 (confirmed via Anthropic Engineering Blog)
+- **Category**: Agent / Tooling
+- **What Changed**: Anthropic published a comprehensive engineering post on evaluation design for AI agents. Key concepts: Tasks (single test with inputs + success criteria), Trials (multiple runs per task for consistency given model variance), Graders (logic that scores one aspect of output), Transcripts (full record of a trial including tool calls and reasoning), Outcomes (final environment state after the trial). Core recommendation: run evals with concurrent agentic loops (one loop per task), use model-graded scoring for subjective criteria, and build an eval harness that aggregates across trials.
+- **Impact on ag3nts**: Medium. The REPAIR pipeline's Stage 6 (`code-reviewer` dispatching 4 specialists + `reality-checker` as a gate) is functionally an eval harness — it runs multiple graders against a staged diff and blocks on a PASS/FAIL outcome. The post's recommendations on multi-trial grading (run 3–5 trials per task to smooth variance) and transcript-level inspection could improve `reality-checker`'s confidence scoring. The "concurrent agentic loops" pattern validates the 4-parallel-specialist dispatch in `code-reviewer`. Practical reference for anyone extending the REPAIR pipeline with additional evaluation steps.
+- **Proposed Changes**:
+  - [ ] Add `https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents` to `shared/claude-code/knowledge-base/repos.md` as a reference
+  - [ ] Consider adding a note to `shared/claude-code/files/agents/reality-checker.md` referencing the multi-trial consistency recommendation (3–5 trials for high-variance outputs)
+- **Priority**: Medium — no breaking change; useful reference for REPAIR pipeline evolution; low-effort to add to repos.md
+
+---
+
+#### [Low] Claude API and Claude Code Rate Limits Doubled
+- **Source**: https://www.anthropic.com (Code with Claude conference, May 6, 2026)
+- **Published**: May 6, 2026
+- **Category**: API / Tooling
+- **What Changed**: Anthropic doubled rate limits for Pro, Max, Team, and seat-based Enterprise tiers (both Claude API and Claude Code). Peak-hour rate reductions for Pro and Max tiers have been removed. Announced in conjunction with a compute capacity expansion (Anthropic + SpaceX partnership).
+- **Impact on ag3nts**: Low — positive news with no configuration changes. The parallel 4-specialist `code-reviewer` dispatch is the highest-throughput moment in the ag3nts pipeline; doubled limits reduce the chance of ITPM throttling during intensive REPAIR pipeline runs. No action needed.
+- **Proposed Changes**: None
+- **Priority**: Low — informational; no integration action; passive benefit to parallel agent dispatches
+
+---
+
+#### [Medium] "Scaling Managed Agents: Decoupling Brain from Hands" — Engineering Reference
+- **Source**: https://www.anthropic.com/engineering/managed-agents
+- **Published**: April 8, 2026 (catch-up; slightly outside 30-day window)
+- **Category**: Agent / API
+- **What Changed**: Anthropic published a detailed engineering post on the Managed Agents architecture. The system decouples three components: **Brain** (Claude + its harness — calls tools via `execute(name, input) → string`), **Hands** (sandboxes and tool implementations, each exposed as a simple function), and **Session** (durable state log stored externally, not in the agent context window). This separation means each component can fail or be replaced independently. Key result: p50 time-to-first-token dropped ~60%, p95 dropped >90% after decoupling.
+- **Impact on ag3nts**: Medium (reference value). The brain/hands/session model is a principled formalization of ag3nts' existing orchestration: Claude Code is the brain, hook scripts + MCP servers are the hands, and the project state (`~/.claude/projects/`) is the session log. The post validates the current separation of concerns and provides vocabulary for future pipeline extensions. The `execute(name, input) → string` interface pattern is exactly how ag3nts hooks work. Useful architectural reference for anyone extending the REPAIR pipeline or adding new MCP servers.
+- **Proposed Changes**:
+  - [ ] Add `https://www.anthropic.com/engineering/managed-agents` to `shared/claude-code/knowledge-base/repos.md` as a reference
+- **Priority**: Medium — architectural reference; low-effort to add to repos.md; no behavioral changes needed
+
+---
+
+### Recommendations
+
+Top changes to make now (in order):
+
+1. **[New — High] Investigate Claude Code Routines for ag3nts scheduled automation** — read the Routines documentation to assess whether the daily `anthropic` agent scan and CI/cron automations can migrate from `claude --bare -p` invocations to first-class Routine definitions. If viable, draft a Routine manifest in `shared/claude-code/`. Start with docs at code.claude.com.
+
+2. **[New — Medium] Add two references to `repos.md`** — add `anthropic.com/engineering/demystifying-evals-for-ai-agents` and `anthropic.com/engineering/managed-agents` to `shared/claude-code/knowledge-base/repos.md`. Low-effort, high reference value for REPAIR pipeline design.
+
+3. **[Carry-forward — Medium] Evaluate Claude Code plugin packaging for ag3nts** — investigate whether the plugin bundle format supports the full hook + agent + settings.json config currently managed by setup scripts. [From May 9]
+
+4. **[Carry-forward — Medium] Investigate MCP tool result truncation in code-reviewer dispatches** — run a diagnostic on a typical large diff and check if GitHub MCP server results are silently truncated. If yes, document the `_meta["anthropic/maxResultSizeChars"]` annotation pattern. [From May 8]
+
+5. **[Carry-forward — Medium, verify] June 15 model retirement deadline** (`claude-sonnet-4-20250514`, `claude-opus-4-20250514`) — grep confirmed all agent files use aliases (`model: sonnet`, `model: opus`, `model: haiku`), NOT version strings. **Agent files are clear.** Residual check: verify no bare-mode scripts in CI/cron explicitly pass deprecated model IDs. (`grep -r "20250514" . --include="*.sh" --include="*.ps1" --include="*.yml"`) [From May 1 — downgraded from Critical now that agent files confirmed clean]
+
+---
+
 ## Latest Scan: 2026-05-09
 
 ### Summary
