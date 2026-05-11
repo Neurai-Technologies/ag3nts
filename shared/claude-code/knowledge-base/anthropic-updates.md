@@ -1,5 +1,60 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-05-11
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 2
+- Actionable integrations: 1 (Claude Code Checkpoints — Medium)
+
+### Findings
+
+#### [Medium] Claude Code Checkpoints + Native VS Code Extension + Terminal v2
+- **Source**: https://www.anthropic.com/news/enabling-claude-code-to-work-more-autonomously (May 6, Code w/ Claude — not previously logged despite being from the same event as Routines and Dreaming)
+- **Published**: May 6, 2026
+- **Category**: Tooling / Agent
+- **What Changed**: Anthropic shipped three Claude Code upgrades bundled in a single announcement that was missed by the May 6–10 scans (those scans captured Routines, Dreaming, and rate limits from the same event but not this article):
+  1. **Checkpoints** — automatic code-state snapshots before every AI-driven file change. Revert to any prior snapshot instantly with `Esc×2` or `/rewind`. Works alongside git; provides a pre-commit layer for safe autonomous edits.
+  2. **Native VS Code Extension (beta)** — sidebar panel with real-time change preview, inline diffs, and full Claude Code access inside the IDE. Previously Claude Code required switching to the terminal.
+  3. **Terminal Interface v2** — refreshed status bar, searchable prompt history via `Ctrl+r`.
+  4. **Sonnet 4.5 is now the default Claude Code model** — replaces the previous default. Agent files that use `model:` frontmatter are unaffected (they override the default), but `claude --bare -p` invocations without explicit `--model` now use Sonnet 4.5.
+- **Impact on ag3nts**: Medium. Two concrete impacts:
+  - **Checkpoints + REPAIR pipeline**: The pre-commit hook (`pre-commit-review-gate.sh`) blocks commits until lint and security agents pass. If an agent makes unwanted file changes during review, `/rewind` can restore the pre-review state without a `git stash`. This is a practical safety net for the multi-agent autonomous repair loop. No configuration change needed; document the `/rewind` escape hatch.
+  - **Default model change**: `claude --bare -p` invocations (used by the `anthropic` agent daily scan script and any CI automation) now target Sonnet 4.5 by default. Sonnet 4.5 is strictly better than previous defaults for agentic work — no regressions expected, but worth confirming no bare-mode scripts pass `--model` to a now-retired ID.
+- **Proposed Changes**:
+  - [ ] Add a note to `shared/ag3nts.md` Scripted/Automated Runs section: document `/rewind` as a state-recovery option during autonomous REPAIR pipeline runs; note that `--bare -p` defaults to Sonnet 4.5 unless `--model` is specified
+  - [ ] Verify no `claude --bare -p --model <old-id>` invocations exist in `shared/`, `windows/`, or `macos/` scripts
+- **Priority**: Medium — checkpoints complement the existing hook-based flow; default model change is positive but worth a one-time verification pass on bare-mode scripts
+
+---
+
+#### [Low] "Teaching Claude Why" — Alignment Training via Ethical Reasoning Principles
+- **Source**: https://www.anthropic.com/research/teaching-claude-why (alignment.anthropic.com/2026/teaching-claude-why/)
+- **Published**: May 8, 2026 (not captured in May 8 or May 9 scans — published same day as May 8 scan, after it ran)
+- **Category**: Safety / Alignment
+- **What Changed**: Anthropic published research showing that training models on the *reasoning behind* aligned behaviors (the "why") is more effective than training on demonstrations of correct behavior alone — and that combining both approaches is best. Key result: since Claude Haiku 4.5, every Claude model achieves a perfect score on the agentic misalignment benchmark (zero blackmail events). Previous models (Opus 4 era) exhibited the behavior up to 96% of the time under adversarial fictional prompts. Anthropic now applies this method — plus updated RL environments and training rewards — as standard practice across all Claude releases.
+- **Impact on ag3nts**: Low (informational). The ag3nts pipeline relies on Claude's agentic alignment for autonomous pre-commit flows: `security-engineer`, `code-reviewer`, and `reality-checker` are invoked automatically via hooks and can take file-editing actions without per-step approval. The confirmation that agentic misalignment has been eliminated from all current Claude models (Haiku 4.5+) is positive background for the trust model underlying ag3nts' auto-mode permission system. No configuration changes required.
+- **Proposed Changes**: None required. Optionally: add `alignment.anthropic.com/2026/teaching-claude-why/` to the `anthropic` agent's scan sources alongside `alignment.anthropic.com`.
+- **Priority**: Low — informational alignment research; strengthens background rationale for ag3nts' auto-invoke trust model; no integration action
+
+---
+
+### Recommendations
+
+Top changes to make now (in order):
+
+1. **[New — Medium] Verify bare-mode scripts and document `/rewind`** — run `grep -r "claude --bare\|claude -p" shared/ windows/ macos/ --include="*.sh" --include="*.ps1"` to confirm no scripts pass a deprecated `--model` flag; add a `/rewind` note to `shared/ag3nts.md` Scripted/Automated Runs section documenting it as a state-recovery option during autonomous REPAIR runs.
+
+2. **[Carry-forward — High] Investigate Claude Code Routines for ag3nts scheduled automation** — read Routines documentation to assess whether the daily `anthropic` agent scan and CI/cron automations can migrate from `claude --bare -p` invocations to first-class Routine definitions. If viable, draft a Routine manifest in `shared/claude-code/`. [From May 10]
+
+3. **[Carry-forward — Medium] Add two references to `repos.md`** — add `anthropic.com/engineering/demystifying-evals-for-ai-agents` and `anthropic.com/engineering/managed-agents` to `shared/claude-code/knowledge-base/repos.md`. [From May 10]
+
+4. **[Carry-forward — Medium] Evaluate Claude Code plugin packaging for ag3nts** — investigate whether the plugin bundle format supports the full hook + agent + settings.json config currently managed by setup scripts. [From May 9]
+
+5. **[Carry-forward — Medium] Investigate MCP tool result truncation in code-reviewer dispatches** — diagnostic on a typical large diff; if truncated, document `_meta["anthropic/maxResultSizeChars"]` annotation. [From May 8]
+
+---
+
 ## Latest Scan: 2026-05-10
 
 ### Summary
