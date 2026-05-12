@@ -1,5 +1,63 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-05-12
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com) + GitHub releases
+- New findings: 1 (Claude Code v2.1.139 — three actionable sub-items)
+- Actionable integrations: 2 (Agent View documentation — High; `continueOnBlock` hooks — Medium)
+
+### Context
+
+No new posts were found on anthropic.com/research, /news, or /engineering in the May 12 window. The primary new finding is Claude Code v2.1.139, released May 11 at 18:43 UTC (after the May 11 scan ran), which ships a significant cluster of agent-orchestration features directly applicable to the ag3nts pipeline.
+
+### Findings
+
+#### [High] Claude Code v2.1.139 — Agent View, `/goal`, Hook `continueOnBlock`, and Subagent Headers
+- **Source**: https://github.com/anthropics/claude-code/releases/tag/v2.1.139
+- **Published**: May 11, 2026 (18:43 UTC — after May 11 scan ran)
+- **Category**: Tooling / Agent
+- **What Changed**: v2.1.139 ships four features directly applicable to ag3nts:
+
+  1. **Agent View (Research Preview)** — `claude agents` launches a dashboard listing every Claude Code session by state (running, blocked, done). Any session can be sent to background with `/bg`; new background sessions launch with `claude --bg [task]`. Requires opt-in by running `claude agents` once. Available on Pro, Max, Team, Enterprise, and Claude API plans.
+
+  2. **`/goal` command** — defines a completion condition; Claude continues working autonomously across turns until the condition is met. Shows a live overlay of elapsed time, turns, and tokens. Works in interactive mode, `-p` flag, and Remote Control.
+
+  3. **Hook `continueOnBlock` config** — new per-hook boolean. When `true`, the rejection message from a blocked hook is fed back to Claude as context and the turn continues rather than stopping. This enables a "self-healing" hook pattern: if a pre-commit hook blocks because lint hasn't run, Claude receives the reason and can invoke the linter autonomously.
+
+  4. **Subagent request headers** — API requests from sub-agents now carry `x-claude-code-agent-id` and `x-claude-code-parent-agent-id` headers; `claude_code.llm_request` OTEL spans include `agent_id`/`parent_agent_id` attributes. Enables tracing and cost attribution per sub-agent in parallel dispatches.
+
+  Additional improvements: MCP stdio servers now receive `CLAUDE_PROJECT_DIR` env var (matching hooks); `/mcp` reconnect picks up `.mcp.json` edits without restart; hook `args` exec form spawns without shell (eliminates quoting issues).
+
+- **Impact on ag3nts**:
+  - **Agent View / `--bg`** (High): The `code-reviewer` dispatches 4 parallel specialists simultaneously; `security-engineer` runs full OWASP audits — these are multi-session parallel workloads with no current monitoring interface. `claude agents` provides a first-class dashboard for this. The `/bg` and `claude --bg` pattern could also formalize how the REPAIR pipeline stages are launched, complementing the Routines investigation (May 10 carry-forward). Document `claude agents` and `claude --bg` in `shared/ag3nts.md`.
+  - **`continueOnBlock`** (Medium): The three pre-commit hooks (`pre-commit-secrets-scan.sh`, `pre-commit-review-gate.sh`, `security-sensitive-file-check.sh`) and the pre-PR hook all use blocking behavior. Adding `continueOnBlock: true` to the review-gate hooks would allow Claude to receive the rejection reason (e.g., "lint not run", "security check missing") and autonomously complete the missing step — eliminating the need for manual re-invocation. This closes the most common friction point in the pre-commit protocol.
+  - **`/goal` command** (Low): REPAIR pipeline stages (Stage 4: threat model, Stage 6: OWASP audit) are multi-turn processes. `/goal` could define a per-stage completion condition that Claude tracks autonomously, reducing the need for manual stage-gate prompting.
+  - **Subagent headers** (Low): Enables per-specialist cost tracing in the code-reviewer parallel dispatch — useful for the Usage and Cost API integration (May 8 finding).
+
+- **Proposed Changes**:
+  - [ ] Add `claude agents` and `claude --bg [task]` to the `shared/ag3nts.md` Commands table and Scripted/Automated Runs section — document as the monitoring interface for parallel agent sessions and an alternative to `claude --bare -p` for background tasks
+  - [ ] Evaluate adding `continueOnBlock: true` to the pre-commit review-gate hook entries in `shared/claude-code/hooks/` settings — test on a typical pre-commit run to confirm the feedback loop triggers the missing agent step correctly before enabling
+- **Priority**: High — Agent View and `continueOnBlock` are directly applicable to the ag3nts parallel-dispatch and pre-commit automation flows; no investigation needed before documenting; `continueOnBlock` warrants a test run before enabling
+
+---
+
+### Recommendations
+
+Top changes to make now (in order):
+
+1. **[New — High] Document `claude agents` and `claude --bg` in `shared/ag3nts.md`** — add to the Commands table and Scripted/Automated Runs section. This is the first-class monitoring interface for the multi-agent parallel dispatches that currently have no visibility surface. Low effort, high discoverability value.
+
+2. **[New — Medium] Evaluate `continueOnBlock: true` for pre-commit review-gate hooks** — the hook setting is in `shared/claude-code/hooks/` (or `settings.json` hook config). Adding `continueOnBlock: true` to the review-gate hooks would enable autonomous remediation when the pre-commit gate blocks. Verify with a test commit before enabling.
+
+3. **[Carry-forward — High] Investigate Claude Code Routines for ag3nts scheduled automation** — read Routines documentation to assess whether the daily `anthropic` agent scan and CI/cron automations can migrate from `claude --bare -p` invocations to first-class Routine definitions. If viable, draft a Routine manifest in `shared/claude-code/`. [From May 10]
+
+4. **[Carry-forward — Medium] Verify bare-mode scripts and document `/rewind`** — run `grep -r "claude --bare\|claude -p" shared/ windows/ macos/ --include="*.sh" --include="*.ps1"` to confirm no scripts pass a deprecated `--model` flag; add a `/rewind` note to `shared/ag3nts.md` Scripted/Automated Runs section. [From May 11]
+
+5. **[Carry-forward — Medium] Add two references to `repos.md`** — add `anthropic.com/engineering/demystifying-evals-for-ai-agents` and `anthropic.com/engineering/managed-agents` to `shared/claude-code/knowledge-base/repos.md`. [From May 10]
+
+---
+
 ## Latest Scan: 2026-05-11
 
 ### Summary
