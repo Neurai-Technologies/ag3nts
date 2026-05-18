@@ -1,5 +1,36 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-05-18
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 0
+- Actionable integrations: 0
+
+### Context
+
+Only 1 day since the last scan (May 17). No new posts were published on anthropic.com/news, /research, or /engineering in the May 17–18 window. No new Claude Code release was detected beyond v2.1.141 (confirmed current as of May 17). The alignment science blog (alignment.anthropic.com) was also checked — the most recent uncaptured posts (Introspection Adapters, Coding Audit Realism at March 23, Petri 2.0) all predate the current 30-day window or were already logged in earlier scans. Forward-looking note: Code w/ Claude London is scheduled for May 20–21 and Tokyo for June 5–6 — the London event may generate new engineering announcements worth scanning on May 21–22.
+
+The June 15 Agent SDK Credit deadline is now **28 days away** — the time-sensitive carry-forward from May 14 is the highest-priority outstanding item.
+
+### Findings
+
+No new findings. All surfaced items from the scan period were already logged in previous entries (see May 17 and earlier scans).
+
+---
+
+### Recommendations
+
+Top changes to make now (carry-forward from May 17, in order):
+
+1. **[High, time-sensitive — 28 days] Investigate Agent SDK Credit limits before June 15** — `claude --bare -p` scripted automation (daily `anthropic` scan, REPAIR pipeline hooks) moves to a separate monthly Agent SDK credit on June 15. Read `code.claude.com/docs/en/agent-sdk/overview` to determine monthly credit amounts per plan tier and failure behavior (error vs. fallback vs. billable overage). Add a billing model note to `shared/ag3nts.md` Scripted/Automated Runs section. Also confirm whether Routines draw from the same credit bucket.
+
+2. **[Medium] Update Fast mode Opus note in `shared/ag3nts.md`** — Change "available on Opus 4.6 and Opus 4.7" to "defaults to Opus 4.7 (as of v2.1.141)". One-line edit.
+
+3. **[Medium] Add `/rewind` checkpoint recovery note to `shared/ag3nts.md`** — Under Auto-Invoke Rules / REPAIR pipeline: Claude Code auto-saves checkpoints before each change; `/rewind` (or Esc×2) recovers to any prior state if a hook-driven agent introduces an unwanted edit.
+
+---
+
 ## Latest Scan: 2026-05-17
 
 ### Summary
