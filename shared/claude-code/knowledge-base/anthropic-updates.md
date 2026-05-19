@@ -1,5 +1,129 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-05-19
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 6
+- Actionable integrations: 4 (extended thinking migration, model deprecation audit, task budgets, Tool Search Tool)
+
+### Context
+
+One day since the last scan (May 18). Six genuine new findings surfaced — the largest single-scan haul in over a week. Most impactful: extended thinking (`thinking: {type: "enabled"}`) is deprecated in Claude 4.6 and **removed** in Claude Opus 4.7 (replaced by adaptive thinking); Claude Sonnet 4 / Opus 4 (model IDs `claude-sonnet-4-20250514`, `claude-opus-4-20250514`) retire June 15 (~27 days); task budgets and Tool Search Tool are now in public beta. Carry-forward High: Agent SDK Credit investigation before June 15 (26 days, same deadline as model retirement).
+
+---
+
+### Findings
+
+#### [Critical] Extended Thinking Deprecated in Opus 4.6, Removed in Opus 4.7 — Adaptive Thinking is Replacement
+- **Source**: https://www.anthropic.com/news/claude-opus-4-7 / https://docs.anthropic.com/en/release-notes/api
+- **Published**: May 4, 2026 (Opus 4.7 GA)
+- **Category**: API / Model
+- **What Changed**: Manual extended thinking (`thinking: {type: "enabled", budget_tokens: N}`) is deprecated in Claude Opus 4.6 and **fully removed** in Claude Opus 4.7. Replacement: **adaptive thinking** (`thinking: {type: "adaptive"}`), which automatically adjusts reasoning depth per task — more thinking on hard problems, fast responses on simple ones. At the default `effort: "high"`, adaptive thinking engages extended reasoning when useful without requiring manual `budget_tokens`. Programmatic `thinking: {type: "enabled"}` calls on Opus 4.7 will error.
+- **Impact on ag3nts**:
+  - `software-architect` (Opus) and `security-engineer` (Opus) are the two Opus-class agents in the REPAIR pipeline. If either agent's `.md` file or caller code includes `thinking: {type: "enabled", budget_tokens: N}`, those calls will fail on Opus 4.7.
+  - ag3nts' `claude --bare -p` invocations and hook scripts do not set explicit thinking config — they rely on model defaults. Default behavior is safe: Opus 4.7 will use adaptive thinking automatically.
+  - Any agent or script that explicitly sets `thinking: enabled` must be updated to either remove the config (defaults to adaptive) or switch to `thinking: {type: "adaptive"}`.
+- **Proposed Changes**:
+  - [ ] `grep -r "thinking.*enabled\|budget_tokens" ~/.claude/agents/ shared/` — audit all agent files and hook scripts for manual extended thinking config; update any matches to `{type: "adaptive"}` or remove the thinking block
+  - [ ] Add a note to `shared/ag3nts.md` under the Agents table: "Opus agents (software-architect, security-engineer) use adaptive thinking (Opus 4.7+); manual extended thinking removed"
+- **Priority**: Critical — any agent invoking Opus with `thinking: enabled` will error; audit is a 5-minute grep
+
+---
+
+#### [High] Claude Sonnet 4 and Opus 4 Retire June 15, 2026 — Model ID Deprecation
+- **Source**: https://docs.anthropic.com/en/docs/about-claude/model-deprecations
+- **Published**: Active (retirement in 27 days)
+- **Category**: API / Model
+- **What Changed**: `claude-sonnet-4-20250514` and `claude-opus-4-20250514` are being retired from the Claude API on June 15, 2026. Recommended migrations: `claude-sonnet-4-6` and `claude-opus-4-7` respectively. The 1M token context beta (`context-1m-2025-08-07` header) for Sonnet 4.5 and Sonnet 4 is also being retired on April 30, 2026 (already past — calls using this header now silently no-op).
+- **Impact on ag3nts**:
+  - ag3nts agents declare generic model aliases in the agent table ("Sonnet", "Opus", "Haiku") which presumably resolve to the latest version by default — those are unaffected.
+  - If any agent `.md` file, hook script, `claude --model` flag, or `.mcp.json` config hard-codes `claude-sonnet-4-20250514` or `claude-opus-4-20250514`, those will return errors on June 15.
+  - Intersects with the Agent SDK Credit investigation carry-forward (same June 15 deadline, separate issue).
+- **Proposed Changes**:
+  - [ ] `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514" ~/.claude/ shared/ windows/ macos/ --include="*.md" --include="*.json" --include="*.sh" --include="*.ps1" --include="*.yaml"` — confirm no hard-coded deprecated model IDs
+  - [ ] If any found: replace with `claude-sonnet-4-6` → `claude-sonnet-4-6` and `claude-opus-4-20250514` → `claude-opus-4-7`
+- **Priority**: High, time-sensitive — June 15 hard retirement; 5-minute grep to confirm safety; same deadline as Agent SDK Credit (two unrelated issues sharing the same date)
+
+---
+
+#### [High] Task Budgets Public Beta — Cap Token Spend on Long-Running REPAIR Pipeline Agents
+- **Source**: https://docs.anthropic.com/en/release-notes/api / https://www.anthropic.com/news/claude-opus-4-7
+- **Published**: 2026 (beta header `task-budgets-2026-03-13`)
+- **Category**: API
+- **What Changed**: Task budgets are now in public beta on the Claude Platform API. Set `task-budgets-2026-03-13` beta header and add `task_budget: {type: "tokens", total: N}` to your API output config. Claude sees a running token countdown and scopes its work to finish gracefully within the budget — reducing runaway costs on open-ended agentic tasks while still completing the primary objective. Not recommended for open-ended tasks where quality is paramount.
+- **Impact on ag3nts**:
+  - `software-architect` (Opus, REPAIR Stage 4 — threat modeling, ADRs, domain modeling) and `security-engineer` (Opus, Stage 6 — OWASP audit) are the two highest-cost REPAIR pipeline agents. Both are Opus-class and can run long on complex diffs. Task budgets allow ag3nts to cap the per-run token ceiling (e.g., 128k tokens) so a large diff doesn't balloon costs unexpectedly.
+  - REPAIR pipeline hooks invoke these agents via `claude --bare -p`. Beta headers can be passed via `--api-header` flag if supported in bare mode, or via explicit API config.
+  - Task budgets are advisory: the model may complete the task less thoroughly if the budget is too tight. Tune per stage.
+- **Proposed Changes**:
+  - [ ] Evaluate adding `--api-header "anthropic-beta: task-budgets-2026-03-13"` and a `task_budget` config to `software-architect` and `security-engineer` invocations in REPAIR pipeline hook scripts under `shared/claude-code/hooks/`
+  - [ ] Consult `docs.anthropic.com/en/release-notes/api` for task_budget config syntax before implementing
+- **Priority**: High — cost control for Opus-class REPAIR pipeline agents; public beta with stable header; no breaking changes
+
+---
+
+#### [High] Advanced Tool Use Beta — Tool Search Tool, Programmatic Tool Calling, Tool Use Examples
+- **Source**: https://www.anthropic.com/engineering/advanced-tool-use
+- **Published**: 2026 (beta)
+- **Category**: API / Agent
+- **What Changed**: Anthropic released three new beta features for dynamic tool orchestration:
+  1. **Tool Search Tool** — Mark tools with `defer_loading: true`; Claude discovers and loads only relevant tools on-demand via search rather than loading all definitions upfront. Eliminates context overhead when using 50+ tools from multiple services (GitHub, Jira, Slack, etc.).
+  2. **Programmatic Tool Calling** — Claude invokes tools inside a code-execution environment, reducing context-window impact of large tool result payloads (e.g., Excel files with thousands of rows).
+  3. **Tool Use Examples** — Universal standard for embedding demonstrations directly in tool definitions, improving model tool selection accuracy.
+- **Impact on ag3nts**:
+  - `code-reviewer` dispatches 4 parallel specialist sub-agents, each with access to the full tool set. Tool Search reduces the per-agent context cost if specialists are given a large tool registry.
+  - `security-engineer` (Opus) runs OWASP audits with CVE web lookups — Tool Search could allow a large CVE/reference tool library without upfront context consumption.
+  - `software-architect` (Opus) consumes Patterns web references — Tool Use Examples improves accuracy when calling reference-lookup tools.
+  - All three features are additive; no breaking changes to existing tool definitions.
+- **Proposed Changes**:
+  - [ ] Read `https://www.anthropic.com/engineering/advanced-tool-use` in full; evaluate `defer_loading: true` for the MCP tool registry used by `security-engineer` and `code-reviewer` — may require `.mcp.json` updates
+  - [ ] Add Tool Use Examples to the most-used tools in `security-engineer` and `code-reviewer` agent definitions
+- **Priority**: High — direct reduction in context cost for multi-agent REPAIR pipeline; `code-reviewer`'s 4-parallel-agent dispatch is the primary beneficiary
+
+---
+
+#### [Medium] Claude Opus 4.7 GA — Adaptive Thinking Default, +13% Advanced Software Engineering
+- **Source**: https://www.anthropic.com/news/claude-opus-4-7
+- **Published**: May 4, 2026
+- **Category**: Model
+- **What Changed**: Claude Opus 4.7 is generally available across the API, Bedrock, Vertex AI, and Microsoft Foundry. Pricing unchanged ($5/M input, $25/M output vs Opus 4.6). Key improvements: +13% on advanced software engineering benchmarks over Opus 4.6, with especially large gains on the hardest tasks. Adaptive thinking is the default reasoning mode (see extended thinking finding above). Fast mode is supported via `fast-mode-2026-02-01` beta header.
+- **Impact on ag3nts**:
+  - `software-architect` and `security-engineer` (both Opus-class) benefit from the engineering improvement. No config changes needed if using generic "Opus" aliases (resolves to Opus 4.7 automatically).
+  - Fast mode for Opus 4.7 is already confirmed as the Claude Code default (v2.1.141, logged May 15). This confirms the May 15 recommendation to update the Fast mode doc note applies to Opus 4.7 specifically.
+- **Proposed Changes**:
+  - [ ] Complete the May 15 carry-forward: update `shared/ag3nts.md` Fast mode note to "defaults to Opus 4.7"
+- **Priority**: Medium — model improvement is automatic; doc update from May 15 still outstanding
+
+---
+
+#### [Medium] Claude Managed Agents Public Beta — Sessions API, Environments API, Memory
+- **Source**: https://www.anthropic.com/engineering/managed-agents / https://docs.anthropic.com/en/release-notes/api
+- **Published**: 2026 (beta header `managed-agents-2026-04-01`)
+- **Category**: API / Agent
+- **What Changed**: Claude Managed Agents is now in full public beta (Sessions, Environments, Memory, and Multi-agent sessions with Outcomes all under `managed-agents-2026-04-01`). **Sessions API** — stateful cloud containers for autonomous agent runs (`POST /v1/sessions`). **Environments API** — configure container templates (tools, file system, dependencies) before running sessions. **Memory** — persistent memory across sessions. **Multi-agent sessions** — orchestrate sub-agent calls within a single managed container; Outcomes track task completion state.
+- **Impact on ag3nts**:
+  - ag3nts' REPAIR pipeline currently orchestrates via bash hook scripts → `claude --bare -p` invocations. Managed Agents offers an alternative: a persistent cloud container with pre-configured environments for each pipeline stage, stateful across runs, with built-in sub-agent dispatch via the Sessions API.
+  - Not an urgent migration — existing hook-based orchestration works well. But as the REPAIR pipeline grows (more stages, more agents), Managed Agents' sandboxing + memory provides a cleaner execution model.
+  - The `managed-agents-2026-04-01` beta header is available now; reading the Sessions API docs would take ~30 min and inform whether a future migration is worthwhile.
+- **Proposed Changes**:
+  - [ ] No immediate code changes; read `https://www.anthropic.com/engineering/managed-agents` and `https://docs.anthropic.com/en/api/getting-started` Managed Agents section; add a note in `shared/ag3nts.md` Scripted/Automated Runs section noting Managed Agents as a future REPAIR pipeline migration target
+- **Priority**: Medium — future architecture direction; current setup is functional; valuable for planning the next major ag3nts evolution
+
+---
+
+### Recommendations
+
+Top changes to make now (in order):
+
+1. **[Critical] Audit for manual extended thinking config** — Run `grep -r "thinking.*enabled\|budget_tokens" ~/.claude/agents/ shared/` to catch any Opus agent calling `thinking: {type: "enabled"}`. This is a runtime error on Opus 4.7. 5-minute audit. File: any agent `.md` or hook script that invokes Opus.
+
+2. **[High, time-sensitive — 27 days] Audit for deprecated model IDs before June 15** — Run `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514" ~/.claude/ shared/ windows/ macos/` to confirm no hard-coded deprecated model IDs that retire June 15. Same deadline as Agent SDK Credit investigation (carry-forward from May 14 — now 27 days away).
+
+3. **[High] Evaluate task budgets for REPAIR pipeline Opus agents** — Add `task-budgets-2026-03-13` beta header and `task_budget: {type: "tokens", total: 128000}` to `software-architect` and `security-engineer` invocations in `shared/claude-code/hooks/` to prevent cost overruns on large diffs.
+
+---
+
 ## Latest Scan: 2026-05-18
 
 ### Summary
