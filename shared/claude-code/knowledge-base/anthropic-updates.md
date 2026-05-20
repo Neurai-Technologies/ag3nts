@@ -1,5 +1,100 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-05-20
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 5
+- Actionable integrations: 3 (cache diagnostics, Claude Agent SDK rename, `ant` CLI)
+
+### Context
+
+One day since last scan (May 19). Five new items surface today: Cache Diagnostics public beta (new API debugging capability for prompt cache misses), Claude Agent SDK rename (formerly Claude Code SDK) with new engineering post, the `ant` CLI launch (direct API client with YAML resource versioning), Claude Platform on AWS GA (confirmed May 12), and Apple Xcode 26.3 + Claude Agent SDK integration (today, May 20). The June 15 deadline cluster (model retirement + Agent SDK credit) is now **26 days away** — audits from May 19 carry forward as the highest-priority action items. Code w/ Claude London (May 20–21) is happening today; watch tomorrow's scan for any resulting engineering announcements.
+
+---
+
+### Findings
+
+#### [Medium] Cache Diagnostics Public Beta — Debug Prompt Cache Misses with `cache_miss_reason`
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: May 2026 (in API release notes; exact date not visible in search metadata)
+- **Category**: API
+- **What Changed**: New public beta: pass `diagnostics.previous_message_id` on any Messages request → API returns `cache_miss_reason`, pinpointing exactly where the prompt cache prefix diverged from the previous turn. Eliminates manual debugging of prompt cache alignment.
+- **Impact on ag3nts**: The `code-reviewer` dispatches 4 parallel sub-agents sharing a large common preamble (staged diff + system context). Cache misses on that shared prefix quadruple token costs on every REPAIR pipeline run. Cache diagnostics would identify exactly which element (system prompt order, tool definition, message boundary) is breaking the shared cache prefix. The `anthropic` scan agent also builds large context from web fetches — diagnostics would help tune its caching.
+- **Proposed Changes**:
+  - [ ] Add a one-line note in `shared/ag3nts.md` Scripted/Automated Runs section: "To debug cache misses, pass `diagnostics.previous_message_id` on Messages requests — API returns `cache_miss_reason` (public beta)"
+  - [ ] When next investigating `code-reviewer` costs, use cache diagnostics to identify prefix divergence across parallel sub-agent calls
+- **Priority**: Medium — no immediate code change needed; highly valuable when debugging multi-agent cache efficiency
+
+---
+
+#### [Medium] Claude Agent SDK — Renamed from Claude Code SDK + New Engineering Post
+- **Source**: https://www.anthropic.com/engineering/building-agents-with-the-claude-agent-sdk
+- **Published**: 2026 (within 30-day window; exact date not captured in search metadata)
+- **Category**: API / Tooling
+- **What Changed**: Anthropic officially renamed the **Claude Code SDK** to the **Claude Agent SDK**, reflecting use beyond coding (financial compliance, cybersecurity, research pipelines). New engineering post documents patterns for building custom agents with the SDK. The SDK exposes the same core tools, context management, and permissions framework that powers Claude Code itself. Agent SDK usage on subscription plans draws from a new monthly Agent SDK credit starting June 15 (same billing change as the May 14 carry-forward).
+- **Impact on ag3nts**:
+  - Any `shared/` docs or agent `.md` files referencing "Claude Code SDK" should be updated to "Claude Agent SDK".
+  - The June 15 Agent SDK credit deadline (carry-forward from May 14) is unchanged — the rename confirms that `claude --bare -p` scripted runs fall under this credit.
+  - The new engineering post may document new orchestration patterns applicable to the REPAIR pipeline multi-agent dispatch.
+- **Proposed Changes**:
+  - [ ] `grep -r "Claude Code SDK" shared/ ~/.claude/agents/` — find and update any stale references to "Claude Agent SDK"
+  - [ ] Read the engineering post for new patterns applicable to multi-agent REPAIR pipeline dispatch
+- **Priority**: Medium — rename is informational; June 15 Agent SDK credit audit remains the urgent carry-forward
+
+---
+
+#### [Medium] `ant` CLI — New Claude API Command-Line Client with YAML Resource Versioning
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: May 2026 (in API release notes; exact date not visible in search metadata)
+- **Category**: Tooling
+- **What Changed**: Anthropic launched the `ant` CLI — a direct Claude API client distinct from the `claude` Claude Code CLI. Key capabilities: (1) faster direct API interaction without Claude Code harness overhead, (2) native integration with Claude Code sessions, (3) **YAML-based versioning of API resources** — system prompts, tool definitions, and agent configs stored as version-controlled YAML files.
+- **Impact on ag3nts**:
+  - ag3nts currently stores agent definitions as `.md` files in `~/.claude/agents/`. The `ant` CLI's YAML versioning could provide a structured alternative: tool definitions and system prompts versioned as YAML alongside the ag3nts repo.
+  - For `claude --bare -p` scripted automation (daily scan, REPAIR pipeline hooks), `ant` offers a lighter-weight path for pure API calls that don't need the full Claude Code harness.
+  - The native Claude Code integration means `ant` and `claude --bare` can coexist in the same pipeline scripts.
+- **Proposed Changes**:
+  - [ ] Read `ant` CLI docs (search `docs.anthropic.com ant CLI overview`) to understand YAML config format and resource versioning model
+  - [ ] Add a note to `shared/ag3nts.md` Scripted/Automated Runs section: "Alternatively, use `ant` CLI for direct API calls without Claude Code harness overhead; supports YAML versioning of system prompts, tool definitions, and agent configs"
+- **Priority**: Medium — new tooling with meaningful config management upside; not urgent given current system works
+
+---
+
+#### [Low] Claude Platform on AWS — Generally Available (2026-05-12)
+- **Source**: https://aws.amazon.com/blogs/machine-learning/introducing-claude-platform-on-aws-anthropics-native-platform-through-your-aws-account/
+- **Published**: 2026-05-12
+- **Category**: API / Infrastructure
+- **What Changed**: Claude Platform on AWS is generally available: full Anthropic API access (Messages API, Files API, Message Batches API, Claude Managed Agents, MCP connector, Agent Skills, code execution) via AWS account with IAM authentication. Billed via AWS Marketplace in Claude Consumption Units (CCUs), metered hourly, invoiced on AWS bill. No separate Anthropic contract required.
+- **Impact on ag3nts**: Low unless ag3nts REPAIR pipeline moves to cloud CI/CD. Current setup uses `ANTHROPIC_API_KEY` directly. AWS option removes key management in favor of IAM and consolidates billing with existing AWS infrastructure if applicable.
+- **Proposed Changes**:
+  - [ ] No immediate changes; note as infrastructure option if ag3nts scripted runs move to cloud-hosted CI/CD
+- **Priority**: Low — informational; no current AWS dependency in the ag3nts stack
+
+---
+
+#### [Low] Apple Xcode 26.3 — Claude Agent SDK Integration via MCP (Today, 2026-05-20)
+- **Source**: https://www.anthropic.com/news/apple-xcode-claude-agent-sdk
+- **Published**: 2026-05-20 (today — RC available for Apple Developer Program members)
+- **Category**: Tooling
+- **What Changed**: Xcode 26.3 exposes its capabilities (build, debug, visual Preview) via MCP, enabling Claude Code to integrate with Xcode over MCP and capture visual Previews from the CLI. The Claude Agent SDK powers subagents, background tasks, and plugins directly inside Xcode — full Claude Code feature parity in the IDE.
+- **Impact on ag3nts**: Low — ag3nts targets VS Code as primary editor. Informational only unless Rohan develops iOS/macOS apps in Xcode on the portable SSD setup.
+- **Proposed Changes**: None for current VS Code-focused setup.
+- **Priority**: Low — VS Code is primary editor; logged for completeness as today's fresh announcement
+
+---
+
+### Recommendations
+
+Top 3 actions (carry-forward cluster from May 19 remains priority 1–3, all tied to June 15):
+
+1. **[Critical] Audit for `thinking: {type: "enabled"}` in Opus agent files** — Run `grep -r "thinking.*enabled\|budget_tokens" ~/.claude/agents/ shared/` — any Opus 4.7 call with manual extended thinking will error at runtime. 5-minute grep. (Carry-forward from May 19)
+
+2. **[High, time-sensitive — 26 days] Audit for deprecated model IDs before June 15** — Run `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514" ~/.claude/ shared/ windows/ macos/` to confirm no hard-coded IDs retiring June 15. (Carry-forward from May 19)
+
+3. **[High, time-sensitive — 26 days] Investigate Agent SDK Credit limits before June 15** — `claude --bare -p` scripted runs (daily scan, REPAIR pipeline hooks) move to a new monthly Agent SDK credit on June 15. Determine credit amount, failure behavior, and whether Routines draw from the same bucket. Add billing model note to `shared/ag3nts.md`. (Carry-forward from May 14; reinforced by today's Agent SDK rename finding)
+
+---
+
 ## Latest Scan: 2026-05-19
 
 ### Summary
