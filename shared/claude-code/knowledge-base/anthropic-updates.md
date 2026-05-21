@@ -1,5 +1,90 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-05-21
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 4
+- Actionable integrations: 2 (Advisor Tool for REPAIR pipeline cost reduction, Stainless acquisition SDK/MCP watch)
+
+### Context
+
+One day since last scan (May 20). Four new items surface today: Stainless acquisition (May 18 — Anthropic acquires SDK/MCP tooling company for $300M+), Advisor Tool public beta (executor/advisor two-model API pattern for cost-efficient long-horizon agents), self-hosted sandboxes for Managed Agents (run tool execution on own infrastructure), and "Demystifying evals for AI agents" engineering post (agent evaluation framework patterns). Code w/ Claude London (May 20–21) finished today — no new engineering announcements detected from the event. The June 15 deadline cluster (model retirement + Agent SDK credit) is now **25 days away** — audits from May 19 remain the highest-priority outstanding carry-forwards.
+
+---
+
+### Findings
+
+#### [High] Advisor Tool Public Beta — Executor/Advisor Two-Model Pattern for Cost-Efficient Long-Horizon Agents
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: May 2026 (public beta; listed in API release notes)
+- **Category**: API / Agent
+- **What Changed**: New server-side tool in public beta: the **advisor tool** pairs a faster **executor model** (e.g., Sonnet) with a higher-intelligence **advisor model** (e.g., Opus) that injects strategic guidance mid-generation. The bulk of token generation runs at executor-model rates; the advisor model intervenes at decision points — so long-horizon agentic workloads get near-advisor-solo quality at significantly lower cost. Configured via the `server_tools` API parameter; documentation in the "Server Tools" section of `docs.anthropic.com`.
+- **Impact on ag3nts**:
+  - `software-architect` (Opus, REPAIR Stage 4) and `security-engineer` (Opus, Stage 6) are the two highest-cost agents in the pipeline. Both run long on complex diffs. The advisor tool allows a Sonnet executor + Opus advisor pattern: routine reasoning at Sonnet rates, with Opus injecting strategic guidance only when needed (e.g., identifying the most impactful architectural risk or the highest-severity OWASP finding). This could materially reduce Opus token spend per REPAIR run without sacrificing depth.
+  - The `code-reviewer` multi-agent dispatch (4 parallel Sonnet specialists) could also adopt advisor routing on especially complex diffs — though Sonnet is already cost-efficient for that role.
+  - No breaking changes to existing tool definitions; it's additive via `server_tools`.
+- **Proposed Changes**:
+  - [ ] Read the "Advisor tool" docs page at `docs.anthropic.com/en/docs/agents-and-tools/server-tools/advisor-tool` for the full `server_tools` config schema and beta header (if required)
+  - [ ] Evaluate adding advisor tool config to `software-architect` and `security-engineer` agent invocations in `shared/claude-code/hooks/` — Sonnet executor + Opus advisor for the REPAIR pipeline's costliest stages
+- **Priority**: High — direct cost/quality improvement for the two most expensive REPAIR pipeline agents; public beta with no breaking changes
+
+---
+
+#### [Medium] Anthropic Acquires Stainless (May 18, 2026) — SDK and MCP Toolchain Now Anthropic-Controlled
+- **Source**: https://www.anthropic.com/news/anthropic-acquires-stainless
+- **Published**: 2026-05-18
+- **Category**: Tooling
+- **What Changed**: Anthropic acquired Stainless (>$300M) — the company that generates every official Anthropic SDK (Python, TypeScript, Go, Java), CLIs, and MCP servers. Stainless will wind down its hosted SDK-generator product as the team integrates into the Claude Platform to focus on developer experience and agent connectivity. The acquisition gives Anthropic full vertical control: the model, the MCP connectivity standard, and the SDK/CLI toolchain that implements connections in practice. Stainless previously served OpenAI, Google DeepMind, Groq, and Cloudflare — those customers must now migrate or rebuild their SDK tooling.
+- **Impact on ag3nts**:
+  - The Python (`anthropic`) and TypeScript (`@anthropic-ai/sdk`) packages used by any ag3nts automation scripts are now Anthropic-maintained directly via the Stainless team. SDK release cadence and quality will likely increase.
+  - MCP server tooling is now a first-party Anthropic concern. Expect tighter integration between `.mcp.json` config, Claude Code, the `ant` CLI (May 20 finding), and new MCP server generation tooling.
+  - No immediate changes needed — existing SDK calls are unaffected. Watch for SDK version bumps and new MCP server templates in the next 30–60 days.
+- **Proposed Changes**:
+  - [ ] No immediate code changes. Add a note to `shared/ag3nts.md` Interaction Rules or a new "Dependencies" section: "Anthropic SDKs (anthropic, @anthropic-ai/sdk) and MCP server tooling are now maintained directly by Anthropic (via Stainless acquisition, May 2026) — expect faster release cadence."
+  - [ ] Watch for Stainless-era MCP server generation tooling that may simplify adding new MCP servers to `.mcp.json`
+- **Priority**: Medium — no immediate action; strategic awareness for SDK/MCP dependency management going forward
+
+---
+
+#### [Low] Self-Hosted Sandboxes for Claude Managed Agents — Run Tool Execution On Own Infrastructure
+- **Source**: https://docs.anthropic.com/en/release-notes/api / https://www.anthropic.com/engineering/managed-agents
+- **Published**: May 2026 (in API release notes)
+- **Category**: API / Infrastructure
+- **What Changed**: Claude Managed Agents now supports **self-hosted sandboxes** as an alternative to Anthropic-managed tool execution infrastructure. The Managed Agents architecture decouples the "brain" (Claude + harness), "hands" (sandbox + tools), and "session" (event log) — each is an independent interface that can fail or be replaced independently. Self-hosted option: organizations run the sandbox component on their own infra while Anthropic manages the brain/session.
+- **Impact on ag3nts**: Low for the current setup (REPAIR pipeline uses `claude --bare -p` hook scripts, not Managed Agents). If ag3nts migrates to Managed Agents in the future (logged as a Medium-priority future direction in the May 19 scan), self-hosted sandboxes allow the REPAIR pipeline's tool execution (lint, security scan, git operations) to run on the developer's local machine or private CI rather than Anthropic's infra — important for repos with confidential code.
+- **Proposed Changes**:
+  - [ ] No immediate changes; note as a key design parameter for any future Managed Agents migration of the REPAIR pipeline
+- **Priority**: Low — future architecture option; current hook-based setup is functional
+
+---
+
+#### [Low] "Demystifying Evals for AI Agents" — Anthropic Engineering Post on Agent Evaluation Frameworks
+- **Source**: https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents
+- **Published**: 2026 (within 30-day window; exact date not visible in metadata)
+- **Category**: Agent Patterns
+- **What Changed**: Anthropic engineering post on building evaluation frameworks for AI agents in the post-SWE-bench-saturation era (frontier models now >80% on SWE-bench Verified). Key insights: (1) Don't take eval scores at face value — review transcripts, check grading fairness, ensure harness doesn't constrain the model. (2) Agentic evals differ from static evals — the runtime environment is an integral component; infrastructure noise can swing results by multiple percentage points. (3) When traditional evals saturate, shift to harder multi-step tasks that capture long-horizon agentic gains (Qodo example: one-shot coding evals missed Opus 4.7's gains; multi-step agentic eval captured them).
+- **Impact on ag3nts**:
+  - `reality-checker` (production readiness gate) and `code-reviewer` are the two quality-gate agents in the REPAIR pipeline. The post's insight about harness-constrained evals is directly applicable: if the REPAIR pipeline's pre-commit hooks are too restrictive in how they invoke these agents, they may underperform versus their actual capability. Worth a pass-through read for REPAIR pipeline tuning.
+  - No API or config changes; conceptual guidance only.
+- **Proposed Changes**:
+  - [ ] Read the full engineering post; evaluate whether `reality-checker` or `code-reviewer` invocation patterns in hook scripts constrain model performance vs. what they could achieve with a less constrained harness
+- **Priority**: Low — pattern guidance; no immediate code changes
+
+---
+
+### Recommendations
+
+Top 3 actions now:
+
+1. **[High] Evaluate Advisor Tool for REPAIR pipeline Opus agents** — Read `docs.anthropic.com/en/docs/agents-and-tools/server-tools/advisor-tool` (est. 20 min). If the config is straightforward, add Sonnet executor + Opus advisor to `software-architect` and `security-engineer` invocations in `shared/claude-code/hooks/` — reduces cost on the pipeline's two most expensive stages without sacrificing quality.
+
+2. **[Critical carry-forward — 25 days] Audit for deprecated model IDs and extended thinking config before June 15** — Run `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|thinking.*enabled\|budget_tokens" ~/.claude/ shared/ windows/ macos/`. These two June 15 breaking changes (`claude-sonnet-4-20250514`/`claude-opus-4-20250514` retirement + extended thinking removal on Opus 4.7) are fast approaching. Five-minute grep; carry-forward from May 19.
+
+3. **[High carry-forward — 25 days] Investigate Agent SDK Credit limits before June 15** — `claude --bare -p` scripted runs move to a new monthly Agent SDK credit on June 15. Confirm credit amount, failure behavior, and whether Routines draw from the same bucket. Add billing note to `shared/ag3nts.md`. Carry-forward from May 14/18/19/20.
+
+---
+
 ## Latest Scan: 2026-05-20
 
 ### Summary
