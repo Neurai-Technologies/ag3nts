@@ -1,5 +1,50 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-05-22
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 1
+- Actionable integrations: 1 (tool design methodology + MCP annotations applicable to agent definitions)
+
+### Context
+
+One day since last scan (May 21). Scan surfaced one genuine new engineering post: "Writing effective tools for AI agents" — published after the May 15 scan's note that no new engineering posts existed since April 8; not logged in any May 15–21 entries. All other items surfaced in today's broad scan were either outside the 30-day window (Anthropic $50B infrastructure — Nov 12, 2025; MCP donation to Agentic AI Foundation — Dec 2025) or already logged in prior entries (Opus 4.7 GA, cache diagnostics, Stainless acquisition, Managed Agents beta, advanced tool use). The June 15 deadline cluster (model retirement + Agent SDK credit) is now **24 days away** — audits from May 19 remain the highest-priority outstanding carry-forwards.
+
+---
+
+### Findings
+
+#### [High] "Writing Effective Tools for AI Agents" — Anthropic Engineering Post on Tool Design Methodology
+- **Source**: https://www.anthropic.com/engineering/writing-tools-for-agents
+- **Published**: May 2026 (post-May 15, 2026; not in any prior scan entries)
+- **Category**: Agent Patterns / Tooling
+- **What Changed**: New Anthropic engineering post by Ken Aizawa (with contributions from Research, MCP, Product Engineering teams) on designing high-performance tools for LLM agents. Five core design principles: (1) **Tool description as prompt engineering** — refining tool descriptions and specs is one of the highest-leverage interventions; precise descriptions collectively steer agents toward effective call patterns. (2) **Token efficiency via output engineering** — design tools to return truncated, structured outputs and to surface actionable error messages that guide agents toward correct recovery. (3) **Evaluate before and after** — use an eval harness to measure tool effectiveness; small description changes caused measurable win-rate shifts in the Claude SWE-bench benchmarks. (4) **Composability** — tools should combine cleanly across diverse workflows without unexpected interactions. (5) **MCP tool annotations** — new standard for disclosing tool properties in MCP servers: mark tools that require open-world network access (`open-world: true`) or make destructive changes (`destructive: true`), so host clients can surface appropriate user confirmation prompts. The post describes a Prototype → Evaluate → Collaborate iteration loop as the recommended development methodology.
+- **Impact on ag3nts**:
+  - **`code-reviewer`** dispatches 4 parallel specialists (correctness, security, convention, history), each with their own tool set. Applying the description-optimization principle — reviewing each tool's description as a prompt-engineering exercise — is directly actionable on the specialist agent `.md` files.
+  - **`security-engineer`** (Opus, Stage 6) runs CVE/OWASP lookups via web tools. The MCP annotation standard is immediately applicable: any destructive tool (e.g., a tool that writes to files or modifies state) in the `security-engineer` or `software-architect` tool registry should have `destructive: true` in its MCP server definition, allowing Claude Code's host to auto-prompt the user before destructive operations.
+  - **`software-architect`** (Opus, Stage 4) references external Patterns resources. Structured return values and truncation patterns reduce context window pressure during multi-step ADR generation.
+  - All agents benefit from token-efficient tool output design — especially relevant for `code-reviewer`'s 4-parallel-agent dispatch where each sub-agent inherits a large preamble.
+- **Proposed Changes**:
+  - [ ] Read the full post at `https://www.anthropic.com/engineering/writing-tools-for-agents`; apply description-optimization pass to `~/.claude/agents/code-reviewer.md`, `~/.claude/agents/security-engineer.md`, and `~/.claude/agents/software-architect.md` tool definitions
+  - [ ] Audit `.mcp.json` MCP server tool definitions for tools that make destructive changes — add `destructive: true` annotation to any that write/delete files or modify external state; add `open-world: true` to tools making arbitrary network requests
+  - [ ] Consider adding Tool Use Examples (from May 19 Advanced Tool Use finding) alongside this description optimization pass — both improvements target the same files
+- **Priority**: High — direct applicability to all three highest-complexity agents in the REPAIR pipeline; description optimization has measurable benchmark impact per the post; MCP annotations improve safety UX at no cost
+
+---
+
+### Recommendations
+
+Top 3 actions now:
+
+1. **[High] Apply tool description optimization pass to `code-reviewer`, `security-engineer`, `software-architect` agent files** — Read `anthropic.com/engineering/writing-tools-for-agents` (est. 15 min), then iterate on tool descriptions in `~/.claude/agents/code-reviewer.md`, `security-engineer.md`, `software-architect.md`. Combine with the Tool Use Examples addition from May 19. Files: `~/.claude/agents/code-reviewer.md`, `~/.claude/agents/security-engineer.md`, `~/.claude/agents/software-architect.md`.
+
+2. **[Critical carry-forward — 24 days] Audit for deprecated model IDs and extended thinking config before June 15** — Run `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|thinking.*enabled\|budget_tokens" ~/.claude/ shared/ windows/ macos/`. Two June 15 breaking changes fast approaching. Five-minute grep; carry-forward from May 19.
+
+3. **[High carry-forward — 24 days] Investigate Agent SDK Credit limits before June 15** — `claude --bare -p` scripted runs move to a new monthly Agent SDK credit on June 15. Confirm credit amount, failure behavior, and whether Routines draw from the same bucket. Add billing note to `shared/ag3nts.md`. Carry-forward from May 14/18/19/20/21.
+
+---
+
 ## Latest Scan: 2026-05-21
 
 ### Summary
