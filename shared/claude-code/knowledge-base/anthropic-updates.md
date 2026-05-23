@@ -1,5 +1,43 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-05-23
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 0
+- Actionable integrations: 0
+
+### Context
+
+One day since last scan (May 22). Broad scan of all four sources surfaced no new posts or announcements published May 22–23. One operational note: Anthropic identified an issue on May 22 causing elevated error rates primarily on Claude Opus 4.7 and Sonnet 4.6 (resolved; no API or model changes). All items within the 30-day window (April 23 – May 23) are confirmed captured in prior daily scan entries. The Amazon/Anthropic 5GW compute deal ($5B investment, April 20) was the only unchecked item — it falls 3 days outside the 30-day window and likely appeared in late-April scans. June 15 deadline cluster (model retirement + Agent SDK Credit) is now **23 days away** — highest-priority carry-forwards from May 22 stand unchanged.
+
+### Findings
+
+No new findings. All items surfaced by today's scan were previously logged:
+
+- Writing Effective Tools for AI Agents (May 22 — already logged)
+- Advisor Tool public beta, Stainless acquisition, Demystifying Evals (May 21 — already logged)
+- Cache Diagnostics, ant CLI, Claude Agent SDK rename, Xcode 26.3 (May 20 — already logged)
+- Extended thinking removal, model deprecation, Task Budgets, Advanced Tool Use, Opus 4.7 GA, Managed Agents beta (May 19 — already logged)
+- Checkpoints / VS Code extension, Automated W2S Researcher (May 17 — already logged)
+- Natural Language Autoencoders research (May 7 — confirmed captured in earlier scans per May 15 context note)
+- Claude for Creative Work, Anthropic Labs launch (April 28 — within window; captured in late-April daily scans)
+- Anthropic service incident May 22 — operational / no API or model change
+
+---
+
+### Recommendations
+
+Carry-forwards unchanged from May 22 — June 15 deadline now 23 days out:
+
+1. **[Critical carry-forward — 23 days] Audit for deprecated model IDs before June 15** — Run `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|thinking.*enabled\|budget_tokens" ~/.claude/ shared/ windows/ macos/`. Two June 15 breaking changes fast approaching. Five-minute grep.
+
+2. **[High carry-forward — 23 days] Investigate Agent SDK Credit limits before June 15** — `claude --bare -p` scripted runs move to a new monthly Agent SDK credit on June 15. Confirm credit amount, failure behavior, and whether Routines draw from the same bucket. Add billing note to `shared/ag3nts.md`. Carry-forward since May 14.
+
+3. **[High] Apply tool description optimization to core REPAIR pipeline agents** — Read `anthropic.com/engineering/writing-tools-for-agents` then iterate on tool descriptions in `~/.claude/agents/code-reviewer.md`, `~/.claude/agents/security-engineer.md`, `~/.claude/agents/software-architect.md`. Combine with Tool Use Examples from May 19 Advanced Tool Use finding. Carry-forward since May 22.
+
+---
+
 ## Latest Scan: 2026-05-22
 
 ### Summary
