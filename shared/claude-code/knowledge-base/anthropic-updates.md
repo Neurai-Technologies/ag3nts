@@ -1,5 +1,48 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-05-24
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 1
+- Actionable integrations: 1 (Project Glasswing initial update — security paradigm shift applicable to security-engineer agent)
+
+### Context
+
+One day since last scan (May 23). Broad scan of all four sources found no new posts or announcements published May 23–24. One previously-uncaptured item surfaced: **Project Glasswing: An initial update** — a research post published May 22 on anthropic.com/research, the same day as "Writing Effective Tools for AI Agents." The May 22 scan logged only the Engineering post and missed the Research post; the May 23 broad re-confirmation scan also missed it. No API, model, or tooling changes since May 23. The June 15 deadline cluster (model retirement + Agent SDK Credit) is now **22 days away** — carry-forward recommendations from May 23 are unchanged.
+
+---
+
+### Findings
+
+#### [Medium] Project Glasswing: An Initial Update — AI Vulnerability Discovery at Scale, Security Paradigm Shift
+- **Source**: https://www.anthropic.com/research/glasswing-initial-update
+- **Published**: 2026-05-22 (missed by May 22 and May 23 scans)
+- **Category**: Safety / Research
+- **What Changed**: Anthropic's first progress update on Project Glasswing (initiative launched April 7 using Claude Mythos Preview). Key findings: (1) Anthropic and ~50 partners have used Mythos Preview to find **10,000+ high- or critical-severity vulnerabilities** in the world's most critical software. (2) In open-source alone, Mythos is on track for ~3,900 high/critical findings. (3) **Notable discovery**: wolfSSL cryptography library (used by billions of devices) — Mythos constructed an exploit for a certificate-forging vulnerability that had survived decades of human review and millions of automated security tests. (4) **Paradigm shift**: AI has flipped the software security bottleneck. Progress used to be limited by how fast vulnerabilities could be *found*; it is now limited by how fast they can be *verified, disclosed, and patched*.
+- **Impact on ag3nts**:
+  - The `security-engineer` agent (Opus, REPAIR Stage 6 OWASP audit + Stage 4 threat modeling) runs CVE lookups and OWASP audits. The Glasswing paradigm shift is directly applicable: at current AI capability levels, *detection breadth is no longer the bottleneck* — triage rigor, severity precision, and disclosure-quality reporting are. The security-engineer's system prompt should reflect this shift: emphasize structured triage (CVSS-calibrated severity, actionable remediation steps, precise affected-component scoping) over raw finding count.
+  - The wolfSSL finding highlights cryptography libraries as high-value targets. If any ag3nts dependencies (Python packages, JS packages) include crypto libraries, the Stage 6 audit should prioritize crypto-library CVE checks as a first pass.
+  - No API, SDK, or config changes required — conceptual framing update for security-engineer prompt refinement.
+- **Proposed Changes**:
+  - [ ] Read the full update at `https://www.anthropic.com/research/glasswing-initial-update`; apply triage-quality framing to `~/.claude/agents/security-engineer.md` — shift emphasis from detection breadth to severity accuracy and remediation specificity
+  - [ ] Add a crypto-library CVE first-pass step to security-engineer's Stage 6 audit: check `requirements.txt` / `package.json` dependencies against known crypto-library CVEs before broader OWASP sweep
+- **Priority**: Medium — no breaking changes; conceptual framing update for security-engineer prompt; crypto-library check adds concrete value to Stage 6 OWASP audit
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **[Critical carry-forward — 22 days] Audit for deprecated model IDs before June 15** — Run `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|thinking.*enabled\|budget_tokens" ~/.claude/ shared/ windows/ macos/`. Two June 15 breaking changes fast approaching. Five-minute grep. Carry-forward since May 19.
+
+2. **[High carry-forward — 22 days] Investigate Agent SDK Credit limits before June 15** — `claude --bare -p` scripted runs move to a new monthly Agent SDK credit on June 15. Confirm credit amount, failure behavior, and whether Routines draw from the same bucket. Add billing note to `shared/ag3nts.md`. Carry-forward since May 14.
+
+3. **[High] Apply tool description optimization to core REPAIR pipeline agents** — Read `anthropic.com/engineering/writing-tools-for-agents` then iterate on tool descriptions in `~/.claude/agents/code-reviewer.md`, `~/.claude/agents/security-engineer.md`, `~/.claude/agents/software-architect.md`. Combine with Tool Use Examples from May 19 Advanced Tool Use finding. Carry-forward since May 22.
+
+---
+
 ## Latest Scan: 2026-05-23
 
 ### Summary
