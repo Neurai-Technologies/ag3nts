@@ -1,5 +1,48 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-05-25
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 1
+- Actionable integrations: 1 (Claude Security public beta — missed by April 30 scan; directly applicable to security-engineer agent)
+
+### Context
+
+One day since last scan (May 24). Broad scan of all four sources surfaced one genuine missed item: **Claude Security Public Beta** — announced April 30, 2026, within the 30-day window, but not captured by the April 30 or any subsequent scan. No new posts or announcements published May 24–25. All other items in the 30-day window (April 25 – May 25) are confirmed captured in prior entries. The June 15 deadline cluster (model retirement + Agent SDK credit) is now **21 days away** — carry-forward recommendations from May 24 remain unchanged.
+
+---
+
+### Findings
+
+#### [Medium] Claude Security Public Beta — Enterprise Codebase Vulnerability Scanner
+- **Source**: https://siliconangle.com/2026/04/30/anthropic-announces-claude-security-public-beta-find-fix-software-vulnerabilities/
+- **Published**: 2026-04-30 (missed by April 30 scan and all subsequent scans)
+- **Category**: Safety / Tooling
+- **What Changed**: Anthropic launched Claude Security in public beta for Claude Enterprise customers — a dedicated product (powered by Opus 4.7) that scans selected repositories or branches for vulnerabilities, explains findings with severity/confidence ratings, and generates targeted patch instructions. Built on Project Glasswing research. Key features: scheduled scans, dismissal workflows with documented reasons, CSV/Markdown exports, and Slack/Jira webhook integrations. Technology partners: CrowdStrike, Palo Alto Networks, SentinelOne, Trend Micro TrendAI, Wiz. Originated as "Claude Code Security" research preview in February 2026. Available now for Claude Enterprise; Claude Team/Max availability coming soon.
+- **Impact on ag3nts**:
+  - The `security-engineer` agent (Opus, REPAIR Stage 6 OWASP audit + Stage 4 threat modeling) currently performs security analysis via in-context reasoning and CVE lookups. Claude Security as a product demonstrates the maturity of AI-powered vulnerability scanning — Opus 4.7 codebase scanning is now a production-grade enterprise feature, not just a research pattern.
+  - For ag3nts on Claude Enterprise: Claude Security could complement the `security-engineer` agent by running scheduled scans against the ag3nts repo itself. The `security-engineer` remains useful for per-commit OWASP audit (Stage 6) and Stage 4 threat modeling; Claude Security would cover the repo-wide baseline between pipeline runs.
+  - Slack/Jira webhook integrations could feed vulnerability findings back into ag3nts workflows if a Jira or GitHub Issues integration is added later.
+- **Proposed Changes**:
+  - [ ] Check whether ag3nts is on Claude Enterprise; if so, evaluate Claude Security as a repo-level baseline scanner alongside the existing `security-engineer` hook. No code changes — product feature, not an API change.
+  - [ ] Update `~/.claude/agents/security-engineer.md` context section: note that Claude Security (Enterprise product, April 2026) provides scheduled repo-wide scanning via Opus 4.7; the `security-engineer` agent's scope (per-commit OWASP audit, Stage 4 threat modeling) is complementary, not redundant.
+- **Priority**: Medium — product awareness + potential enterprise complement to `security-engineer`; no breaking changes or API updates
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **[Critical carry-forward — 21 days] Audit for deprecated model IDs before June 15** — Run `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|thinking.*enabled\|budget_tokens" ~/.claude/ shared/ windows/ macos/`. Two June 15 breaking changes fast approaching. Five-minute grep. Carry-forward since May 19.
+
+2. **[High carry-forward — 21 days] Investigate Agent SDK Credit limits before June 15** — `claude --bare -p` scripted runs move to a new monthly Agent SDK credit on June 15. Confirm credit amount, failure behavior, and whether Routines draw from the same bucket. Add billing note to `shared/ag3nts.md`. Carry-forward since May 14.
+
+3. **[High] Apply tool description optimization to core REPAIR pipeline agents** — Read `anthropic.com/engineering/writing-tools-for-agents` then iterate on tool descriptions in `~/.claude/agents/code-reviewer.md`, `~/.claude/agents/security-engineer.md`, `~/.claude/agents/software-architect.md`. Combine with Tool Use Examples from May 19 Advanced Tool Use finding. Carry-forward since May 22.
+
+---
+
 ## Latest Scan: 2026-05-24
 
 ### Summary
