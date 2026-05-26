@@ -1,5 +1,173 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-05-26
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 12
+- Actionable integrations: 8
+
+### Findings
+
+#### Claude Sonnet 4 and Opus 4 Retirement — June 15, 2026
+- **Source**: https://docs.anthropic.com/en/docs/about-claude/model-deprecations
+- **Published**: 2026-04-14 (retirement date: 2026-06-15 — **20 days away**)
+- **Category**: Model / API
+- **What Changed**: `claude-sonnet-4-20250514` and `claude-opus-4-20250514` are deprecated and will stop accepting API requests on June 15, 2026. Anthropic notified developers April 14. Recommended replacements: Sonnet 4.6 and Opus 4.7 respectively.
+- **Impact on ag3nts**: Any agent definition files under `~/.claude/agents/` that hardcode `claude-sonnet-4-20250514` or `claude-opus-4-20250514` will fail after June 15. The `ag3nts.md` table shows `Sonnet` and `Opus` (unversioned aliases) — verify whether aliases resolve to 4.6/4.7 or still pin to the retiring 4.x versions.
+- **Proposed Changes**:
+  - [ ] Audit all `~/.claude/agents/*.md` files for hardcoded `claude-sonnet-4-20250514` or `claude-opus-4-20250514` and update to `claude-sonnet-4-6` / `claude-opus-4-7`
+  - [ ] Audit any scripts under `shared/claude-code/hooks/` or `windows/`/`macos/` setup scripts for pinned model IDs
+- **Priority**: Critical — hard failure at API level in 20 days
+
+---
+
+#### Extended Thinking Deprecated → Adaptive Thinking (Claude 4.6+ and Opus 4.7)
+- **Source**: https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking
+- **Published**: 2026-04 (aligned with Opus 4.7 GA)
+- **Category**: API / Model
+- **What Changed**: `type: "enabled"` with `budget_tokens` is deprecated on Claude Opus 4.6 and Sonnet 4.6 and fully removed on Opus 4.7. The replacement is `type: "adaptive"` — four effort levels (low, medium, high [default], max). Opus 4.7 only supports adaptive thinking; interleaved thinking is automatic. `budget_tokens` parameter is removed.
+- **Impact on ag3nts**: `software-architect` (Opus) and `security-engineer` (Opus) are the two agents that use extended thinking for complex analysis. If either uses `type: "enabled"` with `budget_tokens` in their API calls, those calls will fail on Opus 4.7 and generate deprecation warnings on 4.6.
+- **Proposed Changes**:
+  - [ ] `~/.claude/agents/software-architect.md` — replace any `type: "enabled"` thinking config with `type: "adaptive"`, remove `budget_tokens`, set `effort: "high"` or `"max"` for complex analysis tasks
+  - [ ] `~/.claude/agents/security-engineer.md` — same migration
+- **Priority**: Critical — breaking on Opus 4.7, deprecated on 4.6; must fix before or alongside the model ID migration above
+
+---
+
+#### Claude Opus 4.7 Generally Available
+- **Source**: https://www.anthropic.com/news/claude-opus-4-7
+- **Published**: 2026-04 (April 2026)
+- **Category**: Model
+- **What Changed**: Opus 4.7 is now GA on the Claude API, Amazon Bedrock, Vertex AI, and Microsoft Foundry. Key gains: +13% on 93-task coding benchmark over Opus 4.6 (including 4 tasks neither Opus 4.6 nor Sonnet 4.6 could solve), stronger long-running task rigor, substantially improved vision (higher resolution, better professional output). Uses adaptive thinking only. Same pricing as Opus 4.6: $5/M input, $25/M output. Built-in cybersecurity safeguards.
+- **Impact on ag3nts**: `software-architect` and `security-engineer` (both Opus) gain the most from this upgrade. The coding benchmark improvement is directly relevant to the REPAIR pipeline. The built-in cybersecurity safeguards complement `security-engineer`'s own analysis.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — update agent table notes to reference Opus 4.7 as the current Opus target; note the adaptive-thinking-only constraint
+- **Priority**: High — direct quality improvement for two key agents; unblocks the model retirement migration above
+
+---
+
+#### Agent SDK Credit Starting June 15, 2026
+- **Source**: https://docs.anthropic.com/en/docs/claude-code/sdk
+- **Published**: 2026-05
+- **Category**: Tooling / API
+- **What Changed**: Starting June 15, 2026, `claude -p` (non-interactive / scripted runs) and Claude Agent SDK usage on subscription plans (Pro, Max, Team) will draw from a new monthly Agent SDK credit pool, separate from interactive session limits. API key usage is unaffected (billed per token).
+- **Impact on ag3nts**: The `ag3nts.md` "Scripted / Automated Runs" section documents `claude --bare -p` for cron/CI/scripted runs. These calls will now consume Agent SDK credits instead of interactive usage. If ag3nts is on a subscription plan (not API key), scripted agent invocations — including the `anthropic` agent's daily scan — may hit new credit limits.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — add note in "Scripted / Automated Runs" section: from June 15, `claude -p` draws from Agent SDK credits on subscription plans; monitor credit consumption for high-frequency scripted agents
+- **Priority**: High — billing behavior change in 20 days, same date as model retirement
+
+---
+
+#### Claude Managed Agents Public Beta
+- **Source**: https://www.anthropic.com/engineering/managed-agents
+- **Published**: 2026-04
+- **Category**: API / Agent
+- **What Changed**: Claude Managed Agents is a hosted REST API that decouples the agent brain (Claude) from the agent body (tools, sandboxes). Anthropic runs the harness loop and execution environment. Three components: session (append-only event log), harness (calls Claude, routes tool calls), sandbox (code execution environment). All endpoints require `managed-agents-2026-04-01` beta header. Features in beta: self-hosted sandboxes, update MCP configs mid-session, multi-agent sessions, Outcomes (structured end-state reporting), Memory.
+- **Impact on ag3nts**: The current ag3nts setup runs agents locally via Claude Code hooks. Managed Agents is an alternative orchestration layer — relevant if any ag3nts workflows need persistent sandboxes, multi-agent coordination across sessions, or structured outcome tracking. The multi-agent sessions feature directly maps to how `code-reviewer` dispatches 4 parallel specialists.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add reference link: https://www.anthropic.com/engineering/managed-agents (Managed Agents architecture)
+  - [ ] `shared/ag3nts.md` — note Managed Agents as an alternative orchestration path for multi-agent flows; note `managed-agents-2026-04-01` beta header requirement
+- **Priority**: High — directly relevant to multi-agent orchestration patterns already in use
+
+---
+
+#### Advisor Tool (Public Beta) — Executor + Advisor Model Pairing
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: 2026-04/05
+- **Category**: API / Agent
+- **What Changed**: New `advisor` tool in public beta. Pairs a fast executor model with a higher-intelligence advisor model that injects strategic guidance mid-generation. Long-horizon agentic workloads approach advisor-solo quality while bulk token generation runs at executor-model pricing.
+- **Impact on ag3nts**: Directly applicable to the REPAIR pipeline: Stage 4 (software-architect, Opus) and Stage 6 (security-engineer, Opus) are the high-intelligence steps. Using Sonnet as executor with Opus as advisor could reduce cost while preserving quality. The `code-reviewer` (Sonnet, 4 parallel specialists) could pair with Opus advisor for correctness and security sub-agents.
+- **Proposed Changes**:
+  - [ ] Evaluate `advisor` tool for `software-architect` and `security-engineer` agents — test whether Sonnet-executor + Opus-advisor matches full Opus quality on REPAIR Stage 4/6 tasks
+- **Priority**: High — meaningful cost reduction for Opus-heavy pipelines; worth evaluating now
+
+---
+
+#### Advanced Tool Use — Dynamic Discovery & Code-Driven Invocation
+- **Source**: https://www.anthropic.com/engineering/advanced-tool-use
+- **Published**: 2026-04/05
+- **Category**: Agent
+- **What Changed**: Anthropic engineering post formalizing two patterns for sophisticated agent tool use: (1) **dynamic tool discovery** — agents load tool definitions on-demand from large libraries instead of injecting all definitions upfront, keeping context lean; (2) **code-driven tool invocation** — agents call tools from executable code (loops, conditionals, data transforms), choosing between code execution and inference per-step.
+- **Impact on ag3nts**: The `code-reviewer` agent dispatches 4 parallel specialists, each potentially needing different tool sets. Dynamic discovery would let each specialist load only the tools it needs. The `software-architect` agent's domain modeling sub-step could use code-driven invocation for structured ADR generation.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add reference: https://www.anthropic.com/engineering/advanced-tool-use
+  - [ ] Consider implementing dynamic tool discovery in `code-reviewer` specialist dispatch when agent tool configs are next revised
+- **Priority**: High — directly applicable architecture pattern for the multi-specialist code-reviewer
+
+---
+
+#### Claude Agent SDK (Renamed from Claude Code SDK)
+- **Source**: https://www.anthropic.com/engineering/building-agents-with-the-claude-agent-sdk
+- **Published**: 2026-04/05
+- **Category**: Tooling / Agent
+- **What Changed**: The Claude Code SDK has been renamed to the **Claude Agent SDK** to reflect broader use beyond coding. Same primitives (Python + TypeScript), same underlying capabilities. Xcode 26.3 gains native Claude Agent SDK integration (subagents, background tasks, plugins). `docs.anthropic.com/en/docs/claude-code/sdk` remains the doc URL but references the Agent SDK name.
+- **Impact on ag3nts**: The `ag3nts.md` "Scripted / Automated Runs" section and any internal docs referencing "Claude Code SDK" should be updated to "Claude Agent SDK" to stay aligned with official naming.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — update any references from "Claude Code SDK" to "Claude Agent SDK"
+- **Priority**: Medium — naming alignment; no functional change
+
+---
+
+#### `ant` CLI — New Command-Line Client for the Claude API
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: 2026-04/05
+- **Category**: Tooling
+- **What Changed**: Anthropic launched `ant`, a new CLI for direct Claude API interaction. Features: fast API interaction, native Claude Code integration, YAML-based versioning of API resources (prompts, tool definitions, agent configs). Separate from the `claude` CLI (which is the Claude Code agent).
+- **Impact on ag3nts**: The `ant` CLI's YAML resource versioning could be used to version-control agent prompts and tool definitions outside of agent markdown files. Native Claude Code integration means `ant` could be invoked from within hooks. Potentially useful for the `version` agent's consistency audits.
+- **Proposed Changes**:
+  - [ ] Evaluate `ant` CLI for versioning tool definitions in `shared/claude-code/` — YAML resource management may complement the existing agent markdown approach
+- **Priority**: Medium — new tooling worth evaluating; no breaking changes
+
+---
+
+#### Cache Diagnostics (Public Beta)
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: 2026-04/05
+- **Category**: API
+- **What Changed**: Pass `diagnostics.previous_message_id` on a Messages API request to receive a `cache_miss_reason` field explaining exactly where the prompt cache prefix diverged. Helps debug unexpected cache misses.
+- **Impact on ag3nts**: The `code-reviewer` and `security-engineer` agents run on multi-turn conversations with prompt caching. Cache miss debugging is directly applicable to reducing token costs on repeated agent invocations. The pre-commit hooks trigger these agents on every commit — cache efficiency matters.
+- **Proposed Changes**:
+  - [ ] Note cache diagnostics as a debugging tool when investigating unexpected token cost spikes in high-frequency agent invocations
+- **Priority**: Medium — debugging aid for cache optimization; low urgency
+
+---
+
+#### Next-Generation Constitutional Classifiers
+- **Source**: https://www.anthropic.com/research/next-generation-constitutional-classifiers
+- **Published**: 2026-05
+- **Category**: Safety
+- **What Changed**: New Constitutional Classifiers paper. Uses internal probe classifiers built on interpretability research, reusing neural network computations already present in the model. More efficient than prior generation — lower latency overhead per call while providing stronger universal jailbreak protection.
+- **Impact on ag3nts**: The auto-mode classifier (Sonnet, two-stage pipeline) documented in `ag3nts.md` benefits from these improvements automatically — no config changes needed. The `security-engineer` agent's awareness of classifier capabilities is relevant context.
+- **Proposed Changes**: None — automatic improvement, no integration changes needed
+- **Priority**: Medium — informational; validates the classifier-based auto-mode design
+
+---
+
+#### Claude Mythos Preview — Security-Specialized Model (Project Glasswing)
+- **Source**: https://red.anthropic.com/2026/mythos-preview/
+- **Published**: 2026-04-07
+- **Category**: Model / Safety
+- **What Changed**: Claude Mythos Preview is a general-purpose model with exceptional computer security capabilities. Released via Project Glasswing to critical infrastructure partners and open-source security researchers. In testing: 89% exact severity agreement with expert contractors on vulnerability reports, 98% within one severity level. Not yet broadly available.
+- **Impact on ag3nts**: The `security-engineer` agent (Opus) handles OWASP audit and threat modeling. If Mythos becomes available via API, it could be a superior model for security-specific tasks. Currently limited availability — informational.
+- **Proposed Changes**:
+  - [ ] Monitor red.anthropic.com for Mythos API availability; evaluate for `security-engineer` agent model when accessible
+- **Priority**: Low — limited availability; monitor for broader release
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **Audit agent model IDs — retirement deadline June 15 (20 days)**: Check all `~/.claude/agents/*.md` files for hardcoded `claude-sonnet-4-20250514` or `claude-opus-4-20250514` strings. Update to `claude-sonnet-4-6` and `claude-opus-4-7`. Do the same for any shell scripts in `shared/claude-code/hooks/` or setup scripts. This is a hard failure at the API level if missed.
+
+2. **Migrate extended thinking to adaptive thinking**: In `~/.claude/agents/software-architect.md` and `~/.claude/agents/security-engineer.md`, replace `type: "enabled"` + `budget_tokens` with `type: "adaptive"` + `effort: "high"` (or `"max"` for the deepest analysis steps). Required for Opus 4.7 compat; deprecated on 4.6 today.
+
+3. **`shared/ag3nts.md` — add June 15 billing note**: In the "Scripted / Automated Runs" section, document that `claude -p` draws from Agent SDK credits (not interactive limits) on subscription plans starting June 15. Reference the new Agent SDK credit pool so scripted agents (daily scan, pre-commit hooks) are monitored for credit consumption.
+
+---
+
 ## Latest Scan: 2026-05-25
 
 ### Summary
