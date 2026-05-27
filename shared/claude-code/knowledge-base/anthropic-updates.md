@@ -1,5 +1,52 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-05-27
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 1
+- Actionable integrations: 1 (Claude Code new release — `context: fork` infinite loop fix in Skills, directly applicable to ag3nts Skills architecture)
+
+### Context
+
+One day since last scan (May 26). Broad scan of all four sources plus GitHub releases for Claude Code. One new item surfaced: a Claude Code release published ~May 24–25 with a direct bug fix for Skills using `context: fork` (infinite loop) and new features (`ANTHROPIC_WORKSPACE_ID` env var, `claude agents --cwd`). This release was not captured in the May 26 scan, which checked anthropic.com news posts only and noted "no new posts May 24–25" without scanning GitHub releases. No new anthropic.com/news, /research, or /engineering posts published May 26–27. The "First Broadcast" partner webinar (May 27) is partner/business-facing with no developer API changes. The June 15 deadline cluster (model retirement + Agent SDK Credit) is now **19 days away** — carry-forward recommendations from May 26 are unchanged.
+
+---
+
+### Findings
+
+#### [Medium] Claude Code New Release (~May 24–25) — `context: fork` Skills Loop Fix, `claude agents --cwd`, `ANTHROPIC_WORKSPACE_ID`
+- **Source**: https://github.com/anthropics/claude-code/releases / https://docs.anthropic.com/en/release-notes/claude-code
+- **Published**: ~2026-05-24–25 (approximately 3 days before today's scan; not captured by May 26 scan)
+- **Category**: Tooling
+- **What Changed**: New Claude Code release (post-v2.1.141) ships three notable items:
+  1. **`context: fork` infinite loop fix** — Resolved an infinite loop where a Skill using `context: fork` could repeatedly re-invoke itself. Previously silent failure mode; now corrected.
+  2. **`ANTHROPIC_WORKSPACE_ID` env var** — Supports workload identity federation for enterprise/cloud deployments. Allows scoped API access without explicit API key injection.
+  3. **`claude agents --cwd <path>`** — Scopes the agent session list to a specific directory rather than the global agent registry. Useful for multi-root/portable setups.
+  4. **Additional bug fixes**: Fixed background side-queries on custom `ANTHROPIC_BASE_URL` setups; Bedrock Mantle not using Haiku; scrolling in attached background sessions on Windows; crash on terminal close while attached to background session.
+- **Impact on ag3nts**:
+  - **`context: fork` fix** — ag3nts Skills (in `~/.claude/agents/`) use the Skills architecture. Any skill that forks context (e.g., for isolated sub-agent runs) could have been silently hitting the infinite loop. This is a correctness fix — update to this version immediately to prevent silent looping in hook-triggered Skill invocations during the REPAIR pipeline.
+  - **`claude agents --cwd <path>`** — ag3nts operates across Windows + macOS via a portable SSD with symlinked agent directories. The `--cwd` scoping flag allows more precise agent discovery in multi-platform scripted runs (`claude --bare -p`), especially if different platform setups have overlapping or platform-specific agent directories.
+  - **`ANTHROPIC_WORKSPACE_ID`** — If ag3nts ever moves scripted runs to a cloud CI/CD setup (already flagged as a future direction in the May 20 scan), workload identity federation removes the need to inject `ANTHROPIC_API_KEY` as a secret.
+- **Proposed Changes**:
+  - [ ] Update Claude Code to the latest release to get the `context: fork` infinite loop fix: `npm install -g @anthropic-ai/claude-code@latest` (or equivalent via platform package manager)
+  - [ ] Add a note to `shared/ag3nts.md` Scripted/Automated Runs: "Use `claude agents --cwd <path>` to scope agent session listing to a specific directory in multi-root setups"
+- **Priority**: Medium — `context: fork` fix is a correctness improvement directly applicable to Skills-based ag3nts architecture; `claude agents --cwd` is a quality-of-life improvement for the portable SSD multi-platform setup
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **[Critical carry-forward — 19 days] Audit for deprecated model IDs before June 15** — Run `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|thinking.*enabled\|budget_tokens" ~/.claude/ shared/ windows/ macos/`. Hard API failure at the endpoint level in 19 days. Carry-forward since May 19.
+
+2. **[High carry-forward — 19 days] Investigate Agent SDK Credit limits before June 15** — `claude --bare -p` scripted runs move to a new monthly Agent SDK credit on June 15. Confirm credit amount, failure behavior, and whether Routines draw from the same bucket. Add billing note to `shared/ag3nts.md`. Carry-forward since May 14.
+
+3. **[Medium — new] Update Claude Code to latest release** — Run `npm install -g @anthropic-ai/claude-code@latest` to get the `context: fork` infinite loop fix. Prevents silent looping in hook-triggered Skill invocations. Low effort; correctness improvement.
+
+---
+
 ## Latest Scan: 2026-05-26
 
 ### Summary
