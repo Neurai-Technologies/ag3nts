@@ -1,5 +1,121 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-05-28
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 6
+- Actionable integrations: 4 (Claude Code Sandboxing for auto-mode context; Opus 4.7 Fast Mode for REPAIR pipeline latency; Code Execution with MCP for specialist tool loading; Claude Platform on AWS for future CI/CD path)
+
+### Context
+
+One day since last scan (May 27). Six items surfaced that were not captured in any prior scan entry: Claude Platform on AWS GA (May 11-12, formally acknowledged in May 20 context but never logged as a finding), Code Execution with MCP engineering post, Claude Code Sandboxing engineering post (84% permission-prompt reduction via OS-level isolation), Claude Opus 4.7 Fast Mode research preview, Enhanced Web Search with SEC filing data, and Managed Agents 100K token spill-to-file. The "First Broadcast" and Korea office appointment (May 26-28) are business/operations-facing with no developer API changes. The June 15 deadline cluster (model retirement + Agent SDK Credit) is now **18 days away** — carry-forward recommendations from May 27 are unchanged.
+
+---
+
+### Findings
+
+#### [High] Claude Code Sandboxing — OS-Level Isolation, 84% Permission Prompt Reduction
+- **Source**: https://www.anthropic.com/engineering/claude-code-sandboxing
+- **Published**: 2026 (post-March 25 Claude Code Auto Mode post; exact date not visible in metadata; not captured in any prior scan entry)
+- **Category**: Tooling / Safety
+- **What Changed**: Anthropic engineering post: "Making Claude Code more secure and autonomous." Two new features built on OS-level sandboxing: (1) **Filesystem isolation** — restricts reads/writes to the current working directory (bubblewrap on Linux, seatbelt on macOS); (2) **Network isolation** — all network access routed through a unix domain socket proxy, blocking arbitrary egress. In Anthropic internal usage, sandboxing safely reduces permission prompts by **84%**. Related post: `anthropic.com/engineering/claude-code-auto-mode` (March 25, 2026) describes the auto-mode classifier pipeline that sandboxing complements.
+- **Impact on ag3nts**:
+  - ag3nts uses a two-stage Sonnet classifier for auto-mode permission decisions (`ag3nts.md` Permission Mode section). OS-level sandboxing is a **complementary** defense-in-depth layer — the classifier handles semantic permission (should Claude be allowed to do this?), sandboxing enforces execution boundaries regardless of classifier outcome.
+  - ag3nts runs on macOS (primary platform): macOS seatbelt sandboxing is directly available. The 84% permission-prompt reduction is directly applicable to the REPAIR pipeline's hook-driven invocations (code-reviewer dispatches 4 parallel sub-agents — dozens of tool calls per commit).
+  - The `--bare` mode interplay needs checking: if sandboxing requires Claude Code context to be active (not `--bare`), scripted runs may need a different approach.
+  - `shared/ag3nts.md` Permission Mode section should reference sandboxing as the recommended execution complement to the auto-mode classifier.
+- **Proposed Changes**:
+  - [ ] Read the full engineering post at `https://www.anthropic.com/engineering/claude-code-sandboxing`; verify whether sandboxing applies in `--bare` mode or only interactive mode
+  - [ ] `shared/ag3nts.md` — add a note in the Permission Mode section: OS-level sandboxing (bubblewrap/seatbelt) available as a complement to the auto-mode classifier; reduces permission prompts ~84% in practice; enable in project settings
+  - [ ] Evaluate enabling sandboxing in ag3nts project settings for REPAIR pipeline hook runs
+- **Priority**: High — direct applicability to ag3nts auto-mode design; 84% prompt reduction is a concrete quality-of-life improvement for the hook-heavy REPAIR pipeline; works on macOS (primary platform)
+
+---
+
+#### [High] Code Execution with MCP — On-Demand Tool Loading, Data Filtering, Single-Step Complex Logic
+- **Source**: https://www.anthropic.com/engineering/code-execution-with-mcp
+- **Published**: 2026 (within 30-day window; not captured in any prior scan entry; appears alongside Advanced Tool Use post in engineering index)
+- **Category**: Agent Patterns / Tooling
+- **What Changed**: Anthropic engineering post: "Code execution with MCP: building more efficient AI agents." Key patterns: (1) **On-demand tool loading** — instead of injecting all tool definitions upfront, agents use code execution to query MCP servers for tool definitions at call time, keeping the context window lean. (2) **Data filtering** — agents execute code to pre-filter large datasets before passing results to the model, dramatically reducing tokens-per-step. (3) **Single-step complex logic** — tools that previously required multi-turn reasoning (loop, condition, transform) can now be expressed as a single code execution step. Security and state management benefits: sandboxed execution, deterministic side effects.
+- **Impact on ag3nts**:
+  - **`code-reviewer`** dispatches 4 parallel specialists (correctness, security, convention, history), each potentially needing different tool sets. On-demand tool loading would let each specialist query only its relevant tools at call time rather than inheriting a full tool list from the dispatch preamble — directly reducing context overhead on 4-parallel-agent runs.
+  - **`security-engineer`** (Stage 6 OWASP audit) runs CVE lookups via web search tools. Data filtering via code execution could pre-process search results before model ingestion — reduces tokens on high-volume CVE scans.
+  - Builds on the May 19 Advanced Tool Use finding (dynamic tool discovery + code-driven invocation) and the May 22 Writing Effective Tools finding (token-efficient output engineering). Together these three posts form a complete tool optimization stack for the REPAIR pipeline.
+- **Proposed Changes**:
+  - [ ] Read the full post at `https://www.anthropic.com/engineering/code-execution-with-mcp`; identify which REPAIR pipeline agents benefit most from on-demand tool loading vs. upfront injection
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add reference: https://www.anthropic.com/engineering/code-execution-with-mcp (Code Execution with MCP patterns)
+  - [ ] Consider applying on-demand tool loading to `code-reviewer` specialist dispatch when agent tool configs are next revised (compound with Advanced Tool Use May 19 finding)
+- **Priority**: High — directly extends the May 19 Advanced Tool Use patterns; concrete token reduction for the 4-parallel-agent `code-reviewer` dispatch; applies at the .mcp.json / agent definition level
+
+---
+
+#### [Medium] Claude Opus 4.7 Fast Mode (Research Preview) — Faster Output at Premium Pricing
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: 2026 (in API release notes; exact date not visible; not captured in any prior scan entry)
+- **Category**: API / Model
+- **What Changed**: Fast mode is now available for **Claude Opus 4.7** (research preview). Configure via `speed: "fast"` + `model: "claude-opus-4-7"` + `fast-mode-2026-02-01` beta header. Delivers significantly faster output token generation at premium pricing (exact multiplier not disclosed). Previously, Fast mode was only available on Opus 4.6.
+- **Impact on ag3nts**:
+  - `software-architect` (Opus, REPAIR Stage 4 — ADRs, domain modeling) and `security-engineer` (Opus, Stage 6 — OWASP audit) are the two pipeline stages blocked on Opus output. Faster Stage 4 / Stage 6 output reduces the total REPAIR pipeline wall-clock time, improving developer UX during pre-commit hooks.
+  - The REPAIR pipeline's pre-commit gate (`pre-commit-review-gate.sh`) blocks the git commit until all three steps complete. Any latency reduction on Opus stages directly reduces developer wait time.
+  - Cost tradeoff: "premium pricing" means Fast mode costs more per token. Evaluate whether the latency improvement justifies the premium for interactive pre-commit runs (likely yes) vs. batch/scripted analysis (may not be worth it).
+- **Proposed Changes**:
+  - [ ] Evaluate Fast mode for `software-architect` and `security-engineer` in interactive pre-commit hook runs: add `speed: "fast"` + `fast-mode-2026-02-01` beta header to their Opus 4.7 invocations
+  - [ ] Keep standard mode for non-interactive scripted runs (`claude --bare -p`) where latency is less critical than cost
+- **Priority**: Medium — latency improvement for the two pipeline-blocking Opus stages; cost tradeoff warrants evaluation before enabling; research preview so behavior may change
+
+---
+
+#### [Medium] Claude Platform on AWS — Generally Available (May 11, 2026)
+- **Source**: https://aws.amazon.com/about-aws/whats-new/2026/05/claude-platform-aws/ / https://docs.anthropic.com/en/release-notes/api
+- **Published**: 2026-05-11 (GA announcement; acknowledged in May 20 scan context note but never logged as a formal finding)
+- **Category**: Tooling / API
+- **What Changed**: Claude Platform on AWS is now **generally available**. Provides Anthropic's native Claude Platform experience through an existing AWS account — no separate Anthropic account required. AWS is the first cloud provider to offer the native Claude Platform. Features: full Messages API, Files API, Message Batches API, Claude Managed Agents, Agent Skills, code execution, tool use, MCP connectors, prompt caching, citations, batch processing — all via native AWS endpoints with AWS billing and IAM authentication. The `ANTHROPIC_WORKSPACE_ID` env var (from the May 27 finding) connects here: workload identity federation for scoped API access.
+- **Impact on ag3nts**:
+  - ag3nts currently runs locally with `ANTHROPIC_API_KEY`. If ag3nts ever moves scripted runs to AWS-hosted CI/CD (flagged in prior scans as a future direction), Claude Platform on AWS eliminates the need to manage separate Anthropic API keys — IAM auth handles it.
+  - The `ANTHROPIC_WORKSPACE_ID` env var finding from May 27 now has a more complete context: it's part of the AWS IAM identity federation story for Claude Platform on AWS.
+  - No immediate changes to local setup; this is the cloud path.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add reference: https://aws.amazon.com/about-aws/whats-new/2026/05/claude-platform-aws/ (Claude Platform on AWS GA)
+  - [ ] `shared/ag3nts.md` — add a note in Scripted/Automated Runs: "For AWS-hosted CI/CD, Claude Platform on AWS (GA May 11, 2026) provides native API access via IAM auth + AWS billing — no separate Anthropic API key needed"
+- **Priority**: Medium — infrastructure-awareness for future CI/CD path; no immediate local setup changes
+
+---
+
+#### [Low] Enhanced Web Search: Richer SEC Filing Data
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: 2026 (in API release notes; exact date not visible; not captured in any prior scan entry)
+- **Category**: API
+- **What Changed**: The web search tool now returns richer SEC filing data — primary sources with citations for financial research agents, earnings analysis, and due-diligence workflows.
+- **Impact on ag3nts**: The `anthropic` scan agent uses WebSearch for daily research scanning — SEC filings are not in scope. The `security-engineer` uses web search for CVE lookups — not affected. No current ag3nts workflow involves financial data. Informational only.
+- **Proposed Changes**: None
+- **Priority**: Low — no current ag3nts use case for financial data; informational
+
+---
+
+#### [Low] Managed Agents: 100K Token Spill-to-File for Large Tool Outputs
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: 2026 (in API release notes; exact date not visible; not captured in any prior scan entry)
+- **Category**: API / Agent
+- **What Changed**: In Claude Managed Agents, outputs from `agent_toolset` and MCP tools exceeding 100K tokens are now automatically spilled to a file in the sandbox. The model receives a truncated preview and the file path; it can request the full content from there. Prevents context-window saturation from large tool outputs.
+- **Impact on ag3nts**: ag3nts uses Claude Code locally (not the Managed Agents REST API). No direct impact on current setup. Informational for any future Managed Agents migration of the REPAIR pipeline — large `git diff` outputs on big PRs could trigger the spill behavior.
+- **Proposed Changes**: None — informational for future Managed Agents adoption
+- **Priority**: Low — current hook-based setup unaffected
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **[Critical carry-forward — 18 days] Audit for deprecated model IDs before June 15** — Run `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|thinking.*enabled\|budget_tokens" ~/.claude/ shared/ windows/ macos/`. Hard API failure at the endpoint level in 18 days. Carry-forward since May 19.
+
+2. **[High — new] Enable Claude Code Sandboxing in ag3nts project settings** — Read `anthropic.com/engineering/claude-code-sandboxing`, verify `--bare`-mode compatibility, then enable OS-level sandboxing for REPAIR pipeline hook runs. 84% permission-prompt reduction directly benefits the hook-heavy pre-commit gate (code-reviewer dispatches 4 parallel sub-agents per commit). File: project-level settings.json under `shared/claude-code/`. Also add sandboxing note to `shared/ag3nts.md` Permission Mode section.
+
+3. **[High carry-forward — 18 days] Investigate Agent SDK Credit limits before June 15** — `claude --bare -p` scripted runs move to a new monthly Agent SDK credit on June 15. Confirm credit amount, failure behavior, and Routines bucket interaction. Add billing note to `shared/ag3nts.md`. Carry-forward since May 14.
+
+---
+
 ## Latest Scan: 2026-05-27
 
 ### Summary
