@@ -1,6 +1,115 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-05-28
+## Latest Scan: 2026-05-29
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 5
+- Actionable integrations: 3 (Claude Opus 4.8 for Opus agents + Dynamic Workflows; Cache Diagnostics for pre-commit hook debugging; Haiku 3 retirement verification)
+
+### Context
+
+One day since last scan (May 28). Five items surfaced not captured in previous entries: Claude Opus 4.8 general release (announced May 28, 2026 — same day as last scan, not captured), Project Glasswing May 22 update (initial results), Cache Diagnostics public beta, Claude Haiku 3 confirmed retired (hard errors now), and the new Rate Limits API for programmatic quota inspection. The June 15 deprecated-model deadline is now **17 days away** — the Opus 4.8 release means `software-architect` and `security-engineer` can now target Opus 4.8 rather than 4.7. The Fast Mode cost calculus changes significantly: Opus 4.8 Fast Mode is 3× cheaper than Opus 4.7 Fast Mode at 2.5× speed.
+
+---
+
+### Findings
+
+#### [Critical] Claude Opus 4.8 — New Flagship Model, Dynamic Workflows, Fast Mode 3× Cheaper
+- **Source**: https://www.anthropic.com/news/claude-opus-4-8
+- **Published**: 2026-05-28 (not captured by May 28 scan — published same day)
+- **Category**: Model / API / Agent
+- **What Changed**: Opus 4.8 is now generally available (`claude-opus-4-8`), same pricing as 4.7 ($5/$25 per MTok). Three major additions:
+  1. **Better judgment in Claude Code** — asks the right clarifying questions, catches its own mistakes, pushes back when a plan isn't sound, builds confidence before making big changes in multi-service explorations.
+  2. **Dynamic Workflows (research preview)** — Claude Code can plan a task and then run hundreds of parallel subagents in a single session, verifying outputs before reporting back. Enables codebase-scale migrations (hundreds of thousands of lines, kickoff to merge) with the existing test suite as the quality bar.
+  3. **Fast Mode 3× cheaper** — Opus 4.8 Fast Mode (2.5× output speed) is now three times cheaper than Opus 4.7 Fast Mode. Cost calculus flips from "evaluate whether premium is justified" to "enable by default for interactive runs."
+  4. **Benchmark leadership** — only model to complete every Super-Agent benchmark case end-to-end; 84% on Online-Mind2Web (computer-use/browser-agent), ahead of both Opus 4.7 and GPT-5.5.
+- **Impact on ag3nts**:
+  - **`software-architect`** (Opus, REPAIR Stage 4 — ADRs, domain modeling) and **`security-engineer`** (Opus, Stage 6 — OWASP audit) are the two Opus-gated agents. Both should upgrade to `claude-opus-4-8`. The "better judgment / catches own mistakes / pushes back on unsound plans" improvement directly benefits Stage 4 architectural analysis quality.
+  - **Dynamic Workflows** (hundreds of parallel subagents, codebase-scale tasks) is the most significant architecture-level finding for ag3nts: the REPAIR pipeline currently dispatches 4 parallel sub-agents in `code-reviewer`. Dynamic Workflows enables much larger fan-outs. Worth evaluating for large PR reviews or full-codebase security audits.
+  - **Fast Mode pricing change** — the May 28 scan logged Opus 4.7 Fast Mode as "Medium / evaluate before enabling." Opus 4.8 Fast Mode at 3× lower cost removes the cost barrier. Enable Fast Mode on `software-architect` and `security-engineer` for interactive pre-commit hook runs (the two pipeline-blocking Opus stages) — latency reduction at reasonable cost.
+  - **Model ID migration** — the June 15 deprecated-model remediation (carry-forward since May 19) should now target `claude-opus-4-8`, not `claude-opus-4-7`, for the Opus replacement.
+- **Proposed Changes**:
+  - [ ] `~/.claude/agents/software-architect.md` — update model to `claude-opus-4-8`; add `speed: "fast"` + `fast-mode-2026-02-01` beta header for interactive runs
+  - [ ] `~/.claude/agents/security-engineer.md` — same migration to `claude-opus-4-8` + Fast Mode
+  - [ ] `shared/ag3nts.md` — update agent table: Opus agents now target `claude-opus-4-8`; add Dynamic Workflows note in the multi-agent section
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add reference: https://www.anthropic.com/news/claude-opus-4-8
+  - [ ] Evaluate Dynamic Workflows for large-PR `code-reviewer` runs (hundreds of parallel subagents vs. current 4-specialist dispatch)
+- **Priority**: Critical — latest Opus model is now available at same price; Fast Mode 3× cheaper; Dynamic Workflows is a new orchestration primitive directly applicable to ag3nts multi-agent dispatch; overrides the May 28 "Medium / evaluate" Fast Mode finding
+
+---
+
+#### [Medium] Project Glasswing May 22 Update — 10,000+ Vulnerabilities Found, AI-Scale Security Scanning
+- **Source**: https://www.anthropic.com/research/glasswing-initial-update
+- **Published**: 2026-05-22
+- **Category**: Safety / Agent Patterns
+- **What Changed**: First progress report on Project Glasswing — Anthropic's initiative using Claude Mythos Preview (internal research model, beyond Opus 4.8) to audit critical open-source software security. Results: 50+ partner organizations (AWS, Apple, Cisco, Google, Microsoft, NVIDIA, etc.), $100M in usage credits committed. Within the first month: 10,000+ high/critical severity vulnerabilities found across critical infrastructure software; ~3,900 high/critical in open-source code at current post-triage true-positive rates.
+- **Impact on ag3nts**:
+  - The `security-engineer` agent's OWASP audit (REPAIR Stage 6) is a smaller-scale analog of Glasswing's approach. The pattern of running large numbers of parallel security scanning agents with code access confirms the direction of the ag3nts `security-engineer` design.
+  - Glasswing's use of Claude Mythos Preview (not publicly available) for systematic vuln discovery is a signal about the ceiling of what security scanning agents can achieve — informative for calibrating expected coverage from Opus 4.8-based `security-engineer`.
+  - No direct config changes needed; informational for `security-engineer` design evolution.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add reference: https://www.anthropic.com/research/glasswing-initial-update (Glasswing: AI-scale security scanning results)
+- **Priority**: Medium — confirms security agent pattern direction; no immediate config changes; Mythos Preview is not publicly accessible
+
+---
+
+#### [Medium] Cache Diagnostics Public Beta — Debug Cache Miss Reasons on Messages API
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: 2026-05 (in API release notes; not captured in any prior scan entry)
+- **Category**: API / Tooling
+- **What Changed**: New `diagnostics.previous_message_id` parameter on Messages API requests. When passed, the API returns a `cache_miss_reason` field explaining exactly where the prompt cache prefix diverged from the previous turn. Opt-in via `cache-diagnosis-2026-04-07` beta header.
+- **Impact on ag3nts**:
+  - The pre-commit hook pipeline (REPAIR Steps 1–3) runs multiple sequential agent invocations (`lint` → `security-engineer` → marker). Each invocation is a fresh Messages API call. If the system prompt or tool definitions change between steps, the cache prefix diverges and caching is lost. Cache Diagnostics would pinpoint exactly which token position caused the miss.
+  - The `anthropic` agent's daily scan builds up a long system prompt from ag3nts.md and previous findings — understanding cache divergence could meaningfully reduce token costs on repeated daily invocations.
+  - Applicable at the API call level; requires adding `diagnostics.previous_message_id` + `cache-diagnosis-2026-04-07` beta header to Messages requests where caching behavior is uncertain.
+- **Proposed Changes**:
+  - [ ] Evaluate enabling Cache Diagnostics on `security-engineer` and `code-reviewer` API calls during debugging sessions to understand where cache prefixes break
+  - [ ] Document the `cache-diagnosis-2026-04-07` beta header in `shared/ag3nts.md` or a separate caching notes file for future debugging reference
+- **Priority**: Medium — directly applicable to ag3nts caching behavior during hook-heavy REPAIR pipeline runs; low-effort to enable during debugging
+
+---
+
+#### [Medium] Claude Haiku 3 Retirement Confirmed — Hard Errors Now
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: 2026-05 (confirmed in API release notes)
+- **Category**: Model / API
+- **What Changed**: Claude Haiku 3 has been retired. All API requests to this model now return an error. Users are directed to upgrade to Claude Haiku 4.5.
+- **Impact on ag3nts**:
+  - ag3nts runs two Haiku agents: `feedback` (Haiku, captures user preferences across sessions) and `version` (Haiku, agent inventory audit). If either hardcodes `claude-haiku-3` or a Haiku 3 version string, they will now fail with hard errors.
+  - The `ag3nts.md` agent table lists both as model "Haiku" (unversioned alias) — verify these resolve to `claude-haiku-4-5-20251001` and not Haiku 3.
+  - The June 15 deprecated-model audit command (carry-forward) should be extended to include Haiku 3 model IDs.
+- **Proposed Changes**:
+  - [ ] `grep -r "claude-haiku-3\|haiku-3" ~/.claude/agents/ shared/` — confirm no Haiku 3 references
+  - [ ] Extend the June 15 audit grep in `shared/ag3nts.md` Recommendations to include `claude-haiku-3` patterns
+- **Priority**: Medium — Haiku 3 is already dead; if either Haiku agent has a hardcoded Haiku 3 ID, it is currently broken (not a future risk)
+
+---
+
+#### [Low] Rate Limits API — Programmatic Rate Limit Querying for Organizations
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: 2026-05 (in API release notes; not captured in prior entries)
+- **Category**: API / Tooling
+- **What Changed**: New Rate Limits API endpoint allows organization administrators to programmatically query the rate limits configured for their organization and individual workspaces. Previously, rate limit information was only visible in the Claude Console UI.
+- **Impact on ag3nts**: The `anthropic` agent's daily scan (`claude --bare -p`) and pre-commit hook invocations are all scripted runs that consume tokens against rate limits. With the Agent SDK Credit change on June 15, programmatic rate-limit monitoring becomes more valuable. The Rate Limits API could be used to build a pre-flight check before high-volume scripted operations.
+- **Proposed Changes**: None immediate — informational; note for future CI/CD monitoring integration
+- **Priority**: Low — useful for future operational monitoring; no immediate config changes
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **[Critical carry-forward — 17 days] Audit for deprecated model IDs before June 15** — Extended to include Haiku 3: `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|claude-haiku-3\|thinking.*enabled\|budget_tokens" ~/.claude/ shared/ windows/ macos/`. Hard API failure at the endpoint level in 17 days. Target replacements: `claude-sonnet-4-6`, **`claude-opus-4-8`** (upgraded from 4.7 given May 28 release), `claude-haiku-4-5-20251001`. Carry-forward since May 19, now extended.
+
+2. **[Critical — new] Upgrade Opus agents to claude-opus-4-8 and enable Fast Mode** — Update `software-architect` and `security-engineer` to `claude-opus-4-8`; enable `speed: "fast"` + `fast-mode-2026-02-01` beta header for interactive pre-commit hook runs. Opus 4.8 Fast Mode is 3× cheaper than Opus 4.7 Fast Mode at 2.5× speed — the cost barrier from the May 28 "evaluate before enabling" finding is now removed. These are the two pipeline-blocking Opus stages in the REPAIR pre-commit gate.
+
+3. **[High carry-forward — 17 days] Investigate Agent SDK Credit limits before June 15** — `claude --bare -p` scripted runs move to a new monthly Agent SDK credit on June 15. Confirm credit amount, failure behavior, and Routines bucket interaction. Add billing note to `shared/ag3nts.md`. Carry-forward since May 14.
+
+---
+
+## Scan: 2026-05-28
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
