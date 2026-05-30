@@ -1,6 +1,47 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-05-29
+## Latest Scan: 2026-05-30
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 1
+- Actionable integrations: 0 (business/financial news; no API, model, or tooling changes)
+
+### Context
+
+One day since last scan (May 29). Full scan of all four Anthropic channels plus targeted searches on recent engineering posts and model announcements. One new item surfaced not captured in the May 29 scan: **Anthropic Series H funding — $65B at $965B post-money valuation** (announced May 28, same day as the May 29 scan; missed alongside Opus 4.8 but has no API impact). All other items surfaced — Advanced Tool Use, Writing Effective Tools, Demystifying Evals, Code Execution with MCP, Managed Agents Memory/Multiagent/Outcomes, 1M context history, SpaceX compute partnership, Anthropic Institute agenda, labor market research — are confirmed captured in prior entries. The June 15 deprecated-model deadline is now **16 days away**. Carry-forward recommendations from May 29 are unchanged.
+
+---
+
+### Findings
+
+#### [Low] Anthropic Series H — $65B Round at $965B Post-Money Valuation
+- **Source**: https://www.anthropic.com/news/series-h
+- **Published**: 2026-05-28 (not captured in May 29 scan)
+- **Category**: Business / Context
+- **What Changed**: Anthropic raised $65B in Series H funding led by Altimeter, Dragoneer, Greenoaks, and Sequoia. $965B post-money valuation — surpasses OpenAI ($730B). Co-investors include Capital Group, Coatue, D1, GIC, ICONIQ, XN. Includes $15B from hyperscalers (Amazon $5B). Strategic partners: Micron, Samsung, SK hynix. Run-rate revenue crossed $47B earlier in May 2026. Funds directed toward: (1) safety and interpretability research, (2) compute expansion, (3) scaling products and partnerships.
+- **Impact on ag3nts**: No API, model, or tooling changes. Business context only. Three indirect implications:
+  1. **Rapid model release cadence** — $47B ARR + massive compute expansion ($300MW+ from SpaceX, $5GW from Amazon) explains the Opus 4.5→4.6→4.7→4.8 cadence within months. Expect continued rapid iteration; ag3nts `version` agent should stay vigilant for new model IDs.
+  2. **Safety investment signal** — Explicit funding allocation to safety and interpretability research supports continued improvement to the Constitutional Classifier pipeline that underpins ag3nts' auto-mode permission system.
+  3. **Scale** — At $965B valuation and $47B ARR, Anthropic's infrastructure investment (Colossus, Amazon 5GW, Google/Broadcom 5GW) will support further rate limit expansions. The SpaceX rate limit doubling (May 6) may be repeated as compute comes online.
+- **Proposed Changes**: None — informational context only
+- **Priority**: Low — business news with no direct ag3nts integration changes
+
+---
+
+### Recommendations
+
+Top 3 changes to make now (carry-forward from May 29 — no new actionable items today):
+
+1. **[Critical — 16 days] Audit for deprecated model IDs before June 15** — Extended to include Haiku 3: `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|claude-haiku-3\|thinking.*enabled\|budget_tokens" ~/.claude/ shared/ windows/ macos/`. Hard API failure at the endpoint level in 16 days. Target replacements: `claude-sonnet-4-6`, `claude-opus-4-8`, `claude-haiku-4-5-20251001`. Carry-forward since May 19.
+
+2. **[Critical] Upgrade Opus agents to claude-opus-4-8 and enable Fast Mode** — Update `software-architect` and `security-engineer` to `claude-opus-4-8`; enable `speed: "fast"` + `fast-mode-2026-02-01` beta header for interactive pre-commit hook runs. Opus 4.8 Fast Mode is 3× cheaper than Opus 4.7 Fast Mode at 2.5× speed. These are the two pipeline-blocking Opus stages in the REPAIR pre-commit gate. Carry-forward from May 29.
+
+3. **[High — 16 days] Investigate Agent SDK Credit limits before June 15** — `claude --bare -p` scripted runs move to a new monthly Agent SDK credit on June 15. Confirm credit amount, failure behavior, and Routines bucket interaction. Add billing note to `shared/ag3nts.md`. Carry-forward since May 14.
+
+---
+
+## Scan: 2026-05-29
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
