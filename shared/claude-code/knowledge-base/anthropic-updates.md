@@ -1,5 +1,36 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-06-01
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 0
+- Actionable integrations: 0 — no new items since yesterday's scan
+
+### Context
+
+One day since last scan (May 31). Full scan of all four Anthropic channels plus targeted searches on recent model/API announcements and engineering posts. All items surfaced today — Opus 4.8, Dynamic Workflows, Series H, Project Glasswing update, Cache Diagnostics, Rate Limits API, Haiku 3 retirement, Claude Code Sandboxing, Code Execution with MCP, Advisor Tool, Coding Agents in Social Sciences, Exploit Evals, Anthropic Institute Agenda, Labor Market Impacts, Next-generation Constitutional Classifiers, Managed Agents self-hosted sandboxes, Enhanced Web Search/SEC filing data — are confirmed captured in prior entries. No new posts detected on anthropic.com/engineering (latest remains April 23, 2026). No new research papers on anthropic.com/research since May 27. No new API release notes beyond what was captured in the May 28–29 scans. **June 15 deprecated-model deadline is now 14 days away.** Carry-forward recommendations from May 31 are unchanged.
+
+---
+
+### Findings
+
+No new findings. See carry-forward recommendations below.
+
+---
+
+### Recommendations
+
+Top 3 changes to make now (carry-forward from May 31 — no new actionable items today):
+
+1. **[Critical — 14 days] Audit for deprecated model IDs before June 15** — `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|claude-haiku-3\|thinking.*enabled\|budget_tokens" ~/.claude/ shared/ windows/ macos/`. Hard API failure at the endpoint level in 14 days. Target replacements: `claude-sonnet-4-6`, `claude-opus-4-8`, `claude-haiku-4-5-20251001`. Carry-forward since May 19.
+
+2. **[Critical] Upgrade Opus agents to claude-opus-4-8 and enable Fast Mode** — Update `software-architect` and `security-engineer` to `claude-opus-4-8`; enable `speed: "fast"` + `fast-mode-2026-02-01` beta header for interactive pre-commit hook runs. Opus 4.8 Fast Mode is 3× cheaper than Opus 4.7 Fast Mode at 2.5× speed. These are the two pipeline-blocking Opus stages in the REPAIR pre-commit gate. Carry-forward from May 29.
+
+3. **[High — 14 days] Investigate Agent SDK Credit limits before June 15** — `claude --bare -p` scripted runs move to a new monthly Agent SDK credit on June 15. Confirm credit amount, failure behavior, and Routines bucket interaction. Add billing note to `shared/ag3nts.md`. Carry-forward since May 14.
+
+---
+
 ## Latest Scan: 2026-05-31
 
 ### Summary
