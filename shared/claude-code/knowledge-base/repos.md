@@ -10,3 +10,4 @@
 | https://www.anthropic.com/news/agent-capabilities-api | Anthropic: New API agent capabilities — code execution tool, API-managed MCP connector, Files API, 1-hour prompt caching TTL |
 | https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents | Anthropic: Effective context engineering — curating high-signal token sets for long-running agents; validates --bare and modular agent design |
 | https://www.anthropic.com/news/token-saving-updates | Anthropic: Token-saving updates — cache-aware ITPM rate limits, simplified prompt caching, token-efficient tool use beta header |
+| https://platform.claude.com/docs/en/agents-and-tools/mcp-tunnels/overview | Anthropic: MCP Tunnels (research preview) — outbound-encrypted gateway for reaching private-network MCP servers without inbound firewall rules; relevant for future Managed Agents CI/CD path |

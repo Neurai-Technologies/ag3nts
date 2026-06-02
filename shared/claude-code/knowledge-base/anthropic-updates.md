@@ -1,6 +1,186 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-05-29
+## Latest Scan: 2026-06-02
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 2
+- Actionable integrations: 1 (MCP Tunnels — private network MCP connectivity for ag3nts agents)
+
+### Context
+
+One day since last scan (June 1). Full scan of all four Anthropic channels plus targeted searches on recent model/API announcements, engineering posts, and API release notes. Two items surfaced not captured in any prior entry: (1) **Anthropic S-1 IPO Confidential Filing** — filed June 1, 2026 (same day as the June 1 scan; published after that scan ran); (2) **MCP Tunnels (Research Preview)** — announced May 19-20, 2026 alongside self-hosted sandboxes at Code with Claude London, but missed by all prior scans which logged only the sandboxes half of the announcement. No new engineering posts (latest remains April 23, 2026). No new research papers since May 27. No new API release notes beyond what was captured in the May 28–29 scans. **June 15 deprecated-model deadline is now 13 days away.**
+
+---
+
+### Findings
+
+#### [Low] Anthropic Confidential S-1 Filing to SEC — IPO On Track
+- **Source**: https://www.anthropic.com/news/confidential-draft-s1-sec
+- **Published**: 2026-06-01 (filed same day as June 1 scan; not captured in that scan)
+- **Category**: Business / Context
+- **What Changed**: Anthropic confidentially submitted a draft registration statement on Form S-1 to the SEC for a proposed IPO of its common stock. Follows the Series H ($65B at $965B post-money valuation). Number of shares, price range, and timeline not disclosed; offering subject to SEC review and market conditions. Filed under SEC Rule 135 — not an offer to sell.
+- **Impact on ag3nts**: No API, model, or tooling changes. Business context: (1) IPO preparation typically accelerates product polish and API stability — beneficial for ag3nts reliance on API guarantees. (2) With $47B+ run-rate revenue, no risk of API degradation from capital constraints. (3) Post-IPO, deprecation timelines and pricing changes may be more formally communicated (public company disclosure requirements). No config changes required.
+- **Proposed Changes**: None — informational context only
+- **Priority**: Low — business news; no direct ag3nts integration changes
+
+---
+
+#### [Medium] MCP Tunnels (Research Preview) — Agents Reach Private Network MCP Servers Without Firewall Exposure
+- **Source**: https://platform.claude.com/docs/en/agents-and-tools/mcp-tunnels/overview
+- **Published**: 2026-05-19 (announced at Code with Claude London alongside self-hosted sandboxes; sandboxes were captured in May 21 scan — MCP Tunnels was not)
+- **Category**: API / Agent Patterns / Tooling
+- **What Changed**: MCP Tunnels (research preview) allow Claude Managed Agents and the Messages API to reach MCP servers running inside private networks without opening inbound firewall rules or exposing servers to the public internet. A lightweight gateway process runs inside the private network and establishes an **outbound** encrypted connection to Anthropic infrastructure — no inbound firewall rule required. Traffic is end-to-end encrypted. Available in research preview (request access via console).
+- **Impact on ag3nts**:
+  - ag3nts currently uses local MCP servers defined in `.mcp.json` (current working directory). For interactive local sessions this works fine — MCP servers are local processes. But if any ag3nts workflow runs remotely (CI/CD, cloud session, remote worker), MCP servers remain reachable via tunnels without any network reconfiguration.
+  - `security-engineer` uses web search MCP tools for CVE lookups. A future setup with an internal vulnerability database or SIEM as a private-network MCP server could be reached by `security-engineer` via tunnel without exposing it.
+  - `code-reviewer` and `software-architect` could connect to private-network tools (internal package registries, artifact stores, private GitHub Enterprise) via tunnel.
+  - **Caveat**: MCP Tunnels requires the Managed Agents REST API — not the Claude Code CLI. Current ag3nts uses Claude Code CLI locally. This is relevant only for a future Managed Agents migration of the REPAIR pipeline.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add reference: https://platform.claude.com/docs/en/agents-and-tools/mcp-tunnels/overview (MCP Tunnels research preview: private-network MCP connectivity without firewall exposure — relevant for future Managed Agents CI/CD path)
+  - [ ] Future consideration: if ag3nts REPAIR pipeline migrates to Managed Agents REST API, MCP tunnels enable private-network tool access (internal security DBs, artifact stores, private GHE) without network reconfiguration
+- **Priority**: Medium — directly extends ag3nts MCP connectivity model for a future Managed Agents path; no immediate local setup changes needed; research preview (request access required)
+
+---
+
+### Recommendations
+
+Top 3 changes to make now (carry-forward from June 1 — 1 carry-forward priority elevated for deadline proximity):
+
+1. **[Critical — 13 days] Audit for deprecated model IDs before June 15** — `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|claude-haiku-3\|thinking.*enabled\|budget_tokens" ~/.claude/ shared/ windows/ macos/`. Hard API failure at the endpoint level in 13 days. Target replacements: `claude-sonnet-4-6`, `claude-opus-4-8`, `claude-haiku-4-5-20251001`. Carry-forward since May 19.
+
+2. **[Critical] Upgrade Opus agents to claude-opus-4-8 and enable Fast Mode** — Update `software-architect` and `security-engineer` to `claude-opus-4-8`; enable `speed: "fast"` + `fast-mode-2026-02-01` beta header for interactive pre-commit hook runs. Opus 4.8 Fast Mode is 3× cheaper than Opus 4.7 Fast Mode at 2.5× speed. Carry-forward from May 29.
+
+3. **[High — 13 days] Investigate Agent SDK Credit limits before June 15** — `claude --bare -p` scripted runs move to a new monthly Agent SDK credit on June 15. Confirm credit amount, failure behavior, and Routines bucket interaction. Add billing note to `shared/ag3nts.md`. Carry-forward since May 14.
+
+---
+
+## Scan: 2026-06-01
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 0
+- Actionable integrations: 0 — no new items since yesterday's scan
+
+### Context
+
+One day since last scan (May 31). Full scan of all four Anthropic channels plus targeted searches on recent model/API announcements and engineering posts. All items surfaced today — Opus 4.8, Dynamic Workflows, Series H, Project Glasswing update, Cache Diagnostics, Rate Limits API, Haiku 3 retirement, Claude Code Sandboxing, Code Execution with MCP, Advisor Tool, Coding Agents in Social Sciences, Exploit Evals, Anthropic Institute Agenda, Labor Market Impacts, Next-generation Constitutional Classifiers, Managed Agents self-hosted sandboxes, Enhanced Web Search/SEC filing data — are confirmed captured in prior entries. No new posts detected on anthropic.com/engineering (latest remains April 23, 2026). No new research papers on anthropic.com/research since May 27. No new API release notes beyond what was captured in the May 28–29 scans. **June 15 deprecated-model deadline is now 14 days away.** Carry-forward recommendations from May 31 are unchanged.
+
+---
+
+### Findings
+
+No new findings. See carry-forward recommendations below.
+
+---
+
+### Recommendations
+
+Top 3 changes to make now (carry-forward from May 31 — no new actionable items today):
+
+1. **[Critical — 14 days] Audit for deprecated model IDs before June 15** — `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|claude-haiku-3\|thinking.*enabled\|budget_tokens" ~/.claude/ shared/ windows/ macos/`. Hard API failure at the endpoint level in 14 days. Target replacements: `claude-sonnet-4-6`, `claude-opus-4-8`, `claude-haiku-4-5-20251001`. Carry-forward since May 19.
+
+2. **[Critical] Upgrade Opus agents to claude-opus-4-8 and enable Fast Mode** — Update `software-architect` and `security-engineer` to `claude-opus-4-8`; enable `speed: "fast"` + `fast-mode-2026-02-01` beta header for interactive pre-commit hook runs. Opus 4.8 Fast Mode is 3× cheaper than Opus 4.7 Fast Mode at 2.5× speed. These are the two pipeline-blocking Opus stages in the REPAIR pre-commit gate. Carry-forward from May 29.
+
+3. **[High — 14 days] Investigate Agent SDK Credit limits before June 15** — `claude --bare -p` scripted runs move to a new monthly Agent SDK credit on June 15. Confirm credit amount, failure behavior, and Routines bucket interaction. Add billing note to `shared/ag3nts.md`. Carry-forward since May 14.
+
+---
+
+## Latest Scan: 2026-05-31
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com) + red.anthropic.com
+- New findings: 2
+- Actionable integrations: 0 (research/context items only; no API, model, or tooling changes)
+
+### Context
+
+One day since last scan (May 30). Full scan of all four Anthropic channels plus red.anthropic.com. Two items surfaced that were not captured in any prior entry: (1) "Coding agents in the social sciences" — a research paper published May 27, missed by the May 27–30 scans which checked news/engineering but did not surface this research post; (2) "Exploit Evals" — a new post on red.anthropic.com published in May 2026, after the April 27 note that red.anthropic.com had no new posts since CVE-2026-2796. No new API, model, or tooling changes today. The June 15 deprecated-model deadline is now **15 days away**. Carry-forward recommendations from May 30 are unchanged.
+
+---
+
+### Findings
+
+#### [Low] Coding Agents in the Social Sciences — 20% Adoption, Productivity Signal
+- **Source**: https://www.anthropic.com/research/coding-agents-social-sciences
+- **Published**: 2026-05-27 (missed in May 27–30 scans; research post not surfaced by news/engineering sweeps)
+- **Category**: Research / Agent Patterns
+- **What Changed**: Anthropic published results from a survey of 1,260 social scientists on coding agent adoption (February–March 2026). Key findings: (1) Only 20% of social scientists have adopted coding agents (tools like Claude Code that autonomously write and execute analysis code). (2) Users of coding agents post more working papers, apply for more grants, and start more projects relative to non-users in the same discipline and career stage — though the paper notes this could reflect pre-existing differences among early adopters rather than causal productivity gains. (3) Adoption skews toward early-career researchers, men, and those at higher-status universities (40% more likely than peers at other institutions). (4) Twice as many researchers with typically male names use coding agents as those with typically female names.
+- **Impact on ag3nts**: Informational context only. No API or config changes required. Three indirect signals: (1) The productivity signal (more papers/grants/projects for coding agent users) validates the investment in the ag3nts automation stack for developer workflows. (2) Low adoption (20%) suggests coding agent tooling is still differentiated rather than commoditized — ag3nts' custom multi-agent setup (code-reviewer, security-engineer, REPAIR pipeline) represents a meaningful capability advantage in practice. (3) The skew toward users at top universities/institutions mirrors the skew toward developers on paid tiers who have access to the full Opus/Sonnet stack — consistent with the ag3nts model selection approach.
+- **Proposed Changes**: None — informational context only
+- **Priority**: Low — research/context finding; no direct ag3nts integration changes
+
+---
+
+#### [Low] Exploit Evals — New Security Benchmarks, Mythos Preview Leads All Models
+- **Source**: https://red.anthropic.com/2026/exploit-evals/
+- **Published**: 2026-05 (exact date not confirmed; published after April 27 CVE-2026-2796 post; not captured in any prior scan entry)
+- **Category**: Safety / Security Research
+- **What Changed**: Anthropic published benchmark results for two new academic exploit-development benchmarks: **ExploitBench** and **ExploitGym**, plus an updated version of **SCONE-bench** (smart contract exploitation). Methodology: models search for novel zero-days and build working exploits. Results: Claude Mythos Preview (restricted to Project Glasswing participants) consistently outperforms all other evaluated models on all three benchmarks. Sonnet 4.6/Opus 4.7 scores are documented for comparison. Findings are framed as capability evaluations to inform responsible deployment boundaries, not capability advertisements.
+- **Impact on ag3nts**:
+  - The `security-engineer` agent (Opus 4.7 → 4.8) runs OWASP audits and CVE lookups. Exploit Evals benchmark scores give a calibration reference for what Opus 4.8 can realistically find vs. what requires Mythos-level capability. The Glasswing paradigm shift (detection breadth no longer the bottleneck; triage rigor and remediation quality are) from the May 24 scan entry still holds — this finding reinforces it.
+  - Sonnet 4.6's scoring on ExploitBench/ExploitGym (compared to Opus) would help calibrate whether the Sonnet-based `code-reviewer` security specialist sub-agent (vs. the dedicated Opus `security-engineer`) is appropriate for shallow vs. deep security analysis tasks.
+  - No available API for Mythos Preview; informational for long-term `security-engineer` design evolution.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add reference: https://red.anthropic.com/2026/exploit-evals/ (Exploit Evals: ExploitBench/ExploitGym/SCONE-bench — Mythos leads; Opus 4.8 calibration reference for security-engineer)
+- **Priority**: Low — no immediate config changes; useful calibration reference for security-engineer agent design; Mythos not publicly accessible
+
+---
+
+### Recommendations
+
+Top 3 changes to make now (carry-forward from May 30 — no new actionable items today):
+
+1. **[Critical — 15 days] Audit for deprecated model IDs before June 15** — `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|claude-haiku-3\|thinking.*enabled\|budget_tokens" ~/.claude/ shared/ windows/ macos/`. Hard API failure at the endpoint level in 15 days. Target replacements: `claude-sonnet-4-6`, `claude-opus-4-8`, `claude-haiku-4-5-20251001`. Carry-forward since May 19.
+
+2. **[Critical] Upgrade Opus agents to claude-opus-4-8 and enable Fast Mode** — Update `software-architect` and `security-engineer` to `claude-opus-4-8`; enable `speed: "fast"` + `fast-mode-2026-02-01` beta header for interactive pre-commit hook runs. Opus 4.8 Fast Mode is 3× cheaper than Opus 4.7 Fast Mode at 2.5× speed. These are the two pipeline-blocking Opus stages in the REPAIR pre-commit gate. Carry-forward from May 29.
+
+3. **[High — 15 days] Investigate Agent SDK Credit limits before June 15** — `claude --bare -p` scripted runs move to a new monthly Agent SDK credit on June 15. Confirm credit amount, failure behavior, and Routines bucket interaction. Add billing note to `shared/ag3nts.md`. Carry-forward since May 14.
+
+---
+
+## Scan: 2026-05-30
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 1
+- Actionable integrations: 0 (business/financial news; no API, model, or tooling changes)
+
+### Context
+
+One day since last scan (May 29). Full scan of all four Anthropic channels plus targeted searches on recent engineering posts and model announcements. One new item surfaced not captured in the May 29 scan: **Anthropic Series H funding — $65B at $965B post-money valuation** (announced May 28, same day as the May 29 scan; missed alongside Opus 4.8 but has no API impact). All other items surfaced — Advanced Tool Use, Writing Effective Tools, Demystifying Evals, Code Execution with MCP, Managed Agents Memory/Multiagent/Outcomes, 1M context history, SpaceX compute partnership, Anthropic Institute agenda, labor market research — are confirmed captured in prior entries. The June 15 deprecated-model deadline is now **16 days away**. Carry-forward recommendations from May 29 are unchanged.
+
+---
+
+### Findings
+
+#### [Low] Anthropic Series H — $65B Round at $965B Post-Money Valuation
+- **Source**: https://www.anthropic.com/news/series-h
+- **Published**: 2026-05-28 (not captured in May 29 scan)
+- **Category**: Business / Context
+- **What Changed**: Anthropic raised $65B in Series H funding led by Altimeter, Dragoneer, Greenoaks, and Sequoia. $965B post-money valuation — surpasses OpenAI ($730B). Co-investors include Capital Group, Coatue, D1, GIC, ICONIQ, XN. Includes $15B from hyperscalers (Amazon $5B). Strategic partners: Micron, Samsung, SK hynix. Run-rate revenue crossed $47B earlier in May 2026. Funds directed toward: (1) safety and interpretability research, (2) compute expansion, (3) scaling products and partnerships.
+- **Impact on ag3nts**: No API, model, or tooling changes. Business context only. Three indirect implications:
+  1. **Rapid model release cadence** — $47B ARR + massive compute expansion ($300MW+ from SpaceX, $5GW from Amazon) explains the Opus 4.5→4.6→4.7→4.8 cadence within months. Expect continued rapid iteration; ag3nts `version` agent should stay vigilant for new model IDs.
+  2. **Safety investment signal** — Explicit funding allocation to safety and interpretability research supports continued improvement to the Constitutional Classifier pipeline that underpins ag3nts' auto-mode permission system.
+  3. **Scale** — At $965B valuation and $47B ARR, Anthropic's infrastructure investment (Colossus, Amazon 5GW, Google/Broadcom 5GW) will support further rate limit expansions. The SpaceX rate limit doubling (May 6) may be repeated as compute comes online.
+- **Proposed Changes**: None — informational context only
+- **Priority**: Low — business news with no direct ag3nts integration changes
+
+---
+
+### Recommendations
+
+Top 3 changes to make now (carry-forward from May 29 — no new actionable items today):
+
+1. **[Critical — 16 days] Audit for deprecated model IDs before June 15** — Extended to include Haiku 3: `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|claude-haiku-3\|thinking.*enabled\|budget_tokens" ~/.claude/ shared/ windows/ macos/`. Hard API failure at the endpoint level in 16 days. Target replacements: `claude-sonnet-4-6`, `claude-opus-4-8`, `claude-haiku-4-5-20251001`. Carry-forward since May 19.
+
+2. **[Critical] Upgrade Opus agents to claude-opus-4-8 and enable Fast Mode** — Update `software-architect` and `security-engineer` to `claude-opus-4-8`; enable `speed: "fast"` + `fast-mode-2026-02-01` beta header for interactive pre-commit hook runs. Opus 4.8 Fast Mode is 3× cheaper than Opus 4.7 Fast Mode at 2.5× speed. These are the two pipeline-blocking Opus stages in the REPAIR pre-commit gate. Carry-forward from May 29.
+
+3. **[High — 16 days] Investigate Agent SDK Credit limits before June 15** — `claude --bare -p` scripted runs move to a new monthly Agent SDK credit on June 15. Confirm credit amount, failure behavior, and Routines bucket interaction. Add billing note to `shared/ag3nts.md`. Carry-forward since May 14.
+
+---
+
+## Scan: 2026-05-29
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
