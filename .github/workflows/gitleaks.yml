@@ -1,0 +1,33 @@
+name: gitleaks
+
+# Authoritative server-side secret gate. Runs on GitHub's runners for every push
+# and PR, so it CANNOT be bypassed by a local `git commit --no-verify` or a
+# `-c core.hooksPath=/dev/null`. The local pre-commit/pre-push hooks are the fast
+# first line; this is the backstop of record. (github.com has no pre-receive
+# hooks outside Enterprise — a CI job is the equivalent.)
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    name: secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: ${{ github.workspace }}/.gitleaks.toml
+          # Free for personal accounts and public repos. If this repo is ever
+          # moved under a GitHub *organization*, add a GITLEAKS_LICENSE repo
+          # secret (https://gitleaks.io) or this step will fail to start.

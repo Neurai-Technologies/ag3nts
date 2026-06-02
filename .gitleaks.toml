@@ -1,0 +1,18 @@
+# gitleaks config for cli-agents. Extends the maintained default ruleset (covers
+# Stripe/Slack/GitHub/Google/AWS/GCP/etc. — including the formats the hand-rolled
+# pre-commit scanners do/don't catch), so the CI job is the authoritative gate.
+title = "cli-agents"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Files that DEFINE secret patterns/regexes (security tooling), not real secrets."
+paths = [
+  '''claude/hooks/pre-commit-secrets-scan\.py''',
+  '''claude/hooks/block-secret-file-reads\.py''',
+  '''scripts/git-hooks/pre-commit''',
+  '''gemini/agy-sandbox\.sb''',
+  '''\.geminiignore''',
+  '''\.gitleaks\.toml''',
+]
