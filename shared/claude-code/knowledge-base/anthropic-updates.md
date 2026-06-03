@@ -1,5 +1,133 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-06-03
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 8
+- Actionable integrations: 5
+
+### Context
+
+One day since last scan (June 2). Full scan of all four Anthropic channels plus targeted follow-up searches on model releases, deprecations, API betas, and engineering posts. Eight items surfaced or deserve re-emphasis for action: **June 15 deprecated-model deadline is now 12 days away** (Critical — requests will fail after that date). New model Claude Opus 4.8 released May 28 — ag3nts Opus agents should evaluate upgrade. Two new API betas landed this week: Advisor Tool (executor+advisor dual-model pattern) and Cache Diagnostics (cache_miss_reason). Advanced Tool Use betas (Programmatic Tool Calling, Tool Search Tool) are now documented. Agent Containment engineering post published. Claude Mythos / Project Glasswing noted as informational for security-engineer agent awareness.
+
+---
+
+### Findings
+
+#### ⚠️ CRITICAL: Claude Sonnet 4 & Opus 4 Retiring June 15, 2026
+- **Source**: https://docs.anthropic.com/en/docs/about-claude/model-deprecations
+- **Published**: Announced prior; retirement date June 15, 2026 (12 days away)
+- **Category**: Model
+- **What Changed**: `claude-sonnet-4-20250514` and `claude-opus-4-20250514` are retired June 15, 2026. Requests to these model IDs after that date will **fail** with an error. Recommended replacements: Sonnet 4.6, Opus 4.7 (or Opus 4.8, released May 28).
+- **Impact on ag3nts**: All agent definitions in `~/.claude/agents/` that hardcode deprecated model IDs will break on June 15. The `ag3nts.md` agent table must be audited now. Any scripts or API calls using the old IDs need updating.
+- **Proposed Changes**:
+  - [ ] Audit all agent files in `~/.claude/agents/` for `claude-sonnet-4-20250514` or `claude-opus-4-20250514` model IDs and replace with `claude-sonnet-4-6` / `claude-opus-4-8` before June 15
+  - [ ] Update `shared/ag3nts.md` agent table model column if any entries reference the deprecated snapshot IDs
+- **Priority**: **Critical** — hard failure on June 15; must fix before deadline
+
+---
+
+#### Claude Opus 4.8 Released (May 28, 2026)
+- **Source**: https://www.anthropic.com/news/claude-opus-4-8
+- **Published**: May 28, 2026
+- **Category**: Model
+- **What Changed**: Opus 4.8 builds on 4.7 with improved benchmark performance and sharper agentic judgment. Fast mode now runs at 2.5× speed at 2× the standard rate (previously 3× the cost) — effectively 3× cheaper in fast mode than prior generations. Same base pricing as Opus 4.7. Early testers report more reliable agentic task execution.
+- **Impact on ag3nts**: `software-architect` (Opus) and `security-engineer` (Opus) are the two Opus-model agents. Upgrading to 4.8 brings improved agentic reliability directly relevant to multi-stage pipeline flows (REPAIR Stage 4/6). Fast mode pricing reduction makes enabling fast mode on these agents more cost-effective.
+- **Proposed Changes**:
+  - [ ] Agent definitions for `software-architect` and `security-engineer` — update model ID to `claude-opus-4-8` (or confirm they already use a non-snapshot alias)
+  - [ ] Evaluate enabling fast mode (`/fast`) for Opus agents during automated REPAIR pipeline stages where speed matters more than maximum deliberation
+- **Priority**: High — improved agentic reliability directly benefits the two most complex ag3nts agents; fast mode is now cost-effective
+
+---
+
+#### Advisor Tool — Public Beta
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: Late May 2026
+- **Category**: API / Agent
+- **What Changed**: New public beta feature that pairs a **fast executor model** with a **higher-intelligence advisor model**. The advisor provides strategic guidance mid-generation so long-horizon agentic workloads get near-advisor-quality output while bulk token generation runs at executor-model rates.
+- **Impact on ag3nts**: The multi-agent `code-reviewer` dispatcher (4 parallel specialist sub-agents) and the REPAIR pipeline could adopt this pattern: run cheaper Sonnet sub-agents as executors with Opus 4.8 as the strategic advisor. This could reduce cost without sacrificing output quality.
+- **Proposed Changes**:
+  - [ ] `~/.claude/agents/code-reviewer` — investigate adopting the Advisor Tool pattern for the 4-specialist dispatch (Haiku/Sonnet executors + Opus advisor)
+  - [ ] `shared/ag3nts.md` — document Advisor Tool pattern under "Agent patterns" in knowledge base once out of beta
+- **Priority**: High — directly applicable to the multi-agent dispatcher pattern; reduces cost of parallel sub-agent runs
+
+---
+
+#### Cache Diagnostics — Public Beta
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: Late May 2026
+- **Category**: API / Tooling
+- **What Changed**: Pass `diagnostics.previous_message_id` on Messages requests; API responds with `cache_miss_reason` explaining exactly where the prompt cache prefix diverged from the previous turn. Enables precise debugging of cache miss patterns.
+- **Impact on ag3nts**: The pre-commit hooks and automated agent runs (secrets scan, review gate) rely on prompt caching for cost efficiency. Cache diagnostics would allow diagnosing why cache misses are occurring in multi-turn agent sessions and fixing prompt structure to improve hit rates.
+- **Proposed Changes**:
+  - [ ] Any Python/TS code in the repo calling the Anthropic Messages API — add `diagnostics.previous_message_id` to requests to enable cache miss logging during development/debugging
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add cache diagnostics docs URL as a reference
+- **Priority**: Medium — useful debugging tool; implement when next touching API call code
+
+---
+
+#### Advanced Tool Use Beta — Programmatic Tool Calling & Tool Search Tool
+- **Source**: https://www.anthropic.com/engineering/advanced-tool-use
+- **Published**: May 2026
+- **Category**: API / Agent
+- **What Changed**: Three new beta features released: (1) **Tool Search Tool** — Claude accesses thousands of tools via search without consuming context window; (2) **Programmatic Tool Calling** — Claude invokes tools inside a code execution environment, controlling what enters context (demonstrated with Excel thousands-of-rows use case); (3) **Tool Use Examples** — universal standard for demonstrating correct tool usage. Code execution version `code_execution_20260120` adds REPL state persistence and programmatic tool calling.
+- **Impact on ag3nts**: The `accessibility-auditor` (WCAG refs) and `security-engineer` (CVE lookups) agents use web search tools. Programmatic Tool Calling could reduce context overhead for agents that call many tools in sequence. Tool Search is relevant if the ag3nts tool registry grows.
+- **Proposed Changes**:
+  - [ ] Agent definitions for `accessibility-auditor` and `security-engineer` — evaluate adopting Programmatic Tool Calling beta to reduce context window overhead from multi-tool sequences
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add advanced-tool-use engineering post URL
+- **Priority**: Medium — optimization opportunity; evaluate when agents show context pressure
+
+---
+
+#### Agent Containment Engineering Post
+- **Source**: https://www.anthropic.com/engineering/how-we-contain-claude
+- **Published**: May 2026
+- **Category**: Agent / Safety
+- **What Changed**: Engineering post documenting Anthropic's containment approach for agentic products (claude.ai, Claude Code, Cowork): sandboxes, VMs, and egress controls as primary mechanism — supervising what the agent *can do* rather than *what it does*. Notes that Claude Mythos Preview was withheld from April 2026 release due to blast-radius concerns.
+- **Impact on ag3nts**: The `security-engineer` agent auto-invokes on sensitive file writes. The auto mode permission classifier already implements a containment approach. This post validates the ag3nts pattern and may inform future hardening of the pre-commit secrets scan and hook architecture.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — add a note under "Permission Mode" referencing containment-by-constraint as the validated Anthropic pattern, linking to the engineering post
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add the containment engineering post URL
+- **Priority**: Medium — validates existing architecture; adds useful reference
+
+---
+
+#### Claude Code Dynamic Workflows
+- **Source**: https://www.anthropic.com/news/claude-opus-4-8
+- **Published**: May 28, 2026 (alongside Opus 4.8)
+- **Category**: Tooling / Agent
+- **What Changed**: New Claude Code feature "dynamic workflows" that enables tackling very large-scale coding problems — likely extends the existing multi-agent orchestration with more flexible task decomposition and parallel sub-task handling.
+- **Impact on ag3nts**: The `code-reviewer` multi-agent dispatcher and REPAIR pipeline could leverage dynamic workflows for large-scale refactors. Complements the existing `--bare -p` scripted execution pattern documented in `ag3nts.md`.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — add dynamic workflows to the "Commands" or "Scripted/Automated Runs" section once feature is documented in Claude Code docs
+- **Priority**: Medium — monitor Claude Code CHANGELOG for implementation details before updating docs
+
+---
+
+#### Claude Mythos Preview / Project Glasswing (Informational)
+- **Source**: https://www.anthropic.com/glasswing, https://red.anthropic.com/2026/mythos-preview/
+- **Published**: May 2026
+- **Category**: Safety / Model
+- **What Changed**: Claude Mythos Preview is a new model with exceptional computer security capabilities, used in Project Glasswing to find 10,000+ high/critical vulnerabilities in critical software (Linux Foundation, AWS, Apple, Microsoft, etc.). Autonomously exploited a 17-year-old RCE in FreeBSD (CVE-2026-4747). Gated to ~150 partner organizations for defensive cybersecurity only.
+- **Impact on ag3nts**: Mythos is not publicly available. The `security-engineer` agent uses Opus 4.x. Informational: if Mythos becomes broadly available, it would be the premier model for the security-engineer agent. Project Glasswing also validates the security-first approach baked into ag3nts (pre-commit OWASP scan, secrets gate).
+- **Proposed Changes**: None (gated model; no action until general availability)
+- **Priority**: Low — informational; watch for GA announcement
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **`~/.claude/agents/` + `shared/ag3nts.md`** — Audit all agent definitions for deprecated model IDs (`claude-sonnet-4-20250514`, `claude-opus-4-20250514`) and replace with `claude-sonnet-4-6` / `claude-opus-4-8` before **June 15, 2026** (12 days). Requests to retired IDs will fail hard.
+
+2. **`~/.claude/agents/software-architect` and `security-engineer`** — Update model to `claude-opus-4-8` for improved agentic reliability and cheaper fast-mode pricing (2.5× speed at 2× standard rate, versus previously 3× cost).
+
+3. **`~/.claude/agents/code-reviewer`** — Evaluate the Advisor Tool beta pattern: run the 4 parallel specialist sub-agents as Sonnet executors with Opus 4.8 providing strategic advisor guidance, reducing cost without sacrificing orchestration quality.
+
+---
+
 ## Latest Scan: 2026-06-02
 
 ### Summary
