@@ -1,5 +1,55 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-06-04
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 2
+- Actionable integrations: 1
+
+### Context
+
+One day since last scan (June 3). Full scan of all four Anthropic channels plus targeted follow-up searches on newly surfaced items. Two items found that are not confirmed in prior scan entries: (1) **Claude Partner Network Services Track + Partner Hub** — announced June 3, 2026 (the day of the prior scan; likely published after that scan ran); (2) **Managed Agents Large Output Auto-Spilling** — API release-notes item (>100K token outputs auto-spilled to a sandbox file) not confirmed as a standalone entry in prior scans. **June 15 deprecated-model deadline is now 11 days away.** No new engineering posts since April 23, 2026. No new research papers since "Teaching Claude Why" (May 8, 2026). All other items surfaced today (Advisor Tool, Cache Diagnostics, Advanced Tool Use betas, Managed Agents self-hosted sandboxes, MCP session reconfiguration, Web Search SEC data enhancements, MCP Tunnels, Opus 4.8, model deprecations, Agent Containment post, Finance Agents, S-1 IPO filing) are confirmed captured in prior entries.
+
+---
+
+### Findings
+
+#### Claude Partner Network: Services Track + Partner Hub
+- **Source**: https://www.anthropic.com/news/services-track-partner-hub
+- **Published**: June 3, 2026
+- **Category**: Ecosystem / Business
+- **What Changed**: Anthropic formalized the Claude Partner Network with a three-tier Services Track (Select / Preferred / Global Premier) and a public Partner Hub portal. Select requires 10 certified individuals + 2 production deployments + 1 public customer story. Preferred requires 100 certified + 15 deployed customers + 3 stories. Global Premier requires 1,000 certified + 100 deployed customers across 3+ regions + 15 stories + joint executive business plan. Tier promotions happen Jan 1 and Jul 1 (first cycle also Oct 1, 2026). Partner Hub refreshes tier status and customer-facing directory daily.
+- **Impact on ag3nts**: No direct technical impact. Business context: formalized partner tiers signal Anthropic's maturing enterprise go-to-market and stronger API stability commitments. If ag3nts-based workflows are delivered for enterprise clients, the Services Track is the relevant accreditation path for consulting firms involved.
+- **Proposed Changes**: None — informational
+- **Priority**: Low — no ag3nts config or code changes needed; ecosystem context only
+
+---
+
+#### Managed Agents: Large Output Auto-Spilling (>100K Tokens → Sandbox File)
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: Late May 2026 (API release notes batch)
+- **Category**: API / Agent
+- **What Changed**: For Claude Managed Agents, large outputs from `agent_toolset` and MCP tools exceeding 100K tokens are now automatically spilled to a file in the sandbox. The model receives a truncated preview and the file path, then reads full content on demand. This prevents oversized tool outputs from consuming context or triggering context-window errors.
+- **Impact on ag3nts**: The `code-reviewer` agent dispatches 4 parallel sub-agents processing PR diffs; `security-engineer` processes large files for OWASP audits. If either agent migrates to Managed Agents REST API in the future, auto-spilling will keep context clean without manual chunking. Not immediately applicable to the current Claude Code CLI workflow.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add a reference entry for the API release notes URL covering Managed Agents enhancements (large output spilling, live MCP session reconfiguration, self-hosted sandbox runtime preview)
+- **Priority**: Medium — relevant to future Managed Agents migration path; no immediate CLI workflow changes needed
+
+---
+
+### Recommendations
+
+Top 3 changes to make now (carry-forward, deadline approaching):
+
+1. **[Critical — 11 days] Audit and replace deprecated model IDs before June 15** — `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|claude-haiku-3" ~/.claude/ shared/ windows/ macos/`. Requests to retired IDs will fail hard at the API on June 15. Replace with `claude-sonnet-4-6`, `claude-opus-4-8`, `claude-haiku-4-5-20251001`. Carry-forward since May 19.
+
+2. **[High] Upgrade Opus agents to claude-opus-4-8** — Update `software-architect` and `security-engineer` agent definitions to `claude-opus-4-8`; enable Fast Mode for pre-commit hook pipeline stages (2.5× speed at 2× standard rate — 3× cheaper fast mode than Opus 4.7). Carry-forward since May 29.
+
+3. **[High] Evaluate Advisor Tool beta for code-reviewer dispatcher** — The 4 parallel specialist sub-agents in `code-reviewer` are prime candidates for the executor+advisor split (Sonnet/Haiku executors + Opus 4.8 advisor). Reduces cost without sacrificing orchestration quality. Carry-forward from June 3.
+
+---
+
 ## Latest Scan: 2026-06-03
 
 ### Summary
