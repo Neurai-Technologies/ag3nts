@@ -1,5 +1,69 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-06-05
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 3
+- Actionable integrations: 2
+
+### Context
+
+One day since last scan (June 4). Full scan of all four Anthropic channels plus targeted follow-up on red.anthropic.com, usage limit changes, and Agent SDK billing changes. Three items surfaced that are absent from all prior scan entries: (1) **"What we learned mapping a year's worth of AI-enabled cyber threats"** — Anthropic's MITRE ATT&CK mapping of 832 banned actors, published June 3 but not captured in the June 3 or June 4 scans; (2) **Higher usage limits + SpaceX/Colossus compute deal** — published May 6 but absent from all prior scan entries; (3) **Agent SDK credit separation starting June 15** — `claude -p`/Agent SDK usage on subscription plans moves to a separate monthly credit on June 15. No new research papers, engineering posts (last: April 23), or model releases since June 4. **June 15 deprecated-model deadline is now 10 days away.**
+
+---
+
+### Findings
+
+#### AI-Enabled Cyber Threats: MITRE ATT&CK Mapping Report
+- **Source**: https://www.anthropic.com/news/AI-enabled-cyber-threats-mitre-attack
+- **Published**: June 3, 2026
+- **Category**: Safety / Security
+- **What Changed**: Anthropic analyzed 832 accounts banned for malicious cyber activity (March 2025–March 2026), mapping observed behavior onto the MITRE ATT&CK framework across 482 unique techniques and all 14 tactics. Key conclusions: (1) malicious actors use AI in the later, more complex attack phases; (2) attacks are becoming more autonomous via AI chaining; (3) frontier models are rapidly shifting tools for both attackers and defenders. Results co-published in the 2026 Verizon DBIR. Interactive LLM ATT&CK Navigator available at https://red.anthropic.com/2026/attack-navigator/.
+- **Impact on ag3nts**: The `security-engineer` agent (Opus) performs OWASP audits on staged changes and threat modeling in Stage 4 of the REPAIR pipeline. This research provides an empirically-grounded LLM-specific attack taxonomy that can anchor `security-engineer`'s audit scope beyond OWASP Top 10 — specifically covering AI-facilitated reconnaissance, malware development, and defense impairment chains.
+- **Proposed Changes**:
+  - [ ] `~/.claude/agents/security-engineer.md` — add a reference to https://red.anthropic.com/2026/attack-navigator/ in the agent's knowledge/context section so it can draw on LLM-specific MITRE ATT&CK vectors during audits
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add entry for the LLM ATT&CK Navigator and the AI-enabled cyber threats report
+- **Priority**: Medium — enriches `security-engineer` context with real-world LLM threat data; no breaking changes required; implement during next agent maintenance pass
+
+---
+
+#### Higher Usage Limits + SpaceX Colossus Compute Deal
+- **Source**: https://www.anthropic.com/news/higher-limits-spacex
+- **Published**: May 6, 2026
+- **Category**: Tooling / Capacity
+- **What Changed**: Anthropic raised usage limits for all paid subscribers by leasing SpaceX Colossus 1 (300 MW, 220,000 NVIDIA GPUs). Specific changes: 5-hour rate caps removed for Pro/Max/Team/Enterprise; peak-hours Claude Code limits reduced; Opus API rate limits increased. Capacity was live within the month of announcement (early June 2026).
+- **Impact on ag3nts**: The `code-reviewer` agent dispatches 4 parallel sub-agents; `security-engineer` runs OWASP audits; the pre-commit hook pipeline stages multiple sequential agent invocations. Previously, heavy automated use could exhaust hourly limits mid-pipeline. With rate caps lifted, the pre-commit review gate and PR review gate can run without throttling risk for Pro/Max/Team subscribers. Relevant for `claude --bare -p` CI/CD automation documented in ag3nts.md.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — update the "Scripted / Automated Runs" section to note that 5-hour rate caps and peak-hours limits are lifted for Pro/Max/Team/Enterprise; remove any pipeline guidance predicated on those limits
+- **Priority**: Low — beneficial background capacity change; no config changes strictly required; doc update clarifies current reality
+
+---
+
+#### Agent SDK Credit Separation (June 15, 2026)
+- **Source**: https://docs.anthropic.com/en/docs/claude-code/sdk
+- **Published**: Announced alongside June 15 deprecation notes
+- **Category**: API / Tooling
+- **What Changed**: Starting June 15, 2026, `claude -p` and Agent SDK usage on subscription plans (Pro/Max/Team/Enterprise) draws from a new **monthly Agent SDK credit**, separate from interactive conversation limits. Scripted agent runs no longer consume a user's interactive chat quota.
+- **Impact on ag3nts**: `shared/ag3nts.md` explicitly documents `claude --bare -p` as the standard pattern for scripted/CI/automated runs. Starting June 15, these calls draw from the Agent SDK credit rather than interactive limits — a positive change for automated ag3nts pipelines. Users should verify their plan includes an Agent SDK credit allocation before relying on scripted runs after June 15.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — add a note in the "Scripted / Automated Runs" section that `claude --bare -p` calls draw from the Agent SDK credit (a separate monthly pool) starting June 15, 2026
+- **Priority**: Medium — billing/quota change that ag3nts users should be aware of before June 15; implement before the deadline
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **[Critical — 10 days] Audit and replace deprecated model IDs before June 15** — `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|claude-haiku-3" ~/.claude/ shared/ windows/ macos/`. Requests to retired IDs will fail hard at the API on June 15. Replace with `claude-sonnet-4-6`, `claude-opus-4-8`, `claude-haiku-4-5-20251001`. Carry-forward since May 19.
+
+2. **[High] Upgrade Opus agents to claude-opus-4-8** — Update `software-architect` and `security-engineer` agent definitions to `claude-opus-4-8`; evaluate Fast Mode for pre-commit hook pipeline stages (2.5× speed at 2× standard rate vs. 3× cheaper than Opus 4.7 at fast mode rates). Carry-forward since May 29.
+
+3. **[Medium] Add LLM ATT&CK Navigator reference to security-engineer + repos.md** — Enrich `~/.claude/agents/security-engineer.md` with the red.anthropic.com ATT&CK Navigator URL and add `repos.md` entry. Grounds audits in empirical LLM threat data from 832 real-world actors.
+
+---
+
 ## Latest Scan: 2026-06-04
 
 ### Summary
