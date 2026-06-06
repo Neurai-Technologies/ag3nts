@@ -1,5 +1,63 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-06-06
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 2
+- Actionable integrations: 2
+
+### Context
+
+One day since last scan (June 5). Full scan of all four Anthropic channels plus targeted follow-up on security/government stories, enterprise tooling, and June 5-6 publications. Two items confirmed absent from all prior scan entries: (1) **NSA deploying Anthropic's Mythos for offensive cyber operations** — Financial Times report published June 5, 2026 (same day as last scan, likely published after it ran): Anthropic embedded ~6 engineers inside NSA; Mythos being used for offensive cyber ops against foreign networks, carved out from the broader Pentagon-Anthropic dispute under Hegseth's supply chain risk directive; (2) **Claude Compliance API + 28 Enterprise Security Integrations** — announced May 21, 2026, missed by all prior scans: programmatic access to Claude Enterprise conversation logs and activity event logs for DLP/SIEM/CASB/identity governance pipelines. No new research papers (last: May 8). No new engineering posts (last: April 23). **June 15 deprecated-model deadline is now 9 days away.**
+
+---
+
+### Findings
+
+#### NSA Deploying Anthropic Mythos for Offensive Cyber Operations
+- **Source**: https://techcrunch.com/2026/06/05/nsa-said-to-be-readying-anthropics-mythos-for-use-in-cyber-operations/ (TechCrunch, sourcing Financial Times)
+- **Published**: 2026-06-05
+- **Category**: Safety / Agent / Business
+- **What Changed**: Per a Financial Times report, Anthropic has embedded approximately six engineers inside the National Security Agency to deploy its Claude Mythos Preview model for offensive cyber operations against foreign networks. The arrangement is explicitly carved out from the Trump administration's broader supply chain risk directive (issued Feb 27, 2026 under Defense Secretary Hegseth) that designated Claude models as restricted for federal procurement. The NSA deployment of Mythos is the only federal carve-out; the broader Pentagon-Anthropic dispute (centered on the administration's demand that Claude support "all lawful purposes" including mass surveillance and autonomous weapons) remains unresolved. Anthropic has refused those terms and the designation is under litigation.
+- **Impact on ag3nts**:
+  - The `security-engineer` agent already references Glasswing/Mythos in its knowledge base. The NSA offensive cyber deployment confirms Mythos as a state-level offensive tool — relevant context for calibrating `security-engineer`'s threat model: AI-assisted attacks are no longer hypothetical.
+  - The Pentagon-Anthropic dispute is a material business risk for ag3nts users in government/defense-adjacent industries. If the supply chain risk designation is upheld, Claude API access for those users could be restricted.
+  - No immediate config changes required. Informational context for the `security-engineer` system prompt and for users in regulated/government environments.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add TechCrunch / Small Wars Journal reference for the NSA Mythos deployment report
+- **Priority**: Medium — material business context for government/defense ag3nts users; no immediate API/config impact; escalate to High if the Pentagon designation is upheld and expands to commercial users
+
+---
+
+#### Claude Compliance API — 28 Enterprise Security & Governance Integrations
+- **Source**: https://www.securityweek.com/anthropic-expands-claudes-enterprise-security-reach-with-28-new-integrations/ | https://support.claude.com/en/articles/15167101-get-started-with-claude-compliance-api-integrations
+- **Published**: 2026-05-21
+- **Category**: API / Tooling / Safety
+- **What Changed**: Anthropic launched the **Claude Compliance API**, giving IT and security teams programmatic access to two data streams from Claude Enterprise: (1) conversation content (chats, uploaded files, projects), and (2) activity event logs (user logins, admin actions, configuration changes). Simultaneously, 28 enterprise security and compliance platforms were certified as integration partners: Cloudflare, Cribl, CrowdStrike, Cyera, Datadog, Forcepoint, Fortinet, IBM Guardium, Microsoft Purview, Mimecast, Netskope, Okta, Palo Alto Networks, Proofpoint, Relativity, ReliaQuest, Rubrik, SailPoint, Smarsh, Snyk, Sumo Logic, Tenable, Theta Lake, Trellix, Varonis, Wiz, Zscaler, and Geordie AI. Integration categories span DLP, SASE, SIEM, identity management, e-discovery, and AI observability.
+- **Impact on ag3nts**:
+  - ag3nts on Claude Enterprise can now route conversation and activity logs into existing SIEM/DLP stacks (Datadog, Sumo Logic, Splunk-compatible formats via Cribl). This enables compliance auditing of ag3nts pipeline runs — pre-commit hook invocations, REPAIR pipeline stages, and automated `claude --bare -p` scripted runs all generate auditable activity logs.
+  - The `security-engineer` agent performs OWASP audits; Snyk and Wiz integrations with the Compliance API mean security findings from `security-engineer` sessions could be correlated with enterprise vulnerability tracking in those platforms.
+  - The Compliance API's activity event stream is the same data surface that Anthropic uses for usage metering — relevant for monitoring automated pipeline costs and detecting anomalous agent behavior.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add Claude Compliance API help article URL and SecurityWeek reference as an enterprise governance reference
+  - [ ] `shared/ag3nts.md` — consider adding a note under "Scripted / Automated Runs" that `claude --bare -p` runs on Enterprise plans generate Compliance API-accessible activity logs (useful for audit trails)
+- **Priority**: Medium — directly enables enterprise compliance for ag3nts pipelines; implement repos.md update now; ag3nts.md note is low-urgency
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **[Critical — 9 days] Audit and replace deprecated model IDs before June 15** — `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|claude-haiku-3\|thinking.*enabled\|budget_tokens" ~/.claude/ shared/ windows/ macos/`. Hard API failure on June 15. Replace with `claude-sonnet-4-6`, `claude-opus-4-8`, `claude-haiku-4-5-20251001`. Carry-forward since May 19 — this is the last week to act.
+
+2. **[High] Upgrade Opus agents to claude-opus-4-8** — Update `software-architect` and `security-engineer` agent definitions. Opus 4.8 Fast Mode is 3× cheaper than 4.7 Fast Mode at 2.5× speed — optimal for the pre-commit hook pipeline stages. Carry-forward since May 29.
+
+3. **[Medium] Add Claude Compliance API to repos.md + ag3nts.md** — Add the Compliance API help URL and a note that Enterprise `claude --bare -p` runs generate auditable activity logs accessible via Compliance API. Grounds ag3nts' automated pipeline in an enterprise governance framework.
+
+---
+
 ## Latest Scan: 2026-06-05
 
 ### Summary
