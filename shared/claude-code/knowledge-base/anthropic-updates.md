@@ -1,5 +1,94 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-06-07
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 4
+- Actionable integrations: 3
+
+### Context
+
+One day since last scan (June 6). Full scan of all four Anthropic channels plus targeted follow-up on Managed Agents updates, Messages API changes, Glasswing expansion, and model deprecation notices. Four items confirmed absent from all prior scan entries: (1) **Messages API system entries in messages array** — API feature shipped with Opus 4.8 (May 28) allowing mid-task instruction updates without breaking prompt cache; not captured as a standalone entry in the June 3 Opus 4.8 write-up; (2) **Managed Agents Dreaming, Outcomes, Multi-Agent Orchestration** — three features shipped May 6, 2026 at Code with Claude London; Dreaming was not in the June 1 confirmed list; (3) **Expanding Project Glasswing to 150 additional organizations** — announced June 2, 2026 after the June 2 scan ran; June 3 Glasswing entry covers original May launch only; (4) **Claude Opus 4.1 deprecation** — claude-opus-4-1-20250805 retiring August 5, 2026, announced June 5 but not captured in June 5 or June 6 scans. **June 15 deprecated-model deadline (Sonnet 4, Opus 4) is now 8 days away.**
+
+---
+
+### Findings
+
+#### Messages API: System Entries in Messages Array (Mid-Task Instruction Updates)
+- **Source**: https://www.anthropic.com/news/claude-opus-4-8 | https://docs.anthropic.com/en/api/messages
+- **Published**: 2026-05-28 (shipped with Opus 4.8)
+- **Category**: API / Agent
+- **What Changed**: The Messages API now accepts `system` role entries inside the `messages` array — not just as the top-level `system` parameter. This allows agent harnesses to update Claude's instructions mid-task (permissions, token budgets, environment context) without routing the update through a user turn and without busting the prompt cache prefix.
+- **Impact on ag3nts**:
+  - The pre-commit review gate pipeline runs multiple sequential agent stages (lint → security → marker). Currently, any instruction change between stages requires restructuring the prompt or accepting a cache miss. With system entries in the messages array, the harness can inject updated stage-specific instructions mid-conversation without invalidating the cached prefix.
+  - The `code-reviewer` dispatcher (4 parallel sub-agents) and REPAIR pipeline stages (4 and 6) can use this to dynamically adjust agent permissions or scope mid-run.
+  - `shared/ag3nts.md` documents `claude --bare -p` as the scripted execution pattern — this feature is most impactful in multi-turn orchestration code that calls the Messages API directly.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add the Messages API docs URL with a note on system entries in messages array
+  - [ ] `shared/ag3nts.md` — note under "Scripted / Automated Runs" that the Messages API now supports mid-task system entries for cache-safe instruction updates
+- **Priority**: High — directly enables cache-efficient multi-stage orchestration; implement when next touching pipeline code or adding a new agent stage
+
+---
+
+#### Managed Agents: Dreaming, Outcomes, and Multi-Agent Orchestration (May 6, 2026)
+- **Source**: https://thenewstack.io/anthropic-managed-agents-dreaming-outcomes/ | https://9to5mac.com/2026/05/07/anthropic-updates-claude-managed-agents-with-three-new-features/
+- **Published**: 2026-05-06
+- **Category**: API / Agent
+- **What Changed**: Anthropic shipped three new Managed Agents features at Code with Claude London on May 6: (1) **Dreaming** (research preview) — a scheduled process that reviews an agent's past sessions and memory stores, extracts cross-session patterns, and curates memory so agents improve autonomously over time (Harvey saw 6× task completion rate improvement); (2) **Outcomes** (public beta) — you write a rubric describing what success looks like; the agent works toward that rubric rather than completing a single instruction; (3) **Multi-agent orchestration** (public beta) — Managed Agents can now spawn and coordinate sub-agents server-side.
+- **Impact on ag3nts**:
+  - **Dreaming** is architecturally close to the `feedback` agent (Haiku) which captures user preferences across sessions. If ag3nts migrates to Managed Agents REST API, Dreaming could replace or augment `feedback` with automated cross-session pattern extraction rather than requiring explicit user feedback prompts.
+  - **Outcomes** maps directly to the `reality-checker` agent's "defaults to NEEDS WORK" production readiness gate — Outcomes lets the harness specify a success rubric rather than relying on post-hoc agent judgment.
+  - **Multi-agent orchestration** server-side is the Managed Agents equivalent of `code-reviewer`'s 4-parallel-specialist dispatch pattern. Currently implemented via Claude Code CLI hooks; if migrated to Managed Agents, orchestration moves server-side with built-in state persistence.
+  - All three features require the Managed Agents REST API — not the Claude Code CLI. Relevant for a future pipeline migration, not immediately actionable for CLI workflows.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add reference for the Managed Agents Dreaming/Outcomes announcement
+  - [ ] Future consideration: when evaluating Managed Agents migration, map `feedback` → Dreaming, `reality-checker` rubric → Outcomes, `code-reviewer` dispatcher → server-side multi-agent orchestration
+- **Priority**: Medium — not immediately applicable to CLI workflow; high architectural relevance for future Managed Agents migration of the REPAIR pipeline
+
+---
+
+#### Expanding Project Glasswing — 150 Additional Organizations in 15+ Countries (June 2, 2026)
+- **Source**: https://www.anthropic.com/news/expanding-project-glasswing | https://techcrunch.com/2026/06/02/anthropic-scales-claude-mythos-to-critical-infrastructure-in-15-countries/
+- **Published**: 2026-06-02
+- **Category**: Safety / Agent / Model
+- **What Changed**: Anthropic expanded Project Glasswing from its initial ~50 partners (April 2026) to 150 additional organizations across 15+ countries. New partner categories: power, water, healthcare, communications, and hardware sectors — not well-represented in the original launch. To date, Glasswing partners have disclosed 10,000+ high/critical security flaws using Claude Mythos Preview. New partners must meet security requirements before gaining Mythos access. Anthropic has signaled broader Mythos availability is coming in the "coming months."
+- **Impact on ag3nts**:
+  - The `security-engineer` agent (Opus 4.x) performs OWASP audits and threat modeling. Glasswing's 10,000+ disclosed vulnerabilities is empirical validation that AI-assisted security auditing at scale is production-grade — aligns with ag3nts' security-first pre-commit gate.
+  - The "coming months" broader Mythos availability signal is relevant for upgrading the `security-engineer` agent: if Mythos becomes API-accessible, it would be the premier model for that agent role.
+  - No immediate config changes needed. Watch for Mythos GA announcement.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add the Glasswing expansion announcement URL
+- **Priority**: Low — informational; no API or config changes; escalate to High when Mythos GA is announced
+
+---
+
+#### ⚠️ NEW DEADLINE: Claude Opus 4.1 Deprecation — Retiring August 5, 2026
+- **Source**: https://platform.claude.com/docs/en/about-claude/model-deprecations
+- **Published**: 2026-06-05 (notification date)
+- **Category**: Model
+- **What Changed**: Anthropic notified developers on June 5, 2026 that `claude-opus-4-1-20250805` will be retired from the Claude API on **August 5, 2026** (60 days notice per policy). Recommended replacement: `claude-opus-4-8`. This is separate from the June 15 deadline for `claude-opus-4-20250514` and `claude-sonnet-4-20250514`.
+- **Impact on ag3nts**:
+  - If any agent definition or script in `~/.claude/agents/` or `shared/` references `claude-opus-4-1-20250805`, it will fail after August 5. The `software-architect` and `security-engineer` agents use Opus; if either was configured with the 4.1 snapshot ID, update to `claude-opus-4-8` (already recommended in prior scans for the June 15 Opus 4 → 4.8 upgrade).
+  - Sets the next post-June-15 deprecation milestone to track: 59 days from today.
+- **Proposed Changes**:
+  - [ ] Audit `~/.claude/agents/` for `claude-opus-4-1-20250805` and replace with `claude-opus-4-8` — can bundle with the June 15 deprecation audit
+- **Priority**: High — second hard deprecation deadline after June 15; track and action during the June 15 audit sweep
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **[Critical — 8 days] Complete the June 15 model deprecation audit** — `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|claude-opus-4-1-20250805\|claude-haiku-3" ~/.claude/ shared/ windows/ macos/`. Hard API failure on June 15 for Sonnet 4 and Opus 4 snapshot IDs. While running the audit, also flag any `claude-opus-4-1-20250805` references (August 5 deadline). Replace all with `claude-sonnet-4-6`, `claude-opus-4-8`, `claude-haiku-4-5-20251001`. Carry-forward since May 19.
+
+2. **[High] Upgrade Opus agents to claude-opus-4-8** — Update `software-architect` and `security-engineer` agent definitions. This resolves both the June 15 Opus 4 deadline AND the August 5 Opus 4.1 deadline in one pass. Fast Mode at 3× lower cost than Opus 4.7 is now the standard. Carry-forward since May 29.
+
+3. **[High] Note Messages API system entries feature in ag3nts.md** — Add a note under "Scripted / Automated Runs" that the Messages API now supports mid-task `system` entries in the messages array for cache-safe instruction updates. Directly applicable to the multi-stage pre-commit pipeline (lint → security → marker) and any future Messages API orchestration code.
+
+---
+
 ## Latest Scan: 2026-06-06
 
 ### Summary
