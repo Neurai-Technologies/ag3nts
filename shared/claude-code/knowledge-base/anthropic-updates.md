@@ -1,5 +1,61 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-06-08
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 2
+- Actionable integrations: 1
+
+### Context
+
+One day since last scan (June 7). Full scan of all four Anthropic channels plus targeted follow-up on advisor tool updates, API billing changes, interpretability research, Claude Code changelog, and Usage Policy changes. Two items confirmed absent from all prior scan entries: (1) **Refusal billing change** — API requests returning `stop_reason: "refusal"` without generated output are no longer billed; present in current API release notes but not captured in any prior scan; (2) **Advisor Tool: `tools[].max_tokens` parameter** — new field on the advisor tool definition to cap advisor model output per invocation, reducing latency and cost; prior scans extensively cover the advisor tool but did not capture this specific parameter enhancement. No new research papers since May 8. No new engineering posts since April 23. All other items surfaced today (NLAs, agentic misalignment reduction, MITRE ATT&CK report, large output spilling, MCP session reconfiguration, S-1 filing, Glasswing expansion, Claude Code checkpoints/VS Code extension, Services Track, Agent SDK credit separation, Compliance API, NSA Mythos deployment) are confirmed captured in prior scan entries. **June 15 deprecated-model deadline is now 7 days away.**
+
+---
+
+### Findings
+
+#### Refusal Billing Change — Zero-Output Refusals No Longer Billed
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: Recent (API release notes; exact date not pinpointed)
+- **Category**: API
+- **What Changed**: Requests returning `stop_reason: "refusal"` without generating any output tokens are no longer billed. Previously, a safety refusal consumed input tokens toward billing. Clean refusals (zero output) are now cost-free.
+- **Impact on ag3nts**:
+  - The pre-commit pipeline dispatches `security-engineer` (Opus) on staged changes. If a staged diff triggers a safety refusal (e.g., a patch resembling credential exfiltration), that invocation is now cost-free.
+  - The `code-reviewer` dispatches 4 parallel sub-agents; any specialist that refuses on sensitive code generates no charge.
+  - Practical impact is low (refusals should be rare in normal development), but it removes any billing penalty for pipelines that occasionally contact safety rails.
+- **Proposed Changes**: None — no config changes needed; informational
+- **Priority**: Low — minor cost benefit; no config or file changes required
+
+---
+
+#### Advisor Tool: `tools[].max_tokens` Parameter for Per-Call Output Cap
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: Recent (API release notes; exact date not pinpointed)
+- **Category**: API / Agent
+- **What Changed**: The Advisor Tool beta now supports a `max_tokens` field on the advisor tool definition (`tools[].max_tokens`), capping the advisor model's output per invocation. Reduces both latency and output token cost for workloads that don't need full-length advisor responses.
+- **Impact on ag3nts**:
+  - Prior scans (from May 1 onward) track the Advisor Tool as a carry-forward candidate for `software-architect` and `security-engineer` (Sonnet executor + Opus advisor). The `max_tokens` cap makes per-invocation advisor cost predictable — a key concern for the REPAIR pipeline's Stage 4 threat modeling and Stage 6 OWASP audit, where Opus can generate lengthy outputs.
+  - The `code-reviewer` dispatch pattern (4 parallel specialists) is the other primary candidate. `max_tokens` on each specialist's advisor call gives precise cost control across all four invocations.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — note `tools[].max_tokens` availability when next updating the advisor tool reference entry
+  - [ ] When evaluating the advisor tool beta for `software-architect` or `security-engineer`, include `tools[].max_tokens` in the configuration test (e.g., cap at 1K tokens for iterative reasoning steps)
+- **Priority**: Medium — refines the carry-forward advisor tool evaluation task; implement when attempting the advisor tool beta
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **[Critical — 7 days] Complete the June 15 model deprecation audit** — `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|claude-opus-4-1-20250805\|claude-haiku-3" ~/.claude/ shared/ windows/ macos/`. Hard API failure on June 15 for Sonnet 4 and Opus 4 snapshot IDs. Replace all with `claude-sonnet-4-6`, `claude-opus-4-8`, `claude-haiku-4-5-20251001`. Carry-forward since May 19 — one week left.
+
+2. **[High] Upgrade Opus agents to claude-opus-4-8** — Update `software-architect` and `security-engineer` agent definitions. Resolves both June 15 (Opus 4) and August 5 (Opus 4.1) deprecation deadlines in one pass. Carry-forward since May 29.
+
+3. **[Medium] Evaluate Advisor Tool beta with `tools[].max_tokens` for `software-architect` + `security-engineer`** — Now that `max_tokens` is available to cap per-call advisor output, the Sonnet executor + Opus 4.8 advisor pattern becomes more cost-predictable for REPAIR Stages 4 and 6. Read `docs.anthropic.com/en/docs/agents-and-tools/server-tools/advisor-tool`, run a test invocation with `max_tokens: 1024`, compare quality. Carry-forward from May 1.
+
+---
+
 ## Latest Scan: 2026-06-07
 
 ### Summary
