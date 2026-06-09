@@ -1,5 +1,60 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-06-09
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 2
+- Actionable integrations: 1
+
+### Context
+
+One day since last scan (June 8). Full scan of all four Anthropic channels plus targeted follow-up on research blog, engineering blog, API release notes, and Claude Code changelog. Two items confirmed absent from all prior scan entries: (1) **"Making Claude a chemist"** — Anthropic Science Blog post published June 5, 2026 (same day as the June 5 scan), showing Opus 4.7 matching or beating dedicated NMR spectroscopy software (ChemDraw, MestReNova) on 20 synthetic chemistry compounds; missed by June 5, 6, 7, and 8 scans; (2) **Anthropic acquires Stainless** — announced May 18/19, 2026 (~$300M); Stainless has generated all official Anthropic SDKs since inception and also powers SDKs for OpenAI, Google DeepMind, Perplexity, and Cloudflare; deal gives Anthropic vertical control over SDK, CLI, and MCP server generation tooling; missed by May 18 (zero-finding) and May 19 scans. No new research papers, engineering posts, or model releases since June 8. **June 15 deprecated-model deadline is now 6 days away.**
+
+---
+
+### Findings
+
+#### "Making Claude a Chemist" — Opus 4.7 Matches Dedicated NMR Spectroscopy Software
+- **Source**: https://www.anthropic.com/research/making-claude-a-chemist
+- **Published**: 2026-06-05
+- **Category**: Model / Research
+- **What Changed**: Anthropic's Science Blog published research showing Claude Opus 4.7 performing comparably to — and on some tasks beating — dedicated NMR spectroscopy tools (ChemDraw and MestReNova). Study tested Opus 4.7, Opus 4.6, and Sonnet 4.6 on 20 synthetic chemistry compounds from preprints published after training cutoff. Core task: matching spectroscopic peaks to molecular atoms, a manual step in analytical chemistry historically requiring specialized software.
+- **Impact on ag3nts**:
+  - No API or config changes needed; this is capability validation for Opus 4.7, not a new feature.
+  - Reinforces the performance profile of the Opus 4.7→4.8 upgrade path for `software-architect` and `security-engineer`: structured multi-step analytical reasoning (CVE correlation, ADR tradeoff evaluation) maps to the same capability class demonstrated here.
+- **Proposed Changes**: None — informational
+- **Priority**: Low — model capability evidence; no ag3nts config changes needed
+
+---
+
+#### Anthropic Acquires Stainless — Official SDK + MCP Generator Now Vertically Integrated
+- **Source**: https://www.anthropic.com/news/anthropic-acquires-stainless
+- **Published**: 2026-05-18
+- **Category**: Tooling / API / Ecosystem
+- **What Changed**: Anthropic acquired Stainless (est. 2022, ~$300M+). Stainless generates SDKs, CLIs, and MCP servers from API specifications and has powered every official Anthropic SDK (Python `anthropic`, TypeScript `@anthropic-ai/sdk`) since the API's earliest days. Post-acquisition, Stainless is winding down its hosted public SDK generator; existing customers retain full ownership of already-generated SDKs. Competitors (OpenAI, Google DeepMind, Perplexity, Cloudflare) who relied on Stainless must now manage their own SDK generation tooling.
+- **Impact on ag3nts**:
+  - ag3nts is Python (primary) + TypeScript. Both official Anthropic SDKs are Stainless-generated — now under Anthropic's direct control. SDK maintenance, API alignment, and MCP server tooling are vertically integrated; long-term SDK quality and latency of new API feature exposure should improve.
+  - MCP server generation is directly relevant: any new ag3nts MCP server additions will be generated and maintained by Anthropic's own toolchain going forward, reducing dependency drift.
+  - No immediate breaking changes — all existing SDKs continue to work. Risk: if ag3nts ever used a third-party Stainless-generated SDK (not Anthropic's official ones), that SDK no longer receives hosted Stainless updates.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add the Stainless acquisition announcement URL as context for the Anthropic SDK lineage
+- **Priority**: Medium — no immediate action required; relevant background for future SDK and MCP server decisions; repos.md note is low-effort
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **[Critical — 6 days] Complete the June 15 model deprecation audit** — `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|claude-opus-4-1-20250805\|claude-haiku-3" ~/.claude/ shared/ windows/ macos/`. Hard API failure on June 15 for Sonnet 4 and Opus 4 snapshot IDs. Replace all with `claude-sonnet-4-6`, `claude-opus-4-8`, `claude-haiku-4-5-20251001`. **Final-week warning — 6 days until hard failure.** Carry-forward since May 19.
+
+2. **[High] Upgrade Opus agents to claude-opus-4-8** — Update `software-architect` and `security-engineer` agent definitions. One pass resolves both the June 15 (Opus 4) and August 5 (Opus 4.1) deprecation deadlines. Carry-forward since May 29.
+
+3. **[Medium] Evaluate Advisor Tool beta with `tools[].max_tokens` for `software-architect` + `security-engineer`** — `max_tokens` cap makes per-invocation Opus advisor cost predictable for REPAIR Stages 4 and 6. Read `docs.anthropic.com/en/docs/agents-and-tools/server-tools/advisor-tool`, test with `max_tokens: 1024`. Carry-forward from June 8.
+
+---
+
 ## Latest Scan: 2026-06-08
 
 ### Summary
