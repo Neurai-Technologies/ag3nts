@@ -1,5 +1,65 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-06-10
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 2
+- Actionable integrations: 2
+
+### Context
+
+One day since last scan (June 9). Full scan of all four Anthropic channels. Two new items confirmed absent from all prior scan entries: (1) **Claude Fable 5 GA** — Anthropic's new Mythos-class model (`claude-fable-5`) became generally available June 9, 2026; the most capable model ever made generally available; $10/$50 per M tokens (2× Opus 4.8), 1M context window, exceptional for software engineering and multi-day agent harness runs; missed by June 9 scan; (2) **"Paving the way for agents in biology"** — June 8 research article missed by June 9 scan; demonstrates that deterministic retrieval tools lift agent accuracy above 90% vs. ~60% without tools; validates tool-augmented agent design. No new engineering blog posts (last: April 23). **June 15 deprecated-model deadline is now 5 days away.**
+
+---
+
+### Findings
+
+#### Claude Fable 5 Generally Available — New Top-Tier Model
+- **Source**: https://www.anthropic.com/news/claude-fable-5-mythos-5
+- **Published**: 2026-06-09
+- **Category**: Model
+- **What Changed**: Anthropic released Claude Fable 5 (`claude-fable-5`) as generally available across the Claude API, Claude Platform on AWS, Amazon Bedrock, Vertex AI, and Microsoft Foundry. Fable 5 is a Mythos-class model made safe for general use — the most capable model Anthropic has ever made generally available. State-of-the-art on nearly all tested capability benchmarks; exceptional at software engineering, knowledge work, vision, and scientific research. Priced at $10/M input and $50/M output tokens (2× Claude Opus 4.8 at $5/$25). Full 1M token context window at standard pricing. A companion model, Claude Mythos 5, is available in limited access through Project Glasswing for cyberdefense. Fable 5 has built-in safety guardrails that route a small subset of queries (<5% of sessions) to Claude Opus 4.8. In agent harness workloads (Claude Code, Claude Managed Agents), Fable 5 can operate for days autonomously — planning across stages, delegating to sub-agents, and self-checking.
+- **Impact on ag3nts**:
+  - `software-architect` (currently Opus) and `security-engineer` (currently Opus) should evaluate `claude-fable-5` as the new top-tier model. Both perform structured multi-step reasoning (ADRs, threat modeling, OWASP audits) that maps directly to Fable 5's stated strengths.
+  - The REPAIR pipeline (Stages 4 and 6) dispatches these agents on complex, multi-hour tasks; Fable 5's "days at a time" harness capability and self-checking behavior are directly relevant.
+  - Cost trade-off: Fable 5 is 2× Opus 4.8. Since `software-architect` and `security-engineer` are invoked on-demand rather than in tight loops, the per-run cost increase is acceptable for the capability gain.
+  - ag3nts.md "Agents" table lists both agents as "Opus" — update to "Fable" when model IDs are changed.
+  - June 15 deadline: the deprecated `claude-opus-4-20250514` / `claude-sonnet-4-20250514` snapshot IDs must be replaced. Since a model ID change is already forced, consider upgrading directly to `claude-fable-5` for Opus-tier agents instead of stopping at `claude-opus-4-8`.
+- **Proposed Changes**:
+  - [ ] Agent definition files for `software-architect` and `security-engineer`: change model field to `claude-fable-5`
+  - [ ] `shared/ag3nts.md` agents table: update Opus-tier agents' model column to "Fable" once upgraded
+  - [ ] `shared/claude-code/knowledge-base/repos.md`: add `https://www.anthropic.com/news/claude-fable-5-mythos-5`
+- **Priority**: High — Fable 5 is the new performance ceiling above Opus 4.8; the June 15 deadline already forces model ID changes, so upgrading directly to Fable 5 costs no extra effort
+
+---
+
+#### "Paving the Way for Agents in Biology" — Deterministic Retrieval Tools Lift Accuracy to 90%+
+- **Source**: https://www.anthropic.com/research/agents-in-biology
+- **Published**: 2026-06-08
+- **Category**: Agent patterns / Research
+- **What Changed**: Anthropic published research showing AI agents querying biological databases achieved only ~60% accuracy relying on model knowledge alone. Accuracy rose above 90% (peaking at 99.7% for the best model) when agents were given deterministic retrieval tools (a biological database client). Core finding: specialized, deterministic database-access tools are the critical reliability lever for agents operating over structured external data — not raw model capability. Databases will need to be designed with agents as scaled concurrent users.
+- **Impact on ag3nts**:
+  - Validates the existing pattern of giving agents specialized tool access (MCP servers, structured DB clients) over relying on model context windows or in-context memory alone.
+  - `software-architect` and `security-engineer` agents querying CVE databases, dependency vulnerability registries, or architecture pattern catalogs would benefit from deterministic retrieval tool bindings over RAG-style context injection.
+  - Reinforces the MCP Tunnels entry already in `repos.md` — deterministic, tool-mediated access to private data sources is the recommended pattern for high-accuracy agent workflows.
+- **Proposed Changes**: None immediate — informational validation of existing design direction
+- **Priority**: Medium — no config changes required; confirms tool-augmented agent pattern; relevant context for future MCP server additions
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **[Critical — 5 days] Complete the June 15 model deprecation audit** — `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|claude-opus-4-1-20250805\|claude-haiku-3" ~/.claude/ shared/ windows/ macos/`. Hard API failure on June 15 for Sonnet 4 and Opus 4 snapshot IDs. Replace all with `claude-sonnet-4-6`, `claude-opus-4-8`, or `claude-fable-5` for Opus-tier agents. **5 days remaining.** Carry-forward since May 19.
+
+2. **[High] Upgrade Opus agents to `claude-fable-5`** — Update `software-architect` and `security-engineer` agent definitions. Fable 5 is the new top-tier generally available model ($10/$50 per M tokens), with state-of-the-art performance on software engineering and multi-day agent harness tasks. Since the June 15 deadline already forces a model ID change for these agents, go directly to `claude-fable-5` rather than stopping at `claude-opus-4-8`. Update ag3nts.md table and add announcement to `repos.md`. New finding — June 10.
+
+3. **[Medium] Evaluate Advisor Tool beta with `tools[].max_tokens` for `software-architect` + `security-engineer`** — `max_tokens` cap makes per-invocation Fable 5 cost predictable for REPAIR Stages 4 and 6. Even more important now given the 2× cost jump from Opus 4.8 to Fable 5. Read `docs.anthropic.com/en/docs/agents-and-tools/server-tools/advisor-tool`, test with `max_tokens: 1024`. Carry-forward from June 8.
+
+---
+
 ## Latest Scan: 2026-06-09
 
 ### Summary
