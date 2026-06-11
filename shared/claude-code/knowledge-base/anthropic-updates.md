@@ -1,5 +1,34 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-06-11
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 0
+- Actionable integrations: 0
+
+### Context
+
+One day since last scan (June 10). Full scan of all four Anthropic channels plus targeted follow-up on: research blog index (disempowerment patterns, labor market impacts, emotion concepts, vibe physics, Anthropic Institute agenda), news index (Claude for Small Business, SpaceX deal, Project Vend Phase 2, Fable 5 GA, $50B infrastructure, enterprise AI services), engineering index (Claude Agent SDK post, writing tools for agents, scaling managed agents, harness design, code execution with MCP, advanced tool use), and docs API release notes. All items surfaced today are confirmed captured in prior scan entries. One item not in the log was found — "Claude is now generally available in Xcode" (`anthropic.com/news/claude-in-xcode`) — but this is an older announcement (circa September 2025 or earlier) and of Low relevance to ag3nts (VS Code is the primary editor). No new announcements published on June 10 or June 11. **June 15 deprecated-model deadline is now 4 days away.**
+
+### Findings
+
+No new findings.
+
+---
+
+### Recommendations
+
+Top 3 carry-forward actions (unchanged from June 10):
+
+1. **[Critical — 4 days] Complete the June 15 model deprecation audit** — `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|claude-opus-4-1-20250805\|claude-haiku-3" ~/.claude/ shared/ windows/ macos/`. Hard API failure on June 15 for Sonnet 4 and Opus 4 snapshot IDs. Replace all with `claude-sonnet-4-6`, `claude-opus-4-8`, or `claude-fable-5` for Opus-tier agents. **4 days remaining — action overdue.**
+
+2. **[High] Upgrade Opus agents to `claude-fable-5`** — Update `software-architect` and `security-engineer` agent definitions. Fable 5 is the new top-tier generally available model ($10/$50 per M tokens); the June 15 deadline already forces a model ID change for these agents, so go directly to `claude-fable-5` rather than stopping at `claude-opus-4-8`. Update ag3nts.md table and add announcement to `repos.md`. Carry-forward since June 10.
+
+3. **[Medium] Evaluate Advisor Tool beta with `tools[].max_tokens` for `software-architect` + `security-engineer`** — `max_tokens` cap makes per-invocation Fable 5 cost predictable for REPAIR Stages 4 and 6. Even more important given the 2× cost jump from Opus 4.8 to Fable 5. Read `docs.anthropic.com/en/docs/agents-and-tools/server-tools/advisor-tool`, test with `max_tokens: 1024`. Carry-forward since June 8.
+
+---
+
 ## Latest Scan: 2026-06-10
 
 ### Summary
