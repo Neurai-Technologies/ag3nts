@@ -1,5 +1,381 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-06-12
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 0
+- Actionable integrations: 0
+
+### Context
+
+One day since last scan (June 11). Full scan of all four Anthropic channels: research blog (labor market impacts, coding agents in social sciences, AI assistance and coding skills, Constitutional Classifiers++, AI Fluency Index), news index (Fable 5 GA, Opus 4.7, Opus 4.8, Opus 4.6, Introducing Labs, higher usage limits/SpaceX, S-1 filing, Google/Broadcom compute, Amazon compute, Gates Foundation), engineering index (April 23 Claude Code postmortem, three-issues postmortem, advanced tool use, effective harnesses, Agent Skills), docs API release notes (cache diagnostics, advisor tool, Managed Agents updates, model deprecations, Agent SDK credit). All items surfaced today are confirmed captured in prior scan entries. The AI Fluency Index report (February 16, 2026) surfaced in search but has no ag3nts config impact (educational research on user behavior patterns; not an API/model/tooling change). No new announcements published on June 12. **June 15 deprecated-model deadline is now 3 days away — action is critically overdue.**
+
+### Findings
+
+No new findings.
+
+---
+
+### Recommendations
+
+Top 3 carry-forward actions (unchanged from June 11 — deadline now 3 days away):
+
+1. **[Critical — 3 days] Complete the June 15 model deprecation audit** — `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|claude-opus-4-1-20250805\|claude-haiku-3" ~/.claude/ shared/ windows/ macos/`. Hard API failure on June 15 for Sonnet 4 and Opus 4 snapshot IDs. Replace all with `claude-sonnet-4-6`, `claude-opus-4-8`, or `claude-fable-5` for Opus-tier agents. **3 days remaining — critically overdue.**
+
+2. **[High] Upgrade Opus agents to `claude-fable-5`** — Update `software-architect` and `security-engineer` agent definitions. Fable 5 is the new top-tier generally available model ($10/$50 per M tokens); the June 15 deadline already forces a model ID change for these agents, so go directly to `claude-fable-5` rather than stopping at `claude-opus-4-8`. Update ag3nts.md table and add announcement to `repos.md`. Carry-forward since June 10.
+
+3. **[Medium] Evaluate Advisor Tool beta with `tools[].max_tokens` for `software-architect` + `security-engineer`** — `max_tokens` cap makes per-invocation Fable 5 cost predictable for REPAIR Stages 4 and 6. Even more important given the 2× cost jump from Opus 4.8 to Fable 5. Read `docs.anthropic.com/en/docs/agents-and-tools/server-tools/advisor-tool`, test with `max_tokens: 1024`. Carry-forward since June 8.
+
+---
+
+## Latest Scan: 2026-06-11
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 0
+- Actionable integrations: 0
+
+### Context
+
+One day since last scan (June 10). Full scan of all four Anthropic channels plus targeted follow-up on: research blog index (disempowerment patterns, labor market impacts, emotion concepts, vibe physics, Anthropic Institute agenda), news index (Claude for Small Business, SpaceX deal, Project Vend Phase 2, Fable 5 GA, $50B infrastructure, enterprise AI services), engineering index (Claude Agent SDK post, writing tools for agents, scaling managed agents, harness design, code execution with MCP, advanced tool use), and docs API release notes. All items surfaced today are confirmed captured in prior scan entries. One item not in the log was found — "Claude is now generally available in Xcode" (`anthropic.com/news/claude-in-xcode`) — but this is an older announcement (circa September 2025 or earlier) and of Low relevance to ag3nts (VS Code is the primary editor). No new announcements published on June 10 or June 11. **June 15 deprecated-model deadline is now 4 days away.**
+
+### Findings
+
+No new findings.
+
+---
+
+### Recommendations
+
+Top 3 carry-forward actions (unchanged from June 10):
+
+1. **[Critical — 4 days] Complete the June 15 model deprecation audit** — `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|claude-opus-4-1-20250805\|claude-haiku-3" ~/.claude/ shared/ windows/ macos/`. Hard API failure on June 15 for Sonnet 4 and Opus 4 snapshot IDs. Replace all with `claude-sonnet-4-6`, `claude-opus-4-8`, or `claude-fable-5` for Opus-tier agents. **4 days remaining — action overdue.**
+
+2. **[High] Upgrade Opus agents to `claude-fable-5`** — Update `software-architect` and `security-engineer` agent definitions. Fable 5 is the new top-tier generally available model ($10/$50 per M tokens); the June 15 deadline already forces a model ID change for these agents, so go directly to `claude-fable-5` rather than stopping at `claude-opus-4-8`. Update ag3nts.md table and add announcement to `repos.md`. Carry-forward since June 10.
+
+3. **[Medium] Evaluate Advisor Tool beta with `tools[].max_tokens` for `software-architect` + `security-engineer`** — `max_tokens` cap makes per-invocation Fable 5 cost predictable for REPAIR Stages 4 and 6. Even more important given the 2× cost jump from Opus 4.8 to Fable 5. Read `docs.anthropic.com/en/docs/agents-and-tools/server-tools/advisor-tool`, test with `max_tokens: 1024`. Carry-forward since June 8.
+
+---
+
+## Latest Scan: 2026-06-10
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 2
+- Actionable integrations: 2
+
+### Context
+
+One day since last scan (June 9). Full scan of all four Anthropic channels. Two new items confirmed absent from all prior scan entries: (1) **Claude Fable 5 GA** — Anthropic's new Mythos-class model (`claude-fable-5`) became generally available June 9, 2026; the most capable model ever made generally available; $10/$50 per M tokens (2× Opus 4.8), 1M context window, exceptional for software engineering and multi-day agent harness runs; missed by June 9 scan; (2) **"Paving the way for agents in biology"** — June 8 research article missed by June 9 scan; demonstrates that deterministic retrieval tools lift agent accuracy above 90% vs. ~60% without tools; validates tool-augmented agent design. No new engineering blog posts (last: April 23). **June 15 deprecated-model deadline is now 5 days away.**
+
+---
+
+### Findings
+
+#### Claude Fable 5 Generally Available — New Top-Tier Model
+- **Source**: https://www.anthropic.com/news/claude-fable-5-mythos-5
+- **Published**: 2026-06-09
+- **Category**: Model
+- **What Changed**: Anthropic released Claude Fable 5 (`claude-fable-5`) as generally available across the Claude API, Claude Platform on AWS, Amazon Bedrock, Vertex AI, and Microsoft Foundry. Fable 5 is a Mythos-class model made safe for general use — the most capable model Anthropic has ever made generally available. State-of-the-art on nearly all tested capability benchmarks; exceptional at software engineering, knowledge work, vision, and scientific research. Priced at $10/M input and $50/M output tokens (2× Claude Opus 4.8 at $5/$25). Full 1M token context window at standard pricing. A companion model, Claude Mythos 5, is available in limited access through Project Glasswing for cyberdefense. Fable 5 has built-in safety guardrails that route a small subset of queries (<5% of sessions) to Claude Opus 4.8. In agent harness workloads (Claude Code, Claude Managed Agents), Fable 5 can operate for days autonomously — planning across stages, delegating to sub-agents, and self-checking.
+- **Impact on ag3nts**:
+  - `software-architect` (currently Opus) and `security-engineer` (currently Opus) should evaluate `claude-fable-5` as the new top-tier model. Both perform structured multi-step reasoning (ADRs, threat modeling, OWASP audits) that maps directly to Fable 5's stated strengths.
+  - The REPAIR pipeline (Stages 4 and 6) dispatches these agents on complex, multi-hour tasks; Fable 5's "days at a time" harness capability and self-checking behavior are directly relevant.
+  - Cost trade-off: Fable 5 is 2× Opus 4.8. Since `software-architect` and `security-engineer` are invoked on-demand rather than in tight loops, the per-run cost increase is acceptable for the capability gain.
+  - ag3nts.md "Agents" table lists both agents as "Opus" — update to "Fable" when model IDs are changed.
+  - June 15 deadline: the deprecated `claude-opus-4-20250514` / `claude-sonnet-4-20250514` snapshot IDs must be replaced. Since a model ID change is already forced, consider upgrading directly to `claude-fable-5` for Opus-tier agents instead of stopping at `claude-opus-4-8`.
+- **Proposed Changes**:
+  - [ ] Agent definition files for `software-architect` and `security-engineer`: change model field to `claude-fable-5`
+  - [ ] `shared/ag3nts.md` agents table: update Opus-tier agents' model column to "Fable" once upgraded
+  - [ ] `shared/claude-code/knowledge-base/repos.md`: add `https://www.anthropic.com/news/claude-fable-5-mythos-5`
+- **Priority**: High — Fable 5 is the new performance ceiling above Opus 4.8; the June 15 deadline already forces model ID changes, so upgrading directly to Fable 5 costs no extra effort
+
+---
+
+#### "Paving the Way for Agents in Biology" — Deterministic Retrieval Tools Lift Accuracy to 90%+
+- **Source**: https://www.anthropic.com/research/agents-in-biology
+- **Published**: 2026-06-08
+- **Category**: Agent patterns / Research
+- **What Changed**: Anthropic published research showing AI agents querying biological databases achieved only ~60% accuracy relying on model knowledge alone. Accuracy rose above 90% (peaking at 99.7% for the best model) when agents were given deterministic retrieval tools (a biological database client). Core finding: specialized, deterministic database-access tools are the critical reliability lever for agents operating over structured external data — not raw model capability. Databases will need to be designed with agents as scaled concurrent users.
+- **Impact on ag3nts**:
+  - Validates the existing pattern of giving agents specialized tool access (MCP servers, structured DB clients) over relying on model context windows or in-context memory alone.
+  - `software-architect` and `security-engineer` agents querying CVE databases, dependency vulnerability registries, or architecture pattern catalogs would benefit from deterministic retrieval tool bindings over RAG-style context injection.
+  - Reinforces the MCP Tunnels entry already in `repos.md` — deterministic, tool-mediated access to private data sources is the recommended pattern for high-accuracy agent workflows.
+- **Proposed Changes**: None immediate — informational validation of existing design direction
+- **Priority**: Medium — no config changes required; confirms tool-augmented agent pattern; relevant context for future MCP server additions
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **[Critical — 5 days] Complete the June 15 model deprecation audit** — `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|claude-opus-4-1-20250805\|claude-haiku-3" ~/.claude/ shared/ windows/ macos/`. Hard API failure on June 15 for Sonnet 4 and Opus 4 snapshot IDs. Replace all with `claude-sonnet-4-6`, `claude-opus-4-8`, or `claude-fable-5` for Opus-tier agents. **5 days remaining.** Carry-forward since May 19.
+
+2. **[High] Upgrade Opus agents to `claude-fable-5`** — Update `software-architect` and `security-engineer` agent definitions. Fable 5 is the new top-tier generally available model ($10/$50 per M tokens), with state-of-the-art performance on software engineering and multi-day agent harness tasks. Since the June 15 deadline already forces a model ID change for these agents, go directly to `claude-fable-5` rather than stopping at `claude-opus-4-8`. Update ag3nts.md table and add announcement to `repos.md`. New finding — June 10.
+
+3. **[Medium] Evaluate Advisor Tool beta with `tools[].max_tokens` for `software-architect` + `security-engineer`** — `max_tokens` cap makes per-invocation Fable 5 cost predictable for REPAIR Stages 4 and 6. Even more important now given the 2× cost jump from Opus 4.8 to Fable 5. Read `docs.anthropic.com/en/docs/agents-and-tools/server-tools/advisor-tool`, test with `max_tokens: 1024`. Carry-forward from June 8.
+
+---
+
+## Latest Scan: 2026-06-09
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 2
+- Actionable integrations: 1
+
+### Context
+
+One day since last scan (June 8). Full scan of all four Anthropic channels plus targeted follow-up on research blog, engineering blog, API release notes, and Claude Code changelog. Two items confirmed absent from all prior scan entries: (1) **"Making Claude a chemist"** — Anthropic Science Blog post published June 5, 2026 (same day as the June 5 scan), showing Opus 4.7 matching or beating dedicated NMR spectroscopy software (ChemDraw, MestReNova) on 20 synthetic chemistry compounds; missed by June 5, 6, 7, and 8 scans; (2) **Anthropic acquires Stainless** — announced May 18/19, 2026 (~$300M); Stainless has generated all official Anthropic SDKs since inception and also powers SDKs for OpenAI, Google DeepMind, Perplexity, and Cloudflare; deal gives Anthropic vertical control over SDK, CLI, and MCP server generation tooling; missed by May 18 (zero-finding) and May 19 scans. No new research papers, engineering posts, or model releases since June 8. **June 15 deprecated-model deadline is now 6 days away.**
+
+---
+
+### Findings
+
+#### "Making Claude a Chemist" — Opus 4.7 Matches Dedicated NMR Spectroscopy Software
+- **Source**: https://www.anthropic.com/research/making-claude-a-chemist
+- **Published**: 2026-06-05
+- **Category**: Model / Research
+- **What Changed**: Anthropic's Science Blog published research showing Claude Opus 4.7 performing comparably to — and on some tasks beating — dedicated NMR spectroscopy tools (ChemDraw and MestReNova). Study tested Opus 4.7, Opus 4.6, and Sonnet 4.6 on 20 synthetic chemistry compounds from preprints published after training cutoff. Core task: matching spectroscopic peaks to molecular atoms, a manual step in analytical chemistry historically requiring specialized software.
+- **Impact on ag3nts**:
+  - No API or config changes needed; this is capability validation for Opus 4.7, not a new feature.
+  - Reinforces the performance profile of the Opus 4.7→4.8 upgrade path for `software-architect` and `security-engineer`: structured multi-step analytical reasoning (CVE correlation, ADR tradeoff evaluation) maps to the same capability class demonstrated here.
+- **Proposed Changes**: None — informational
+- **Priority**: Low — model capability evidence; no ag3nts config changes needed
+
+---
+
+#### Anthropic Acquires Stainless — Official SDK + MCP Generator Now Vertically Integrated
+- **Source**: https://www.anthropic.com/news/anthropic-acquires-stainless
+- **Published**: 2026-05-18
+- **Category**: Tooling / API / Ecosystem
+- **What Changed**: Anthropic acquired Stainless (est. 2022, ~$300M+). Stainless generates SDKs, CLIs, and MCP servers from API specifications and has powered every official Anthropic SDK (Python `anthropic`, TypeScript `@anthropic-ai/sdk`) since the API's earliest days. Post-acquisition, Stainless is winding down its hosted public SDK generator; existing customers retain full ownership of already-generated SDKs. Competitors (OpenAI, Google DeepMind, Perplexity, Cloudflare) who relied on Stainless must now manage their own SDK generation tooling.
+- **Impact on ag3nts**:
+  - ag3nts is Python (primary) + TypeScript. Both official Anthropic SDKs are Stainless-generated — now under Anthropic's direct control. SDK maintenance, API alignment, and MCP server tooling are vertically integrated; long-term SDK quality and latency of new API feature exposure should improve.
+  - MCP server generation is directly relevant: any new ag3nts MCP server additions will be generated and maintained by Anthropic's own toolchain going forward, reducing dependency drift.
+  - No immediate breaking changes — all existing SDKs continue to work. Risk: if ag3nts ever used a third-party Stainless-generated SDK (not Anthropic's official ones), that SDK no longer receives hosted Stainless updates.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add the Stainless acquisition announcement URL as context for the Anthropic SDK lineage
+- **Priority**: Medium — no immediate action required; relevant background for future SDK and MCP server decisions; repos.md note is low-effort
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **[Critical — 6 days] Complete the June 15 model deprecation audit** — `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|claude-opus-4-1-20250805\|claude-haiku-3" ~/.claude/ shared/ windows/ macos/`. Hard API failure on June 15 for Sonnet 4 and Opus 4 snapshot IDs. Replace all with `claude-sonnet-4-6`, `claude-opus-4-8`, `claude-haiku-4-5-20251001`. **Final-week warning — 6 days until hard failure.** Carry-forward since May 19.
+
+2. **[High] Upgrade Opus agents to claude-opus-4-8** — Update `software-architect` and `security-engineer` agent definitions. One pass resolves both the June 15 (Opus 4) and August 5 (Opus 4.1) deprecation deadlines. Carry-forward since May 29.
+
+3. **[Medium] Evaluate Advisor Tool beta with `tools[].max_tokens` for `software-architect` + `security-engineer`** — `max_tokens` cap makes per-invocation Opus advisor cost predictable for REPAIR Stages 4 and 6. Read `docs.anthropic.com/en/docs/agents-and-tools/server-tools/advisor-tool`, test with `max_tokens: 1024`. Carry-forward from June 8.
+
+---
+
+## Latest Scan: 2026-06-08
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 2
+- Actionable integrations: 1
+
+### Context
+
+One day since last scan (June 7). Full scan of all four Anthropic channels plus targeted follow-up on advisor tool updates, API billing changes, interpretability research, Claude Code changelog, and Usage Policy changes. Two items confirmed absent from all prior scan entries: (1) **Refusal billing change** — API requests returning `stop_reason: "refusal"` without generated output are no longer billed; present in current API release notes but not captured in any prior scan; (2) **Advisor Tool: `tools[].max_tokens` parameter** — new field on the advisor tool definition to cap advisor model output per invocation, reducing latency and cost; prior scans extensively cover the advisor tool but did not capture this specific parameter enhancement. No new research papers since May 8. No new engineering posts since April 23. All other items surfaced today (NLAs, agentic misalignment reduction, MITRE ATT&CK report, large output spilling, MCP session reconfiguration, S-1 filing, Glasswing expansion, Claude Code checkpoints/VS Code extension, Services Track, Agent SDK credit separation, Compliance API, NSA Mythos deployment) are confirmed captured in prior scan entries. **June 15 deprecated-model deadline is now 7 days away.**
+
+---
+
+### Findings
+
+#### Refusal Billing Change — Zero-Output Refusals No Longer Billed
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: Recent (API release notes; exact date not pinpointed)
+- **Category**: API
+- **What Changed**: Requests returning `stop_reason: "refusal"` without generating any output tokens are no longer billed. Previously, a safety refusal consumed input tokens toward billing. Clean refusals (zero output) are now cost-free.
+- **Impact on ag3nts**:
+  - The pre-commit pipeline dispatches `security-engineer` (Opus) on staged changes. If a staged diff triggers a safety refusal (e.g., a patch resembling credential exfiltration), that invocation is now cost-free.
+  - The `code-reviewer` dispatches 4 parallel sub-agents; any specialist that refuses on sensitive code generates no charge.
+  - Practical impact is low (refusals should be rare in normal development), but it removes any billing penalty for pipelines that occasionally contact safety rails.
+- **Proposed Changes**: None — no config changes needed; informational
+- **Priority**: Low — minor cost benefit; no config or file changes required
+
+---
+
+#### Advisor Tool: `tools[].max_tokens` Parameter for Per-Call Output Cap
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: Recent (API release notes; exact date not pinpointed)
+- **Category**: API / Agent
+- **What Changed**: The Advisor Tool beta now supports a `max_tokens` field on the advisor tool definition (`tools[].max_tokens`), capping the advisor model's output per invocation. Reduces both latency and output token cost for workloads that don't need full-length advisor responses.
+- **Impact on ag3nts**:
+  - Prior scans (from May 1 onward) track the Advisor Tool as a carry-forward candidate for `software-architect` and `security-engineer` (Sonnet executor + Opus advisor). The `max_tokens` cap makes per-invocation advisor cost predictable — a key concern for the REPAIR pipeline's Stage 4 threat modeling and Stage 6 OWASP audit, where Opus can generate lengthy outputs.
+  - The `code-reviewer` dispatch pattern (4 parallel specialists) is the other primary candidate. `max_tokens` on each specialist's advisor call gives precise cost control across all four invocations.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — note `tools[].max_tokens` availability when next updating the advisor tool reference entry
+  - [ ] When evaluating the advisor tool beta for `software-architect` or `security-engineer`, include `tools[].max_tokens` in the configuration test (e.g., cap at 1K tokens for iterative reasoning steps)
+- **Priority**: Medium — refines the carry-forward advisor tool evaluation task; implement when attempting the advisor tool beta
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **[Critical — 7 days] Complete the June 15 model deprecation audit** — `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|claude-opus-4-1-20250805\|claude-haiku-3" ~/.claude/ shared/ windows/ macos/`. Hard API failure on June 15 for Sonnet 4 and Opus 4 snapshot IDs. Replace all with `claude-sonnet-4-6`, `claude-opus-4-8`, `claude-haiku-4-5-20251001`. Carry-forward since May 19 — one week left.
+
+2. **[High] Upgrade Opus agents to claude-opus-4-8** — Update `software-architect` and `security-engineer` agent definitions. Resolves both June 15 (Opus 4) and August 5 (Opus 4.1) deprecation deadlines in one pass. Carry-forward since May 29.
+
+3. **[Medium] Evaluate Advisor Tool beta with `tools[].max_tokens` for `software-architect` + `security-engineer`** — Now that `max_tokens` is available to cap per-call advisor output, the Sonnet executor + Opus 4.8 advisor pattern becomes more cost-predictable for REPAIR Stages 4 and 6. Read `docs.anthropic.com/en/docs/agents-and-tools/server-tools/advisor-tool`, run a test invocation with `max_tokens: 1024`, compare quality. Carry-forward from May 1.
+
+---
+
+## Latest Scan: 2026-06-07
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 4
+- Actionable integrations: 3
+
+### Context
+
+One day since last scan (June 6). Full scan of all four Anthropic channels plus targeted follow-up on Managed Agents updates, Messages API changes, Glasswing expansion, and model deprecation notices. Four items confirmed absent from all prior scan entries: (1) **Messages API system entries in messages array** — API feature shipped with Opus 4.8 (May 28) allowing mid-task instruction updates without breaking prompt cache; not captured as a standalone entry in the June 3 Opus 4.8 write-up; (2) **Managed Agents Dreaming, Outcomes, Multi-Agent Orchestration** — three features shipped May 6, 2026 at Code with Claude London; Dreaming was not in the June 1 confirmed list; (3) **Expanding Project Glasswing to 150 additional organizations** — announced June 2, 2026 after the June 2 scan ran; June 3 Glasswing entry covers original May launch only; (4) **Claude Opus 4.1 deprecation** — claude-opus-4-1-20250805 retiring August 5, 2026, announced June 5 but not captured in June 5 or June 6 scans. **June 15 deprecated-model deadline (Sonnet 4, Opus 4) is now 8 days away.**
+
+---
+
+### Findings
+
+#### Messages API: System Entries in Messages Array (Mid-Task Instruction Updates)
+- **Source**: https://www.anthropic.com/news/claude-opus-4-8 | https://docs.anthropic.com/en/api/messages
+- **Published**: 2026-05-28 (shipped with Opus 4.8)
+- **Category**: API / Agent
+- **What Changed**: The Messages API now accepts `system` role entries inside the `messages` array — not just as the top-level `system` parameter. This allows agent harnesses to update Claude's instructions mid-task (permissions, token budgets, environment context) without routing the update through a user turn and without busting the prompt cache prefix.
+- **Impact on ag3nts**:
+  - The pre-commit review gate pipeline runs multiple sequential agent stages (lint → security → marker). Currently, any instruction change between stages requires restructuring the prompt or accepting a cache miss. With system entries in the messages array, the harness can inject updated stage-specific instructions mid-conversation without invalidating the cached prefix.
+  - The `code-reviewer` dispatcher (4 parallel sub-agents) and REPAIR pipeline stages (4 and 6) can use this to dynamically adjust agent permissions or scope mid-run.
+  - `shared/ag3nts.md` documents `claude --bare -p` as the scripted execution pattern — this feature is most impactful in multi-turn orchestration code that calls the Messages API directly.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add the Messages API docs URL with a note on system entries in messages array
+  - [ ] `shared/ag3nts.md` — note under "Scripted / Automated Runs" that the Messages API now supports mid-task system entries for cache-safe instruction updates
+- **Priority**: High — directly enables cache-efficient multi-stage orchestration; implement when next touching pipeline code or adding a new agent stage
+
+---
+
+#### Managed Agents: Dreaming, Outcomes, and Multi-Agent Orchestration (May 6, 2026)
+- **Source**: https://thenewstack.io/anthropic-managed-agents-dreaming-outcomes/ | https://9to5mac.com/2026/05/07/anthropic-updates-claude-managed-agents-with-three-new-features/
+- **Published**: 2026-05-06
+- **Category**: API / Agent
+- **What Changed**: Anthropic shipped three new Managed Agents features at Code with Claude London on May 6: (1) **Dreaming** (research preview) — a scheduled process that reviews an agent's past sessions and memory stores, extracts cross-session patterns, and curates memory so agents improve autonomously over time (Harvey saw 6× task completion rate improvement); (2) **Outcomes** (public beta) — you write a rubric describing what success looks like; the agent works toward that rubric rather than completing a single instruction; (3) **Multi-agent orchestration** (public beta) — Managed Agents can now spawn and coordinate sub-agents server-side.
+- **Impact on ag3nts**:
+  - **Dreaming** is architecturally close to the `feedback` agent (Haiku) which captures user preferences across sessions. If ag3nts migrates to Managed Agents REST API, Dreaming could replace or augment `feedback` with automated cross-session pattern extraction rather than requiring explicit user feedback prompts.
+  - **Outcomes** maps directly to the `reality-checker` agent's "defaults to NEEDS WORK" production readiness gate — Outcomes lets the harness specify a success rubric rather than relying on post-hoc agent judgment.
+  - **Multi-agent orchestration** server-side is the Managed Agents equivalent of `code-reviewer`'s 4-parallel-specialist dispatch pattern. Currently implemented via Claude Code CLI hooks; if migrated to Managed Agents, orchestration moves server-side with built-in state persistence.
+  - All three features require the Managed Agents REST API — not the Claude Code CLI. Relevant for a future pipeline migration, not immediately actionable for CLI workflows.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add reference for the Managed Agents Dreaming/Outcomes announcement
+  - [ ] Future consideration: when evaluating Managed Agents migration, map `feedback` → Dreaming, `reality-checker` rubric → Outcomes, `code-reviewer` dispatcher → server-side multi-agent orchestration
+- **Priority**: Medium — not immediately applicable to CLI workflow; high architectural relevance for future Managed Agents migration of the REPAIR pipeline
+
+---
+
+#### Expanding Project Glasswing — 150 Additional Organizations in 15+ Countries (June 2, 2026)
+- **Source**: https://www.anthropic.com/news/expanding-project-glasswing | https://techcrunch.com/2026/06/02/anthropic-scales-claude-mythos-to-critical-infrastructure-in-15-countries/
+- **Published**: 2026-06-02
+- **Category**: Safety / Agent / Model
+- **What Changed**: Anthropic expanded Project Glasswing from its initial ~50 partners (April 2026) to 150 additional organizations across 15+ countries. New partner categories: power, water, healthcare, communications, and hardware sectors — not well-represented in the original launch. To date, Glasswing partners have disclosed 10,000+ high/critical security flaws using Claude Mythos Preview. New partners must meet security requirements before gaining Mythos access. Anthropic has signaled broader Mythos availability is coming in the "coming months."
+- **Impact on ag3nts**:
+  - The `security-engineer` agent (Opus 4.x) performs OWASP audits and threat modeling. Glasswing's 10,000+ disclosed vulnerabilities is empirical validation that AI-assisted security auditing at scale is production-grade — aligns with ag3nts' security-first pre-commit gate.
+  - The "coming months" broader Mythos availability signal is relevant for upgrading the `security-engineer` agent: if Mythos becomes API-accessible, it would be the premier model for that agent role.
+  - No immediate config changes needed. Watch for Mythos GA announcement.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add the Glasswing expansion announcement URL
+- **Priority**: Low — informational; no API or config changes; escalate to High when Mythos GA is announced
+
+---
+
+#### ⚠️ NEW DEADLINE: Claude Opus 4.1 Deprecation — Retiring August 5, 2026
+- **Source**: https://platform.claude.com/docs/en/about-claude/model-deprecations
+- **Published**: 2026-06-05 (notification date)
+- **Category**: Model
+- **What Changed**: Anthropic notified developers on June 5, 2026 that `claude-opus-4-1-20250805` will be retired from the Claude API on **August 5, 2026** (60 days notice per policy). Recommended replacement: `claude-opus-4-8`. This is separate from the June 15 deadline for `claude-opus-4-20250514` and `claude-sonnet-4-20250514`.
+- **Impact on ag3nts**:
+  - If any agent definition or script in `~/.claude/agents/` or `shared/` references `claude-opus-4-1-20250805`, it will fail after August 5. The `software-architect` and `security-engineer` agents use Opus; if either was configured with the 4.1 snapshot ID, update to `claude-opus-4-8` (already recommended in prior scans for the June 15 Opus 4 → 4.8 upgrade).
+  - Sets the next post-June-15 deprecation milestone to track: 59 days from today.
+- **Proposed Changes**:
+  - [ ] Audit `~/.claude/agents/` for `claude-opus-4-1-20250805` and replace with `claude-opus-4-8` — can bundle with the June 15 deprecation audit
+- **Priority**: High — second hard deprecation deadline after June 15; track and action during the June 15 audit sweep
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **[Critical — 8 days] Complete the June 15 model deprecation audit** — `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|claude-opus-4-1-20250805\|claude-haiku-3" ~/.claude/ shared/ windows/ macos/`. Hard API failure on June 15 for Sonnet 4 and Opus 4 snapshot IDs. While running the audit, also flag any `claude-opus-4-1-20250805` references (August 5 deadline). Replace all with `claude-sonnet-4-6`, `claude-opus-4-8`, `claude-haiku-4-5-20251001`. Carry-forward since May 19.
+
+2. **[High] Upgrade Opus agents to claude-opus-4-8** — Update `software-architect` and `security-engineer` agent definitions. This resolves both the June 15 Opus 4 deadline AND the August 5 Opus 4.1 deadline in one pass. Fast Mode at 3× lower cost than Opus 4.7 is now the standard. Carry-forward since May 29.
+
+3. **[High] Note Messages API system entries feature in ag3nts.md** — Add a note under "Scripted / Automated Runs" that the Messages API now supports mid-task `system` entries in the messages array for cache-safe instruction updates. Directly applicable to the multi-stage pre-commit pipeline (lint → security → marker) and any future Messages API orchestration code.
+
+---
+
+## Latest Scan: 2026-06-06
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 2
+- Actionable integrations: 2
+
+### Context
+
+One day since last scan (June 5). Full scan of all four Anthropic channels plus targeted follow-up on security/government stories, enterprise tooling, and June 5-6 publications. Two items confirmed absent from all prior scan entries: (1) **NSA deploying Anthropic's Mythos for offensive cyber operations** — Financial Times report published June 5, 2026 (same day as last scan, likely published after it ran): Anthropic embedded ~6 engineers inside NSA; Mythos being used for offensive cyber ops against foreign networks, carved out from the broader Pentagon-Anthropic dispute under Hegseth's supply chain risk directive; (2) **Claude Compliance API + 28 Enterprise Security Integrations** — announced May 21, 2026, missed by all prior scans: programmatic access to Claude Enterprise conversation logs and activity event logs for DLP/SIEM/CASB/identity governance pipelines. No new research papers (last: May 8). No new engineering posts (last: April 23). **June 15 deprecated-model deadline is now 9 days away.**
+
+---
+
+### Findings
+
+#### NSA Deploying Anthropic Mythos for Offensive Cyber Operations
+- **Source**: https://techcrunch.com/2026/06/05/nsa-said-to-be-readying-anthropics-mythos-for-use-in-cyber-operations/ (TechCrunch, sourcing Financial Times)
+- **Published**: 2026-06-05
+- **Category**: Safety / Agent / Business
+- **What Changed**: Per a Financial Times report, Anthropic has embedded approximately six engineers inside the National Security Agency to deploy its Claude Mythos Preview model for offensive cyber operations against foreign networks. The arrangement is explicitly carved out from the Trump administration's broader supply chain risk directive (issued Feb 27, 2026 under Defense Secretary Hegseth) that designated Claude models as restricted for federal procurement. The NSA deployment of Mythos is the only federal carve-out; the broader Pentagon-Anthropic dispute (centered on the administration's demand that Claude support "all lawful purposes" including mass surveillance and autonomous weapons) remains unresolved. Anthropic has refused those terms and the designation is under litigation.
+- **Impact on ag3nts**:
+  - The `security-engineer` agent already references Glasswing/Mythos in its knowledge base. The NSA offensive cyber deployment confirms Mythos as a state-level offensive tool — relevant context for calibrating `security-engineer`'s threat model: AI-assisted attacks are no longer hypothetical.
+  - The Pentagon-Anthropic dispute is a material business risk for ag3nts users in government/defense-adjacent industries. If the supply chain risk designation is upheld, Claude API access for those users could be restricted.
+  - No immediate config changes required. Informational context for the `security-engineer` system prompt and for users in regulated/government environments.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add TechCrunch / Small Wars Journal reference for the NSA Mythos deployment report
+- **Priority**: Medium — material business context for government/defense ag3nts users; no immediate API/config impact; escalate to High if the Pentagon designation is upheld and expands to commercial users
+
+---
+
+#### Claude Compliance API — 28 Enterprise Security & Governance Integrations
+- **Source**: https://www.securityweek.com/anthropic-expands-claudes-enterprise-security-reach-with-28-new-integrations/ | https://support.claude.com/en/articles/15167101-get-started-with-claude-compliance-api-integrations
+- **Published**: 2026-05-21
+- **Category**: API / Tooling / Safety
+- **What Changed**: Anthropic launched the **Claude Compliance API**, giving IT and security teams programmatic access to two data streams from Claude Enterprise: (1) conversation content (chats, uploaded files, projects), and (2) activity event logs (user logins, admin actions, configuration changes). Simultaneously, 28 enterprise security and compliance platforms were certified as integration partners: Cloudflare, Cribl, CrowdStrike, Cyera, Datadog, Forcepoint, Fortinet, IBM Guardium, Microsoft Purview, Mimecast, Netskope, Okta, Palo Alto Networks, Proofpoint, Relativity, ReliaQuest, Rubrik, SailPoint, Smarsh, Snyk, Sumo Logic, Tenable, Theta Lake, Trellix, Varonis, Wiz, Zscaler, and Geordie AI. Integration categories span DLP, SASE, SIEM, identity management, e-discovery, and AI observability.
+- **Impact on ag3nts**:
+  - ag3nts on Claude Enterprise can now route conversation and activity logs into existing SIEM/DLP stacks (Datadog, Sumo Logic, Splunk-compatible formats via Cribl). This enables compliance auditing of ag3nts pipeline runs — pre-commit hook invocations, REPAIR pipeline stages, and automated `claude --bare -p` scripted runs all generate auditable activity logs.
+  - The `security-engineer` agent performs OWASP audits; Snyk and Wiz integrations with the Compliance API mean security findings from `security-engineer` sessions could be correlated with enterprise vulnerability tracking in those platforms.
+  - The Compliance API's activity event stream is the same data surface that Anthropic uses for usage metering — relevant for monitoring automated pipeline costs and detecting anomalous agent behavior.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add Claude Compliance API help article URL and SecurityWeek reference as an enterprise governance reference
+  - [ ] `shared/ag3nts.md` — consider adding a note under "Scripted / Automated Runs" that `claude --bare -p` runs on Enterprise plans generate Compliance API-accessible activity logs (useful for audit trails)
+- **Priority**: Medium — directly enables enterprise compliance for ag3nts pipelines; implement repos.md update now; ag3nts.md note is low-urgency
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **[Critical — 9 days] Audit and replace deprecated model IDs before June 15** — `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|claude-haiku-3\|thinking.*enabled\|budget_tokens" ~/.claude/ shared/ windows/ macos/`. Hard API failure on June 15. Replace with `claude-sonnet-4-6`, `claude-opus-4-8`, `claude-haiku-4-5-20251001`. Carry-forward since May 19 — this is the last week to act.
+
+2. **[High] Upgrade Opus agents to claude-opus-4-8** — Update `software-architect` and `security-engineer` agent definitions. Opus 4.8 Fast Mode is 3× cheaper than 4.7 Fast Mode at 2.5× speed — optimal for the pre-commit hook pipeline stages. Carry-forward since May 29.
+
+3. **[Medium] Add Claude Compliance API to repos.md + ag3nts.md** — Add the Compliance API help URL and a note that Enterprise `claude --bare -p` runs generate auditable activity logs accessible via Compliance API. Grounds ag3nts' automated pipeline in an enterprise governance framework.
+
+---
+
 ## Latest Scan: 2026-06-05
 
 ### Summary
