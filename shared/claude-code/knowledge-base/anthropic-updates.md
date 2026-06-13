@@ -1,5 +1,43 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-06-13
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 1
+- Actionable integrations: 0
+
+### Context
+
+One day since last scan (June 12). Full scan of all four Anthropic channels: research blog (no new posts since NLAs on May 7), news index (Claude Corps published June 12 after previous scan ran; all other items captured in prior entries), engineering index (no new posts since April 23 postmortem), docs API release notes (no new entries since prior scan). One new item confirmed absent from all prior scan entries: **Claude Corps** (June 12, 2026) — a national nonprofit fellowship program; Low relevance to ag3nts developer config. No new model releases, API changes, or engineering posts. **June 15 deprecated-model deadline is NOW 2 DAYS AWAY — immediately actionable.**
+
+---
+
+### Findings
+
+#### Introducing Claude Corps — National AI Fellowship Program
+- **Source**: https://www.anthropic.com/news/claude-corps
+- **Published**: 2026-06-12
+- **Category**: Safety / Ecosystem
+- **What Changed**: Anthropic launched Claude Corps, a national fellowship program matching 1,000 early-career fellows with nonprofits across America. Fellows are trained on Claude, placed full-time with host organizations for one year, and paid by Anthropic. Initial $150M commitment; first cohort of 100 begins October 2026. Applications close July 17. Host organization webinars are running now.
+- **Impact on ag3nts**: None — this is a social/community initiative, not an API, model, or tooling change. No agent config, model ID, or workflow changes required.
+- **Proposed Changes**: None
+- **Priority**: Low — informational only; no ag3nts config impact
+
+---
+
+### Recommendations
+
+Top 3 carry-forward actions (**June 15 deadline is in 2 days — URGENT**):
+
+1. **[Critical — 2 days] Complete the June 15 model deprecation audit** — `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|claude-opus-4-1-20250805\|claude-haiku-3" ~/.claude/ shared/ windows/ macos/`. Hard API failure on June 15 for Sonnet 4 and Opus 4 snapshot IDs. Replace all with `claude-sonnet-4-6`, `claude-opus-4-8`, or `claude-fable-5` for Opus-tier agents. **2 days remaining — must act today.**
+
+2. **[High] Upgrade Opus agents to `claude-fable-5`** — Update `software-architect` and `security-engineer` agent definitions. Fable 5 is the new top-tier generally available model ($10/$50 per M tokens); the June 15 deadline already forces a model ID change for these agents, so go directly to `claude-fable-5` rather than stopping at `claude-opus-4-8`. Update ag3nts.md table and add announcement to `repos.md`. Carry-forward since June 10.
+
+3. **[Medium] Evaluate Advisor Tool beta with `tools[].max_tokens` for `software-architect` + `security-engineer`** — `max_tokens` cap makes per-invocation Fable 5 cost predictable for REPAIR Stages 4 and 6. Read `docs.anthropic.com/en/docs/agents-and-tools/server-tools/advisor-tool`, test with `max_tokens: 1024`. Carry-forward since June 8.
+
+---
+
 ## Latest Scan: 2026-06-12
 
 ### Summary
