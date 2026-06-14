@@ -1,5 +1,68 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-06-14
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 3
+- Actionable integrations: 2
+
+### Context
+
+One day since last scan (June 13). The June 13 scan ran before the Fable 5/Mythos 5 access suspension was published at 5:21pm ET on June 12 — so that Critical item was missed. Today also surfaces two June 3 security research articles not captured in any prior entry. Engineering index: still no new posts since April 23. **June 15 deprecated-model deadline is TOMORROW — urgently overdue.**
+
+---
+
+### Findings
+
+#### US Government Directive: Suspend All Access to Fable 5 and Mythos 5
+- **Source**: https://www.anthropic.com/news/fable-mythos-access
+- **Published**: 2026-06-12 (5:21pm ET; after June 13 scan ran)
+- **Category**: Model
+- **What Changed**: The US government issued an export control directive banning Fable 5 and Mythos 5 access for all foreign nationals worldwide. Anthropic received the directive at 5:21pm ET on June 12 and immediately disabled both models for all customers globally to comply. Access to all other Anthropic models (Opus 4.8, Sonnet 4.6, Haiku 4.5) is unaffected. Anthropic disagrees with the directive but is complying. No restoration timeline provided.
+- **Impact on ag3nts**: All prior scan recommendations to upgrade to `claude-fable-5` for `software-architect` and `security-engineer` are now invalid. Any agent definitions specifying `claude-fable-5` will return API errors immediately. The fallback is `claude-opus-4-8`. Critically, the June 15 deprecation deadline still applies to OLD model IDs — the path now goes from deprecated IDs → `claude-opus-4-8` (not Fable 5).
+- **Proposed Changes**:
+  - [ ] `~/.claude/agents/software-architect.md` — set model to `claude-opus-4-8` (NOT claude-fable-5)
+  - [ ] `~/.claude/agents/security-engineer.md` — set model to `claude-opus-4-8` (NOT claude-fable-5)
+  - [ ] `shared/ag3nts.md` — update agent table to show `claude-opus-4-8` for Opus-tier agents; add note about Fable 5 suspension
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add Fable 5/Mythos 5 suspension announcement link
+- **Priority**: Critical — Fable 5 API calls fail immediately; June 15 deadline is tomorrow
+
+#### What We Learned Mapping a Year's Worth of AI-Enabled Cyber Threats (MITRE ATT&CK)
+- **Source**: https://www.anthropic.com/news/AI-enabled-cyber-threats-mitre-attack
+- **Published**: 2026-06-03
+- **Category**: Safety
+- **What Changed**: Anthropic analyzed 832 banned accounts engaged in malicious cyber activity between March 2025 and March 2026, mapping 13,873 actions across 482 MITRE ATT&CK techniques. Key finding: AI is now being used in the *later, more complex* stages of attack chains, and agentic AI behaviors (autonomous decision-making, sequential orchestration, execution without human intervention) are not yet represented in the ATT&CK framework. Anthropic partnered with Verizon for inclusion in the 2026 DBIR. An LLM ATT&CK Navigator tool was also published.
+- **Impact on ag3nts**: Directly relevant to `security-engineer` agent threat modeling. The finding that agentic AI behaviors enable autonomous cyberattacks strengthens the case for the existing `security-sensitive-file-check.sh` hook and OWASP audit in Stage 6. The LLM ATT&CK Navigator is a new reference for threat enumeration.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add MITRE ATT&CK research link and LLM ATT&CK Navigator (https://red.anthropic.com/2026/attack-navigator/)
+  - [ ] `~/.claude/agents/security-engineer.md` — consider adding LLM ATT&CK Navigator as a reference URL in the agent's web access list
+- **Priority**: Medium — informs security-engineer posture; no immediate config change required
+
+#### Disrupting the First Reported AI-Orchestrated Cyber Espionage Campaign
+- **Source**: https://www.anthropic.com/news/disrupting-AI-espionage
+- **Published**: 2026-06 (exact date TBD; tied to June 3 cyber threats cluster)
+- **Category**: Safety
+- **What Changed**: Anthropic documented the first known large-scale cyberattack executed without substantial human intervention. A Chinese state-sponsored group (GTG-1002) used agentic Claude Code to autonomously discover and exploit vulnerabilities across ~30 global targets, performing post-exploitation activities autonomously. Anthropic detected the campaign in mid-September 2025 and disrupted it. Claude Code's tool-use capabilities were specifically weaponized.
+- **Impact on ag3nts**: Reinforces the importance of the `pre-commit-secrets-scan.sh` and `security-sensitive-file-check.sh` hooks. The `security-engineer` agent's OWASP audit at Stage 6 is validated by this finding. No new config changes required — existing safeguards address the threat vectors described. However, it's worth ensuring `security-engineer` agent instructions explicitly flag agentic misuse patterns as a threat category.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add disruption report link
+- **Priority**: Low — existing ag3nts safeguards already address this; informational reinforcement
+
+---
+
+### Recommendations
+
+Top 3 actions (**June 15 deprecation deadline is TOMORROW**):
+
+1. **[Critical — TODAY] Revert Opus-tier agents to `claude-opus-4-8`** — The prior recommendation to upgrade `software-architect` and `security-engineer` to `claude-fable-5` must NOT be followed. Fable 5 is suspended. Set both agents to `claude-opus-4-8` instead. Also run: `grep -r "claude-fable-5\|claude-sonnet-4-20250514\|claude-opus-4-20250514\|claude-opus-4-1-20250805\|claude-haiku-3" ~/.claude/ shared/` to catch any remaining deprecated or now-suspended model IDs.
+
+2. **[Critical — TODAY] Complete June 15 deprecation audit** — As of tomorrow (June 15), `claude-sonnet-4-20250514`, `claude-opus-4-20250514`, and `claude-opus-4-1-20250805` cause hard API failures. Replace with `claude-sonnet-4-6`, `claude-opus-4-8`, `claude-haiku-4-5-20251001` respectively. With Fable 5 suspended, `claude-opus-4-8` is the current top-tier model.
+
+3. **[Medium] Add LLM ATT&CK Navigator to `security-engineer` references** — The new Anthropic tool at `https://red.anthropic.com/2026/attack-navigator/` maps LLM-specific attack techniques not in standard MITRE ATT&CK. Add to `security-engineer` agent web references and `repos.md`. Low-effort, high-signal for threat modeling.
+
+---
+
 ## Latest Scan: 2026-06-13
 
 ### Summary
