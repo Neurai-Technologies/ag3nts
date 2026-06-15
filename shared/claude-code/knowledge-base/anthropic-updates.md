@@ -1,5 +1,50 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-06-15
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 1
+- Actionable integrations: 1
+
+### Context
+
+One day since last scan (June 14). Full scan of all four Anthropic channels: no new research posts (last: June 3 cyber threats cluster), no new news posts (last: June 12 Claude Corps + Fable 5/Mythos 5 suspension), no new engineering posts (last: April 23 Claude Code postmortem). The sole change today is operational: **the June 15 model deprecation deadline is NOW ACTIVE**. `claude-sonnet-4-20250514` and `claude-opus-4-20250514` return hard API errors starting today. Fable 5 and Mythos 5 remain suspended under the US government directive with no restoration timeline. The subscription programmatic credit split (Agent SDK, Claude Code scheduled runs, GitHub Actions) also went live today — this scan now consumes from a separate monthly credit pool ($20/Pro, $100/Max 5×, $200/Max 20×).
+
+---
+
+### Findings
+
+#### June 15 Model Retirement — NOW ACTIVE
+- **Source**: https://platform.claude.com/docs/en/about-claude/model-deprecations
+- **Published**: 2026-04-14 (deprecation announced); **effective 2026-06-15 (TODAY)**
+- **Category**: Model
+- **What Changed**: `claude-sonnet-4-20250514` and `claude-opus-4-20250514` are now retired. All API calls to these model IDs return hard errors as of today. This is no longer upcoming — it is live. With Fable 5 suspended, the correct Opus-tier path is `claude-opus-4-8` (the current highest-capability available model at $10/$50 per MTok). Next deadline: `claude-opus-4-1-20250805` retires August 5, 2026 (51 days).
+- **Impact on ag3nts**: Any agent definition, config file, or script still referencing `claude-sonnet-4-20250514` or `claude-opus-4-20250514` fails immediately on every API call. The June 14 scan flagged this as "TOMORROW" — it is TODAY. The audit command must be run now.
+- **Proposed Changes**:
+  - [ ] Run `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|claude-fable-5" ~/.claude/ shared/ windows/ macos/` and replace hits:
+    - `claude-sonnet-4-20250514` → `claude-sonnet-4-6`
+    - `claude-opus-4-20250514` → `claude-opus-4-8`
+    - `claude-fable-5` → `claude-opus-4-8` (Fable 5 suspended; do not use)
+  - [ ] Confirm `~/.claude/agents/software-architect.md` model field is `claude-opus-4-8`
+  - [ ] Confirm `~/.claude/agents/security-engineer.md` model field is `claude-opus-4-8`
+  - [ ] Update `shared/ag3nts.md` agent table to reflect `claude-opus-4-8` for Opus-tier agents
+- **Priority**: Critical — hard API failures active NOW
+
+---
+
+### Recommendations
+
+Top 3 actions for June 15:
+
+1. **[Critical — NOW] Run deprecated model audit** — `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|claude-fable-5" ~/.claude/ shared/ windows/ macos/`. These IDs return hard errors today. Replace with `claude-sonnet-4-6` / `claude-opus-4-8`. Fable 5 is suspended — do not use it as a target.
+
+2. **[High] Verify Opus-tier agent definitions** — Confirm `software-architect` and `security-engineer` agent files specify `claude-opus-4-8`. The prior recommendation to upgrade to `claude-fable-5` must not be followed while the government suspension is in effect.
+
+3. **[Medium] Flag Opus 4.1 retirement (Aug 5, 2026)** — `claude-opus-4-1-20250805` retires in 51 days. Begin migration planning to `claude-opus-4-8`. No immediate action required, but schedule the audit before August 5.
+
+---
+
 ## Latest Scan: 2026-06-14
 
 ### Summary
