@@ -1,5 +1,56 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-06-16
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com) + Claude Code changelog
+- New findings: 2
+- Actionable integrations: 2
+
+### Context
+
+One day since last scan (June 15). Full scan of all four Anthropic channels plus Claude Code changelog. Research blog: no new posts (last: June 3 cyber threats cluster). News: no new posts (last: June 12 Fable 5 suspension + Public Record). Engineering blog: no new posts (last: April 23 Claude Code postmortem). Docs API: no new entries. Claude Code changelog: two items confirmed absent from all prior scan entries — (1) `ultracode` effort setting (v2.1.160, June 2) and (2) nested sub-agents 5-levels-deep (v2.1.172, June 10). Both published after the relevant scan dates but missed in intervening scans. The June 15 model deprecation is now active (no new guidance from Anthropic). Next known deadline: `claude-opus-4-1-20250805` retires August 5, 2026 (50 days).
+
+---
+
+### Findings
+
+#### Ultracode Setting — xhigh-Effort Dynamic Workflows in Claude Code
+- **Source**: https://docs.anthropic.com/en/release-notes/claude-code; https://code.claude.com/docs/en/workflows
+- **Published**: 2026-05-28 (v2.1.154, shipped as `workflow`); renamed to `ultracode` in v2.1.160 on 2026-06-02
+- **Category**: Tooling / Agent
+- **What Changed**: Claude Code now has an `ultracode` effort mode (command: `/effort ultracode`). It sets effort to `xhigh` and lets Claude automatically decide when to spin up dynamic workflows — orchestrating parallel sub-agents for large-scale tasks. Validated use cases include codebase-wide bug hunts, security hardening passes, profiler-guided optimization audits, and adversarial verification sweeps.
+- **Impact on ag3nts**: The REPAIR pipeline's Stage 4 (threat model) and Stage 6 (OWASP audit) currently invoke `security-engineer` and `code-reviewer` as sequential calls. `ultracode` could collapse these into a single dynamic-workflow invocation with automatic parallel orchestration. The `code-reviewer`'s 4-parallel-specialist dispatch is already analogous to a dynamic workflow — `ultracode` formalizes this pattern natively without custom hook orchestration overhead. Scripted `--bare -p` runs in `shared/ag3nts.md` can pass `--effort ultracode` for intensive pipeline stages.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — add note in "Scripted / Automated Runs" section: `ultracode` effort mode (`/effort ultracode` or `--effort ultracode` flag) enables automatic dynamic workflow orchestration; recommended for REPAIR Stage 4/6 intensive agent runs
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add `https://code.claude.com/docs/en/workflows` (Dynamic workflows / ultracode docs)
+- **Priority**: Medium — enhances existing ag3nts multi-agent orchestration; no breaking changes
+
+#### Nested Sub-agents (5 Levels Deep) — Claude Code v2.1.172
+- **Source**: https://docs.anthropic.com/en/release-notes/claude-code; https://code.claude.com/docs/en/agents
+- **Published**: 2026-06-10 (v2.1.172; shipped by Boris Cherny)
+- **Category**: Agent
+- **What Changed**: Claude Code sub-agents can now spawn their own sub-agents, up to 5 levels of nesting. Each nested sub-agent gets a fresh context window with its own system prompt and model. The parent agent reads only the leaf's distilled summary — keeping noisy intermediate tool calls out of the main conversation context. Hard limit is 5 nesting levels; Anthropic is collecting feedback on whether the ceiling feels right.
+- **Impact on ag3nts**: The `code-reviewer` agent already dispatches 4 parallel specialists. With nested sub-agents, each specialist (e.g., the security specialist) can itself spawn a `security-engineer` sub-agent without polluting the main REPAIR context window. The `feedback` and `software-architect` agents can offload long-running sub-tasks (ADRs, domain modeling deep dives) to nested layers. REPAIR pipeline stages 4 and 6 benefit most: each stage's agent could nest its own sub-agents for multi-pass analysis while passing only distilled findings upward.
+- **Proposed Changes**:
+  - [ ] `~/.claude/agents/code-reviewer.md` — add note that each specialist sub-agent can now delegate to its own nested sub-agents (up to 5 levels) for deeper analysis; e.g., the security specialist can spawn `security-engineer` as a nested sub-agent
+  - [ ] `shared/ag3nts.md` — add note in "Agents" section that nested sub-agents (5 levels, Claude Code v2.1.172+) are now supported; REPAIR pipeline stages can use nesting to keep intermediate reasoning out of the top-level context window
+- **Priority**: Medium — expands orchestration depth for the ag3nts multi-agent system; no breaking changes
+
+---
+
+### Recommendations
+
+Top 3 actions for June 16:
+
+1. **[Critical — carry-forward] Verify June 15 deprecated model audit is complete** — `claude-sonnet-4-20250514` and `claude-opus-4-20250514` now return hard API errors. Run `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514\|claude-fable-5\|claude-opus-4-1-20250805" ~/.claude/ shared/` to confirm no remaining hits. With Fable 5 suspended, all Opus-tier agents must use `claude-opus-4-8`.
+
+2. **[Medium — New] Evaluate `ultracode` mode for REPAIR pipeline intensive stages** — Add `--effort ultracode` to Stage 4 (threat model) and Stage 6 (OWASP audit) in scripted REPAIR runs. Document in `shared/ag3nts.md` Scripted/Automated Runs section. Add workflow docs to `repos.md`. Low effort, high leverage for parallelizing multi-pass analysis.
+
+3. **[Medium — Carry-forward] Evaluate Advisor Tool `tools[].max_tokens` for `software-architect` + `security-engineer`** — Carry-forward from June 8. Read `docs.anthropic.com/en/docs/agents-and-tools/server-tools/advisor-tool`, test with `max_tokens: 1024`. Reduces per-invocation advisor output cost and latency for REPAIR Stages 4 and 6.
+
+---
+
 ## Latest Scan: 2026-06-15
 
 ### Summary
