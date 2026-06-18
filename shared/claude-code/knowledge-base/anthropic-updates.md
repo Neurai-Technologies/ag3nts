@@ -1,5 +1,64 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-06-18
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com) + Claude Code changelog
+- New findings: 3
+- Actionable integrations: 2
+
+### Context
+
+Two days since last scan (June 16). Full scan of all four Anthropic channels: no new research posts (last: June 16 "Agentic coding and persistent returns to expertise"), no new news posts (last: June 12 Fable 5 suspension + Public Record), no new engineering posts (last: April 23 Claude Code postmortem). Anthropic presence at AWS Summit LA (June 17) and AWS Summit NYC (June 18) — events only, no new product announcements. Three findings confirmed absent from all prior scan entries: (1) the June 16 research paper "Agentic coding and persistent returns to expertise" published the same day as the prior scan and missed by it; (2) Claude Code `/cd` command (v2.1.169, Week 24 June 8–12) missed by all prior scans; (3) auto mode now available on Bedrock/Vertex/Foundry (`CLAUDE_CODE_ENABLE_AUTO_MODE=1`) also from Week 24 and not logged. No new API changes, model releases, or deprecations since June 16. Fable 5 remains suspended. Next deprecation deadline: `claude-opus-4-1-20250805` retires August 5, 2026 (48 days).
+
+---
+
+### Findings
+
+#### "Agentic Coding and Persistent Returns to Expertise" — Anthropic Research
+- **Source**: https://www.anthropic.com/research/claude-code-expertise
+- **Published**: 2026-06-16 (missed by June 16 scan)
+- **Category**: Agent
+- **What Changed**: Anthropic published a study of ~400,000 Claude Code sessions (Oct 2025–Apr 2026). Key findings: (1) humans drive planning decisions, Claude drives execution decisions in a typical session; (2) greater domain expertise → more work completed per instruction and higher session success rate; (3) on coding tasks, all major occupations succeed at nearly the same rate as software engineers — agentic coding is broadly accessible. Data is privacy-preserving.
+- **Impact on ag3nts**: Validates the ag3nts human-plans/Claude-executes architecture — the REPAIR pipeline's stage structure (human-defined stages, agent-executed steps) directly reflects the human-planning / Claude-execution split observed across 400k sessions. The "every occupation succeeds equally" finding supports extending ag3nts tooling beyond the dev context. Informational; no config changes required.
+- **Proposed Changes**:
+  - [ ] No config changes — research validates existing architecture; add URL to `shared/claude-code/knowledge-base/repos.md` as a reference for agent design rationale
+- **Priority**: Low — informational; validates existing design decisions
+
+#### Claude Code `/cd` Command — Mid-Session Working Directory Change (v2.1.169)
+- **Source**: https://docs.anthropic.com/en/release-notes/claude-code
+- **Published**: ~2026-06-10 (v2.1.169, Week 24; missed by all prior scans)
+- **Category**: Tooling
+- **What Changed**: `/cd <path>` moves the active session to a new working directory without breaking the prompt cache. The new directory's CLAUDE.md is appended as a message rather than replacing the system prompt — preserving the cached prefix while injecting new project context.
+- **Impact on ag3nts**: Multi-repo REPAIR pipeline sessions can now switch project context mid-session without a restart. For scripted `--bare -p` runs (documented in `shared/ag3nts.md`), batch automation can redirect a session across repositories in sequence. The cache-safe append behavior also means agent sub-sessions (spawned by code-reviewer's 4-parallel-specialist dispatch) can target different subdirectories without invalidating their shared context.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — add `/cd <path>` to the Commands table with description "Move session to new working directory (cache-safe; appends new CLAUDE.md as message)"
+- **Priority**: Medium — practical for multi-repo pipelines; no breaking changes
+
+#### Claude Code Auto Mode on Bedrock / Vertex / Foundry (v2.1.17x, Week 24)
+- **Source**: https://docs.anthropic.com/en/release-notes/claude-code
+- **Published**: ~2026-06-10 (Week 24; missed by all prior scans)
+- **Category**: Tooling
+- **What Changed**: Auto mode (the classifier-backed permission system documented in `shared/ag3nts.md`) is now available on Amazon Bedrock, Google Vertex AI, and Microsoft Foundry — previously it was only available via the direct Anthropic API. Enable with `CLAUDE_CODE_ENABLE_AUTO_MODE=1`. Supports Opus 4.7 and Opus 4.8.
+- **Impact on ag3nts**: `shared/ag3nts.md` documents auto mode as the default permission mode. Current setup uses the direct Anthropic API, so this is not an immediate change. If any future ag3nts deployment targets a cloud provider (AWS/GCP/Azure Foundry), auto mode now works there with the same AI-classifier-reviewed tool calls and fallback behavior. No agent definition changes required.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — add note in "Permission Mode" section: auto mode is now also available on Bedrock, Vertex, and Foundry (enable with `CLAUDE_CODE_ENABLE_AUTO_MODE=1`; supports Opus 4.7 and 4.8)
+- **Priority**: Low — informational for current direct-API setup; relevant if infrastructure moves to cloud providers
+
+---
+
+### Recommendations
+
+Top 3 actions for June 18:
+
+1. **[Critical — carry-forward] Verify August 5 deprecation prep** — `claude-opus-4-1-20250805` retires in 48 days. Run `grep -r "claude-opus-4-1-20250805\|claude-opus-4-7\|claude-opus-4-6" ~/.claude/ shared/` to confirm no agents are pinned to pre-4.8 Opus snapshots that will hit the next deadline.
+
+2. **[Medium — New] Add `/cd` to Commands table in ag3nts.md** — The cache-safe mid-session directory change command (v2.1.169) was missed by all prior scans. One-line addition to the Commands table in `shared/ag3nts.md`. Directly useful for multi-repo REPAIR pipeline flows.
+
+3. **[Low — Carry-forward] Evaluate `ultracode` mode for REPAIR Stage 4/6** — Carry-forward from June 16. Add `--effort ultracode` note to Scripted/Automated Runs section of `shared/ag3nts.md`. Low effort, high leverage.
+
+---
+
 ## Latest Scan: 2026-06-16
 
 ### Summary

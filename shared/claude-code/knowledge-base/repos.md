@@ -11,3 +11,4 @@
 | https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents | Anthropic: Effective context engineering — curating high-signal token sets for long-running agents; validates --bare and modular agent design |
 | https://www.anthropic.com/news/token-saving-updates | Anthropic: Token-saving updates — cache-aware ITPM rate limits, simplified prompt caching, token-efficient tool use beta header |
 | https://platform.claude.com/docs/en/agents-and-tools/mcp-tunnels/overview | Anthropic: MCP Tunnels (research preview) — outbound-encrypted gateway for reaching private-network MCP servers without inbound firewall rules; relevant for future Managed Agents CI/CD path |
+| https://www.anthropic.com/research/claude-code-expertise | Anthropic: "Agentic coding and persistent returns to expertise" — ~400k Claude Code session study; humans plan, Claude executes; every occupation succeeds at roughly equal rates; validates human-plans/agent-executes architecture |

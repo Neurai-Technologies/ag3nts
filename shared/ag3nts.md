@@ -32,6 +32,7 @@ Python: `pytest`, files named `test_<module>.py`, mock external services. TypeSc
 | JS tests | `pnpm test` |
 | Lint Python | `ruff check .` |
 | Format Python | `ruff format .` |
+| Change session directory | `/cd <path>` |
 
 ## Agents
 
