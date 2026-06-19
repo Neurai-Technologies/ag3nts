@@ -1,5 +1,43 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-06-19
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com) + Claude Code changelog
+- New findings: 1
+- Actionable integrations: 0
+
+### Context
+
+One day since last scan (June 18). Full scan of all four Anthropic channels plus Claude Code changelog. Research blog: one new item — "Project Fetch: Phase two" (June 18, 2026), missed by the same-day June 18 scan. No new news posts (last: June 17 Seoul office opening). No new engineering posts (last: April 23 Claude Code postmortem). Claude Code changelog: no new versions since June 12 (v2.1.170). No new API endpoints or feature announcements confirmed for June 18–19. Fable 5 remains suspended under the US government export control directive with no restoration timeline. Next deprecation deadline: `claude-opus-4-1-20250805` retires August 5, 2026 (47 days).
+
+---
+
+### Findings
+
+#### Project Fetch: Phase two — Claude Helps Non-Experts Operate a Robot Dog
+- **Source**: https://www.anthropic.com/research/project-fetch-phase-two
+- **Published**: 2026-06-18 (missed by same-day June 18 scan)
+- **Category**: Agent / Research
+- **What Changed**: Anthropic published Phase two of Project Fetch — a controlled experiment where non-robotics-expert employees used Claude to operate an off-the-shelf robotic quadruped. Team Claude completed 7/8 assigned tasks (vs. 6/8 for the Claude-less control team) and finished shared tasks in roughly half the time. Claude excelled at connectivity and sensor-detection tasks (interfacing with the robot's onboard systems, sending commands, processing sensor data). Claude struggled with precise closed-loop physical control — the "fetching" motion — where continuous fine-motor feedback looping wasn't well-modeled by any tested version.
+- **Impact on ag3nts**: No API, model, or config changes required. Informational: defines a current agentic boundary — Claude handles high-level task decomposition and one-shot tool invocations well, but continuous real-time feedback loops with fine-grained actuator control remain outside the effective autonomy envelope. For the ag3nts REPAIR pipeline, this reinforces the existing human-in-the-loop design for stages requiring tight real-time execution feedback.
+- **Proposed Changes**: None
+- **Priority**: Low — informational; no ag3nts config impact
+
+---
+
+### Recommendations
+
+Top 3 actions for June 19:
+
+1. **[Critical — carry-forward] Verify August 5 deprecation prep** — `claude-opus-4-1-20250805` retires in 47 days. Run `grep -r "claude-opus-4-1-20250805\|claude-opus-4-7\|claude-opus-4-6" ~/.claude/ shared/` to confirm no agents are pinned to pre-4.8 Opus snapshots. All Opus-tier agents should use `claude-opus-4-8`.
+
+2. **[Medium — carry-forward] Add `/cd` to Commands table in ag3nts.md** — Cache-safe mid-session directory change (v2.1.169, Week 24) still not implemented from the June 18 finding. One-line addition to the Commands table in `shared/ag3nts.md`.
+
+3. **[Low — carry-forward] Evaluate `ultracode` mode for REPAIR Stage 4/6** — Add `--effort ultracode` note to Scripted/Automated Runs section of `shared/ag3nts.md`. Carry-forward from June 16.
+
+---
+
 ## Latest Scan: 2026-06-18
 
 ### Summary
