@@ -1,5 +1,43 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-06-20
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com) + Claude Code changelog
+- New findings: 1
+- Actionable integrations: 0
+
+### Context
+
+One day since last scan (June 19). Full scan of all four Anthropic channels plus Claude Code changelog and claude.com/blog. Research blog: no new posts since June 18 "Project Fetch: Phase two" (already logged). News: no new posts since June 17 Seoul office opening (already logged). Engineering blog: still April 23 as the last post (no change). Claude Code changelog: no new versions since June 12 (v2.1.170). One missed finding surfaced: Enterprise-Managed MCP Authorization (EMA) with Okta (June 18, 2026) was not captured in either the June 18 or June 19 scans — the June 19 context note "No new API endpoints or feature announcements confirmed for June 18–19" was incorrect. The feature lives on claude.com/blog (not anthropic.com/news or docs.anthropic.com) which likely explains the miss. Fable 5 remains suspended under the US government export control directive. Next deprecation deadline: `claude-opus-4-1-20250805` retires August 5, 2026 (46 days).
+
+---
+
+### Findings
+
+#### Enterprise-Managed MCP Authorization (EMA) with Okta — Zero-Touch MCP Connector Access
+- **Source**: https://claude.com/blog/enterprise-managed-auth
+- **Published**: 2026-06-18 (missed by June 18 and June 19 scans; announced on claude.com/blog, not anthropic.com/news or docs.anthropic.com)
+- **Category**: API / Tooling
+- **What Changed**: Anthropic launched Enterprise-Managed Authorization (EMA) for MCP connectors in beta for Claude Team and Enterprise plan customers. IT admins provision MCP integrations once through Okta (the first supported identity provider); every team member inherits access on first login with no per-user OAuth steps. Built on the IETF OAuth ID-JAG standard, adopted as a formal stable MCP authorization extension on June 18, 2026. Centralized authorization spans Claude chat, Claude Code, and Cowork. Seven MCP providers support EMA at launch: Asana, Atlassian, Canva, Figma, Granola, Linear, Supabase. VS Code ships support at launch alongside Okta and Anthropic.
+- **Impact on ag3nts**: ag3nts runs on the direct Anthropic API for a single developer (personal, not Enterprise plan), so EMA is not directly applicable to the current setup. The ag3nts.md permission mode section documents auto mode but not MCP connector management — no update needed for the personal setup. Informational: if ag3nts is ever deployed on Claude Team/Enterprise, EMA would replace manual per-user MCP OAuth flows, which would affect how `anthropic` agent and other web-enabled sub-agents establish MCP connections. The stable MCP authorization extension is also relevant background for the upcoming MCP Tunnels path (already noted in repos.md).
+- **Proposed Changes**: None — personal setup, not Team/Enterprise
+- **Priority**: Low — informational for current direct-API personal setup; relevant if ag3nts moves to Claude Team/Enterprise or multi-user deployment
+
+---
+
+### Recommendations
+
+Top 3 actions for June 20:
+
+1. **[Critical — carry-forward] Verify August 5 deprecation prep** — `claude-opus-4-1-20250805` retires in 46 days. Run `grep -r "claude-opus-4-1-20250805\|claude-opus-4-7\|claude-opus-4-6" ~/.claude/ shared/` to confirm no agents are pinned to pre-4.8 Opus snapshots. All Opus-tier agents should use `claude-opus-4-8`.
+
+2. **[Medium — carry-forward] Add `/cd` to Commands table in ag3nts.md** — Cache-safe mid-session directory change (v2.1.169, Week 24) still not implemented from the June 18 finding. One-line addition to the Commands table in `shared/ag3nts.md`.
+
+3. **[Low — carry-forward] Evaluate `ultracode` mode for REPAIR Stage 4/6** — Add `--effort ultracode` note to Scripted/Automated Runs section of `shared/ag3nts.md`. Carry-forward from June 16.
+
+---
+
 ## Latest Scan: 2026-06-19
 
 ### Summary
