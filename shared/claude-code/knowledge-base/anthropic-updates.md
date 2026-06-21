@@ -1,5 +1,64 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-06-21
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com) + Claude Code changelog + claude.com/blog
+- New findings: 2 confirmed, 1 unconfirmed
+- Actionable integrations: 2
+
+### Context
+
+One day since last scan (June 20). Full scan of all four Anthropic channels plus Claude Code changelog and claude.com/blog. Research blog: no new posts confirmed since June 18 "Project Fetch: Phase two" (already logged); the research listing shows "Measuring AI agent autonomy in practice" at https://www.anthropic.com/research/measuring-agent-autonomy but no publication date was retrievable — included as Low priority for follow-up. News: no new posts since June 17 Seoul office opening (already logged). Engineering blog: no new posts since April 23 (May 28 "How We Contain Claude" logged in prior scan). Claude Code: **v2.1.182 and v2.1.183 released June 19, 2026 — missed by June 20 scan** (prior scan recorded "no new versions since June 12 v2.1.170"). Key finding: auto mode now natively blocks destructive git commands. Advisor Tool gets a `max_tokens` parameter cap in June 2026. Fable 5 remains suspended under US government export control directive. Next deprecation deadline: `claude-opus-4-1-20250805` retires August 5, 2026 (45 days).
+
+---
+
+### Findings
+
+#### Claude Code v2.1.183 — Native Destructive Git Command Blocking in Auto Mode
+- **Source**: https://docs.anthropic.com/en/release-notes/claude-code
+- **Published**: 2026-06-19 (v2.1.182 / v2.1.183; missed by June 20 scan)
+- **Category**: Tooling
+- **What Changed**: Claude Code v2.1.183 adds native blocking of destructive git and infrastructure operations in auto mode when not explicitly requested: `git reset --hard`, `git checkout -- .`, `git clean -fd`, `git stash drop`, `git commit --amend` (when the commit wasn't made by the agent in that session), and `terraform destroy` / `pulumi destroy` / `cdk destroy`. Also adds `attribution.sessionUrl` setting to control whether the claude.ai session URL is appended to commits and PRs. Bug fixes include: WebSearch returning empty results inside sub-agents, and turns silently completing with no output when the model returned only a thinking block.
+- **Impact on ag3nts**: ag3nts.md already instructs "NEVER run destructive git commands unless explicitly requested." v2.1.183 enforces this natively at the runtime layer in auto mode — a second line of defense complementing the instruction layer. The WebSearch sub-agent bug fix is directly relevant to this agent (`anthropic`), which runs web searches inside automated/sub-agent contexts. The `attribution.sessionUrl` setting is worth auditing: the ag3nts.md commit template already appends a `Claude-Session:` URL line, and the new setting prevents Claude Code from also appending its own session link, avoiding duplicate URLs.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — Add note in the Git section that v2.1.183+ natively enforces destructive-command blocking in auto mode (complementary to the written instruction layer)
+  - [ ] Audit `attribution.sessionUrl` in `shared/claude-code/` settings to avoid duplicate session URL lines in commit messages
+- **Priority**: High — native safety enforcement reinforces the existing policy; sub-agent WebSearch fix directly affects this agent's reliability
+
+#### Advisor Tool `max_tokens` Parameter — Beta Update
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: June 2026 (exact date unconfirmed; advisor tool in beta since 2026-04-09, beta header: `anthropic-beta: advisor-tool-2026-03-01`)
+- **Category**: API
+- **What Changed**: The Advisor Tool now supports a `max_tokens` parameter to cap the advisor model's output per call, reducing latency and output token cost for long-horizon agentic workloads that don't require full-length advisor responses. The advisor tool pattern pairs a fast executor model with a higher-intelligence advisor that provides strategic guidance mid-generation — long-horizon workloads reach close to advisor-solo quality while bulk token generation runs at executor-model rates.
+- **Impact on ag3nts**: The advisor pattern maps well to the REPAIR pipeline (Opus-tier `software-architect` or `security-engineer` advising a faster executor). The `max_tokens` cap makes the pattern more cost-efficient for automated runs. Not currently implemented in ag3nts — no agent uses the `advisor-tool` beta header. Relevant when the tool reaches general availability.
+- **Proposed Changes**:
+  - [ ] No immediate change — monitor for GA; add to repos.md tracking once stable
+- **Priority**: Low — beta, not yet stable; revisit at GA
+
+#### "Measuring AI Agent Autonomy in Practice" — Anthropic Research (Unconfirmed)
+- **Source**: https://www.anthropic.com/research/measuring-agent-autonomy
+- **Published**: Date unconfirmed (URL appears in anthropic.com/research listing; no publication date confirmed by web search)
+- **Category**: Agent / Safety
+- **What Changed**: A research paper on empirically measuring AI agent autonomy in practice. Content and date could not be confirmed by search — surfaced only as a URL in the research index. Requires direct page verification.
+- **Impact on ag3nts**: Unknown until content is confirmed. Potentially relevant to the `reality-checker` agent's production readiness gate or the auto mode classifier design documented in ag3nts.md.
+- **Proposed Changes**: None until confirmed
+- **Priority**: Low — verify content and date on next scan
+
+---
+
+### Recommendations
+
+Top 3 actions for June 21:
+
+1. **[Critical — carry-forward] Verify August 5 deprecation prep** — `claude-opus-4-1-20250805` retires in 45 days. Run `grep -r "claude-opus-4-1-20250805\|claude-opus-4-7\|claude-opus-4-6" ~/.claude/ shared/` to confirm no agents are pinned to pre-4.8 Opus snapshots. All Opus-tier agents should use `claude-opus-4-8`.
+
+2. **[High — new] Document v2.1.183 native git safety + audit sessionUrl setting** — Add a one-line note in the Git section of `shared/ag3nts.md` confirming v2.1.183+ natively blocks destructive git operations in auto mode. Check `attribution.sessionUrl` in settings to prevent duplicate session URL lines in commits.
+
+3. **[Medium — carry-forward] Add `/cd` to Commands table in ag3nts.md** — Cache-safe mid-session directory change (`/cd <path>`, v2.1.169, Week 24) still not added to the Commands table in `shared/ag3nts.md`.
+
+---
+
 ## Latest Scan: 2026-06-20
 
 ### Summary
