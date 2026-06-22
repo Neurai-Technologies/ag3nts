@@ -1,5 +1,75 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-06-22
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com) + Claude Code changelog
+- New findings: 4
+- Actionable integrations: 2
+
+### Context
+
+One day since last scan (June 21). Fable 5 access situation continues to evolve — per June 22 search results, Fable 5 was briefly reinstated on Pro/Max/Team/Enterprise subscription plans today only (June 22), with usage-credit-only access starting June 23. The US government export control suspension (June 12) appears to have been partially lifted following G7 diplomatic activity (White House confirmed President Trump eased national security concerns after meeting Dario Amodei at the G7 summit in Évian-les-Bains). Four new findings: (1) Fable 5 access reinstatement and model-tier implications; (2) new Claude Code version(s) post-v2.1.183 with skill autocomplete and session reliability fixes; (3) Cache Diagnostics beta API feature (not in prior scans); (4) Refusal Billing Change — no charge for refusals with no output. Carry-forward: August 5 Opus 4.1 deprecation (44 days), `/cd` command not yet added to Commands table, `attribution.sessionUrl` audit from June 21 still pending.
+
+---
+
+### Findings
+
+#### Fable 5 Access Reinstated — Brief Subscription Window, Then Usage-Credits-Only
+- **Source**: https://www.anthropic.com/news/claude-fable-5-mythos-5
+- **Published**: 2026-06-22 (access status update; original launch June 9, suspended June 12)
+- **Category**: Model
+- **What Changed**: Claude Fable 5 (`claude-fable-5`) appears to have been reinstated on Claude Pro, Max, Team, and seat-based Enterprise subscription plans on June 22, 2026, following G7 diplomatic activity. Starting June 23, Fable 5 requires usage credits on those plans rather than being included at no extra cost. Pricing: $10/M input, $50/M output. Mythos 5 (`claude-mythos-5`) remains limited to Project Glasswing approved customers. Note: conflicting signals exist between search sources — full restoration is not yet officially confirmed; treat as "likely reinstated" pending an official Anthropic announcement.
+- **Impact on ag3nts**: The ag3nts model table lists `software-architect` (Opus) and `security-engineer` (Opus). If Fable 5 becomes generally and stably available, these top-tier agents could be evaluated against `claude-fable-5` for higher capability on complex tasks. However: (a) access stability is uncertain (suspended 3 days after launch); (b) Fable 5 is a Covered Model requiring 30-day data retention; (c) the ag3nts automated pipeline should not switch flagship models under suspension/reinstatement uncertainty. Hold at `claude-opus-4-8` for now.
+- **Proposed Changes**:
+  - [ ] No model changes until Fable 5 access is confirmed stable for ≥7 consecutive days
+  - [ ] Add `claude-fable-5` to `shared/claude-code/knowledge-base/repos.md` as a tracking entry for future evaluation
+- **Priority**: High — important context for model tier decisions; no immediate model change warranted given instability
+
+#### New Claude Code Release (Post-v2.1.183) — Skill Autocomplete + Session Reliability Fixes
+- **Source**: https://docs.anthropic.com/en/release-notes/claude-code
+- **Published**: 2026-06-21 or 2026-06-22 (version number not confirmed; changelog shows fixes not present in June 21 scan)
+- **Category**: Tooling
+- **What Changed**: At least one new Claude Code version released after v2.1.183 (June 19), containing: fixed user-level skills appearing multiple times in slash-command autocomplete when multiple plugins are enabled; fixed remote sessions permanently getting stuck when a brief backend disruption occurred during worker registration at startup; fixed PowerShell command validation occasionally hanging far past its time budget on Windows; improved auto-retry — API connection drops mid-thinking now automatically retry instead of surfacing "Connection closed while thinking"; improved streaming of long paragraphs (text appears line-by-line instead of waiting for the first line break).
+- **Impact on ag3nts**: The skill autocomplete fix is directly relevant — ag3nts uses numerous skills (session-start-hook, deep-research, update-config, verify, code-review, simplify, loop, claude-api, run, init, review, security-review, etc.) plus platform plugin installations. Duplicate skill entries in autocomplete was real friction. The auto-retry on mid-thinking connection drops improves reliability of this agent's automated scan runs. The remote session startup bug fix applies directly to ag3nts runs on Claude Code on the web.
+- **Proposed Changes**:
+  - [ ] No configuration changes needed — runtime fixes apply automatically on upgrade
+- **Priority**: Medium — quality improvements directly affecting ag3nts skill invocations; no action beyond awareness
+
+#### Cache Diagnostics API Beta — Debug Prompt Cache Misses
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: June 2026 (exact date unconfirmed; not present in prior scan logs)
+- **Category**: API
+- **What Changed**: Anthropic launched Cache Diagnostics in public beta. Pass `diagnostics.previous_message_id` on a Messages API request and the API responds with a `cache_miss_reason` field explaining exactly where the prompt cache prefix diverged from the previous turn. Automatically handles most steps of cache miss troubleshooting without manual binary-search debugging.
+- **Impact on ag3nts**: The `anthropic` agent runs as a scheduled automated scan in a remote session where prompt caching is active (1-hour TTL noted in repos.md). Cache misses silently reduce efficiency in the automated pipeline. This feature would allow diagnosing why caches miss between turns. Relevant to automated harness design; `--bare` mode (non-interactive) skips caching infrastructure but interactive sessions use it.
+- **Proposed Changes**:
+  - [ ] Add cache diagnostics beta to `repos.md` tracking entry for reference when debugging cache miss issues
+- **Priority**: Medium — useful for automated pipeline optimization; not blocking
+
+#### Refusal Billing Change — No Charge for No-Output Refusals
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: June 2026 (exact date unconfirmed)
+- **Category**: API
+- **What Changed**: On the Claude API, developers are no longer billed for requests that return `stop_reason: "refusal"` without Claude generating any output. Input tokens for such requests are not counted either.
+- **Impact on ag3nts**: Minor positive cost impact on automated pipeline runs — the `security-engineer` agent analyzes auth/secrets code flagged by the `security-sensitive-file-check.sh` hook. Any no-output refusals in those runs are now free. No configuration changes needed.
+- **Proposed Changes**:
+  - [ ] None — automatic cost reduction, no action required
+- **Priority**: Low — informational; no action needed
+
+---
+
+### Recommendations
+
+Top 3 actions for June 22:
+
+1. **[Critical — carry-forward] Verify August 5 deprecation prep** — `claude-opus-4-1-20250805` retires in 44 days. Run `grep -r "claude-opus-4-1-20250805\|claude-opus-4-7\|claude-opus-4-6" ~/.claude/ shared/` to confirm no agents are pinned to pre-4.8 Opus snapshots. All Opus-tier agents should use `claude-opus-4-8`.
+
+2. **[High — carry-forward] Complete June 21 actions** — Two items still pending from the June 21 scan: (a) add one-line note in `shared/ag3nts.md` Git section documenting v2.1.183+ native destructive git blocking in auto mode; (b) audit `attribution.sessionUrl` in `shared/claude-code/` settings to avoid duplicate session URL lines in commit messages.
+
+3. **[Medium — new] Monitor Fable 5 stability** — Add `claude-fable-5` to `repos.md` as a tracking entry. Do not switch any agent to Fable 5 until access has been stable for ≥7 consecutive days and no additional export control restrictions are active.
+
+---
+
 ## Latest Scan: 2026-06-21
 
 ### Summary
