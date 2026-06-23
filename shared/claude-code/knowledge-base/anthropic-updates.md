@@ -1,5 +1,98 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-06-23
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com) + Claude Code changelog + red.anthropic.com
+- New findings: 6
+- Actionable integrations: 4
+
+### Context
+
+One day since last scan (June 22). Fable 5 reinstatement (day 2 of ≥7-day stability window before any model switch). Six new findings: (1) Agent Teams in Claude Code research preview — parallel multi-agent coordination directly relevant to code-reviewer dispatcher; (2) Claude Managed Agents Memory in public beta; (3) Claude Managed Agents multi-agent sessions + Outcomes in public beta; (4) LLM ATT&CK Navigator — Anthropic's MITRE-mapped AI cyber-threat database (13,873 observations) relevant to security-engineer agent; (5) "Code Execution with MCP" engineering post (Nov 2025 — previously missing from repos.md); (6) "Scaling Managed Agents: Decoupling the brain from the hands" engineering post — brain/hands separation pattern relevant to ag3nts orchestration. Note: API release notes also referenced an "Advisor Tool" public beta (executor+advisor dual-model for long-horizon tasks); direct URL not confirmed — flagged for manual verification. Carry-forward: August 5 Opus 4.1 deprecation (43 days), `/cd` not in Commands table, `attribution.sessionUrl` audit.
+
+---
+
+### Findings
+
+#### Agent Teams in Claude Code — Parallel Multi-Agent Coordination (Research Preview)
+- **Source**: https://www.anthropic.com/engineering/building-c-compiler
+- **Published**: June 2026 (stress-test report; feature launched as research preview)
+- **Category**: Agent
+- **What Changed**: Agent Teams is now available in Claude Code as a research preview. Multiple Claude instances spin up in parallel, coordinate autonomously on a shared codebase, and can be individually takeover-able via `Shift+Up/Down` or tmux. Anthropic stress-tested 16 agents writing a 100k-line Rust C compiler (~$20k, ~2,000 sessions). Best suited for read-heavy parallelizable tasks.
+- **Impact on ag3nts**: Directly validates and extends the `code-reviewer` agent's current 4-parallel-specialist dispatch model (correctness, security, convention, history). The agent teams primitive is exactly what the code-reviewer sub-agent pattern approximates today. Future enhancement path: migrate code-reviewer sub-agents to native Agent Teams when the feature exits research preview. Also relevant for the `software-architect` agent (parallel domain modeling) and automated REPAIR pipeline parallelism.
+- **Proposed Changes**:
+  - [ ] Add `https://www.anthropic.com/engineering/building-c-compiler` to `shared/claude-code/knowledge-base/repos.md`
+  - [ ] Add note in `shared/ag3nts.md` Agents table comment for `code-reviewer`: "Agent Teams preview — native parallel dispatch available when feature exits preview"
+- **Priority**: High — directly affects code-reviewer architecture roadmap; no configuration change needed now, but worth tracking for imminent graduation from preview
+
+#### Claude Managed Agents: Memory + Multi-Agent Sessions in Public Beta
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: June 2026 (both features under `managed-agents-2026-04-01` beta header)
+- **Category**: API / Agent
+- **What Changed**: Two Managed Agents capabilities entered public beta simultaneously: (1) **Memory** — persistent agent memory across sessions under the managed-agents beta header; (2) **Multi-agent sessions + Outcomes** — coordinated multi-agent runs with structured outcome tracking. Additionally: self-hosted sandboxes as alternative to Anthropic-managed tool execution; dynamic MCP config updates on active sessions; large tool outputs >100K tokens auto-spill to file (model receives truncated preview + path).
+- **Impact on ag3nts**: Memory beta is highly relevant to the `feedback` agent (currently session-scoped; persistent memory would let it accumulate preferences cross-session without a separate memory file). Multi-agent sessions + Outcomes is the platform-level equivalent of what the `code-reviewer` dispatcher does today. The >100K tool output spillover prevents context overflow in automated pipeline runs (e.g., `security-engineer` scanning large diffs).
+- **Proposed Changes**:
+  - [ ] Add managed agents release notes URL to `shared/claude-code/knowledge-base/repos.md` as tracking entry
+  - [ ] Evaluate `feedback` agent for Memory beta adoption when testing capacity allows
+- **Priority**: High — Memory beta directly addresses a known limitation of the `feedback` agent; large-output spillover is an automatic runtime improvement
+
+#### LLM ATT&CK Navigator — AI-Enabled Cyber Threat Database
+- **Source**: https://www.anthropic.com/research/attack-navigator
+- **Published**: 2026-06-03
+- **Category**: Safety / Agent
+- **What Changed**: Anthropic's Frontier Red Team released the LLM ATT&CK Navigator: 13,873 technique observations from 832 banned threat-actor accounts (March 2025–March 2026), mapped to MITRE ATT&CK v18 and scored with the AI Risk Enablement Score (ARiES). Key insight: 67.3% used AI for malware writing; only 6.5% for lateral movement — AI currently enables attack preparation more than live intrusion. Anthropic is in active talks with MITRE to evolve ATT&CK to capture AI-native behaviors.
+- **Impact on ag3nts**: The `security-engineer` agent runs OWASP audits on staged diffs. Grounding it in ATT&CK v18 + ARiES scoring would upgrade its threat model from generic OWASP patterns to adversary-TTP-aware analysis. The navigator URL (`https://red.anthropic.com/2026/attack-navigator/`) is a direct reference resource.
+- **Proposed Changes**:
+  - [ ] Add `https://www.anthropic.com/research/attack-navigator` and `https://red.anthropic.com/2026/attack-navigator/` to `shared/claude-code/knowledge-base/repos.md`
+  - [ ] Consider adding ATT&CK v18 / ARiES framing to `security-engineer` agent system prompt for more adversarial threat modeling
+- **Priority**: Medium — enhances security-engineer's threat framing; not blocking current operation
+
+#### Code Execution with MCP — Missing from repos.md (Nov 2025 Backfill)
+- **Source**: https://www.anthropic.com/engineering/code-execution-with-mcp
+- **Published**: November 2025 (previously not captured in scan log)
+- **Category**: Tooling / API
+- **What Changed**: Engineering post detailing how presenting MCP servers as code APIs (rather than direct tool calls) reduces token usage from ~150k to ~2k tokens — a 98.7% reduction. Agents write code to interact with MCP; intermediate results stay in the execution environment without entering the model's context.
+- **Impact on ag3nts**: The ag3nts pipeline uses MCP servers (`.mcp.json`) for GitHub integration and other services. If any MCP-heavy agent accumulates large tool-call contexts, this pattern is the solution. Most immediately relevant to `code-reviewer` dispatching multiple tool calls across a large PR diff. Validates the `--bare` mode design (skips MCP auto-discovery for non-MCP runs).
+- **Proposed Changes**:
+  - [ ] Add `https://www.anthropic.com/engineering/code-execution-with-mcp` to `shared/claude-code/knowledge-base/repos.md`
+- **Priority**: Medium — important reference for context optimization; already validated by existing `--bare` mode design choice
+
+#### Scaling Managed Agents: Brain/Hands Separation Engineering Post
+- **Source**: https://www.anthropic.com/engineering/managed-agents
+- **Published**: 2026 (exact date not confirmed; not in prior scans)
+- **Category**: Agent
+- **What Changed**: Engineering post describes the architectural pattern of decoupling the "brain" (planning/decision model) from the "hands" (execution environment/tool calls) in managed agents. Allows scaling execution infrastructure independently from the reasoning model.
+- **Impact on ag3nts**: Directly maps to the ag3nts REPAIR pipeline concept where orchestrator (`RepairBoss`) dispatches to specialist sub-agents (`software-architect`, `security-engineer`, `code-reviewer`). The brain/hands pattern would inform how to scale the pipeline's specialist dispatch without putting all tool calls through a single context.
+- **Proposed Changes**:
+  - [ ] Add `https://www.anthropic.com/engineering/managed-agents` to `shared/claude-code/knowledge-base/repos.md`
+- **Priority**: Medium — architectural reference; no immediate config change needed
+
+#### Advisor Tool in Public Beta (Unconfirmed — Verify Manually)
+- **Source**: https://docs.anthropic.com/en/release-notes/api (referenced in release notes summary; direct docs page not confirmed)
+- **Published**: June 2026 (date unconfirmed)
+- **Category**: API / Model
+- **What Changed**: API release notes reference an "Advisor Tool" in public beta: a faster executor model paired with a higher-intelligence advisor model that provides strategic guidance mid-generation for long-horizon agentic workloads. Distinct from the existing `tool_use` content block.
+- **Impact on ag3nts**: If confirmed, this is highly relevant — it's essentially the `reality-checker` + `software-architect` paired pattern formalized at the API level. The `software-architect` agent could serve as an advisor to the `code-reviewer` executor without full handoff overhead.
+- **Proposed Changes**:
+  - [ ] Manually verify at `https://docs.anthropic.com/en/release-notes/api` — search for "advisor" in page
+  - [ ] If confirmed: evaluate for `software-architect` (advisor) + `code-reviewer` (executor) pairing
+- **Priority**: Medium — high impact if confirmed; not actionable until URL verified
+
+---
+
+### Recommendations
+
+Top 3 actions for June 23:
+
+1. **[High — new] Track Agent Teams research preview** — Add `building-c-compiler` to repos.md. When Agent Teams exits research preview, migrate `code-reviewer`'s 4-parallel-specialist dispatch to native Agent Teams. Watch `https://docs.anthropic.com/en/release-notes/claude-code` for GA announcement.
+
+2. **[High — carry-forward] Verify August 5 deprecation (43 days out)** — Run `grep -r "claude-opus-4-1\|claude-opus-4-6\|claude-opus-4-7" ~/.claude/ shared/` to confirm no agents are pinned to pre-4.8 Opus snapshots. All Opus-tier agents (`software-architect`, `security-engineer`) must be on `claude-opus-4-8`.
+
+3. **[Medium — new] Add LLM ATT&CK Navigator + Code Execution with MCP to repos.md** — Both are reference-quality resources for the `security-engineer` and context-efficiency improvements respectively. Simple two-line addition to `shared/claude-code/knowledge-base/repos.md`.
+
+---
+
 ## Latest Scan: 2026-06-22
 
 ### Summary
