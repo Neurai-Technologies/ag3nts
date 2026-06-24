@@ -1,5 +1,97 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-06-24
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 6
+- Actionable integrations: 3
+
+### Context
+
+One day since last scan (June 23). Six new findings: (1) **Fable 5/Mythos 5 suspension** — US government export control directive (received June 12) has disabled both models for all customers; June 23 scan tracked "Fable 5 reinstatement (day 2 of ≥7-day stability window)" — that stability window is now moot, any model migration to Fable 5 paused indefinitely; (2) **Claude Tag** — Slack integration launched June 23 (Enterprise/Team beta), low direct relevance to local ag3nts workflow; (3) **Advisor Tool confirmed** — the June 23 "Unconfirmed" finding is now verified in API docs, with `max_tokens` parameter available; (4) **Mid-task system prompt in Messages API** — system entries accepted inside the messages array without breaking prompt cache; (5) **Claude Code Dynamic Workflows** — codebase-scale migrations on Enterprise/Team/Max plans; (6) two previously-uncatalogued engineering posts (auto mode, harness design) that validate existing ag3nts architecture decisions. Carry-forward: August 5 Opus 4.1 deprecation (42 days); Opus 4.7 confirmed as intermediate release between 4.6 and 4.8; Advisor Tool now actionable for software-architect/code-reviewer pairing evaluation.
+
+---
+
+### Findings
+
+#### Fable 5 / Mythos 5 Government Suspension — Model Roadmap Impact
+- **Source**: https://www.anthropic.com/news/fable-mythos-access
+- **Published**: ~2026-06-12 (directive received); public statement shortly after
+- **Category**: Model
+- **What Changed**: The US government issued an export control directive on June 12, 2026 requiring Anthropic to suspend all access to Fable 5 and Mythos 5 for all users globally (including foreign national employees) to ensure compliance. Reason given: a method of jailbreaking Fable 5 has been discovered. Anthropic is complying but publicly disagrees that a narrow jailbreak should justify recalling a model deployed to hundreds of millions of users. All other models (Sonnet 4.6, Opus 4.8, Haiku 4.5) are unaffected.
+- **Impact on ag3nts**: June 23 scan tracked "Fable 5 reinstatement (day 2 of ≥7-day stability window before any model switch)" — that stability monitoring is suspended. Any planned migration from Sonnet 4.6/Opus 4.8 to Fable 5 is paused indefinitely. ag3nts currently runs on Sonnet 4.6 (main loop) and Opus 4.8 (software-architect, security-engineer) — both unaffected. No config changes needed; do not schedule model evaluations against Fable 5 until suspension is lifted.
+- **Proposed Changes**:
+  - [ ] Add `https://www.anthropic.com/news/fable-mythos-access` to `shared/claude-code/knowledge-base/repos.md` as tracking entry
+  - [ ] Reset stability window tracking — do not switch model until Fable 5 suspension is officially lifted and a new 7-day stability window is observed
+- **Priority**: Critical — directly affects model migration planning; no agent config changes needed, but migration hold is important
+
+#### Claude Tag — Slack Team Integration (June 23, 2026)
+- **Source**: https://www.anthropic.com/news/introducing-claude-tag
+- **Published**: 2026-06-23
+- **Category**: Tooling
+- **What Changed**: Claude Tag lets teams add @Claude as a member of Slack channels. Claude builds context by remembering channel history, takes initiative proactively, and is multiplayer (one Claude per channel that everyone shares). Available in beta for Enterprise and Team customers. 65% of Anthropic's product team code is created via their internal Claude Tag instance.
+- **Impact on ag3nts**: Low direct impact — ag3nts is a local/CLI-oriented setup, not Slack-based. However, if Rohan's team uses Slack, Claude Tag could complement the existing agent workflow by surfacing code review results or CI status in channels. The shared-context / "multiplayer" model is conceptually related to the code-reviewer dispatcher pattern.
+- **Proposed Changes**:
+  - [ ] Add `https://www.anthropic.com/news/introducing-claude-tag` to `shared/claude-code/knowledge-base/repos.md`
+- **Priority**: Low — interesting for team workflows, no immediate ag3nts config impact
+
+#### Advisor Tool Confirmed — Dual-Model Pattern Now Actionable
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: 2026-06 (public beta, exact date unconfirmed but verified in release notes)
+- **Category**: API / Model
+- **What Changed**: The Advisor Tool (which the June 23 scan flagged as "Unconfirmed") is now confirmed in API release notes. A faster executor model is paired with a higher-intelligence advisor model for long-horizon agentic workloads. The `max_tokens` parameter is available to cap the advisor model's output per call, reducing latency and cost for workloads that don't need full-length advisor responses.
+- **Impact on ag3nts**: Confirms the pattern the June 23 scan proposed: `software-architect` (Opus 4.8, advisor) paired with `code-reviewer` (Sonnet 4.6, executor) at the API level. The `max_tokens` cap is specifically valuable for the software-architect's ADR/threat-model outputs during REPAIR Stage 4, where concise structured outputs are preferable over long prose. The Advisor Tool is also the platform-level formalization of the `reality-checker` (gatekeeper) + executor pattern.
+- **Proposed Changes**:
+  - [ ] Evaluate Advisor Tool beta adoption for `software-architect` (advisor) + `code-reviewer` (executor) pairing in REPAIR pipeline Stage 4/6
+  - [ ] Test `max_tokens` cap on `software-architect` advisor calls to reduce Stage 4 latency
+- **Priority**: High — resolves the June 23 "Unconfirmed" flag; dual-model pairing is directly applicable to the REPAIR pipeline and could reduce per-stage cost
+
+#### Mid-Task System Prompt in Messages API — Cache-Safe Instruction Updates
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: 2026-06 (confirmed in API release notes)
+- **Category**: API
+- **What Changed**: The Messages API now accepts system entries inside the messages array, allowing developers to update Claude's instructions mid-task without breaking the prompt cache or routing the update through a user turn. This is distinct from the top-level system parameter.
+- **Impact on ag3nts**: Highly relevant to the REPAIR pipeline and any long-running agent session. Currently, mid-task instruction updates (e.g., adjusting security-engineer audit scope mid-session) require a user-turn message or a full system prompt swap (breaking the cache). This new capability allows the RepairBoss orchestrator to inject phase-specific instructions mid-run without cache invalidation — reducing token overhead across long pipeline sessions.
+- **Proposed Changes**:
+  - [ ] Document the mid-task system entry pattern in `shared/claude-code/knowledge-base/repos.md` with a link to the API release notes
+  - [ ] Consider leveraging in future RepairBoss implementation for phase-specific instruction injection
+- **Priority**: Medium — useful for pipeline efficiency; no immediate change to current agent configs required
+
+#### Claude Code Dynamic Workflows — Codebase-Scale Migrations
+- **Source**: https://www.anthropic.com/news/claude-opus-4-8
+- **Published**: 2026-05 (Opus 4.8 launch; feature available on Enterprise/Team/Max plans)
+- **Category**: Tooling / Agent
+- **What Changed**: Claude Code Dynamic Workflows allow Claude Code (with Opus 4.8) to tackle codebase-scale problems — full migrations across hundreds of thousands of lines of code from kickoff to merge, using the existing test suite as the bar. Available on Enterprise, Team, and Max Claude plans. Complements the existing `/workflow` command pattern.
+- **Impact on ag3nts**: The REPAIR pipeline's most ambitious use case — a full-stack migration (e.g., database ORM swap, framework upgrade) — is now supported natively by Claude Code via Dynamic Workflows. The ag3nts Workflow tool already implements fan-out agent orchestration; Dynamic Workflows is the Claude Code UI-level equivalent. For users on eligible plans, this reduces the need for custom REPAIR pipeline orchestration on large-scale refactors. Also relevant for the `software-architect` agent which currently handles codebase domain modeling.
+- **Proposed Changes**:
+  - [ ] Note Dynamic Workflows availability in `shared/ag3nts.md` Commands table as a new capability for Max/Enterprise plan users
+- **Priority**: Medium — high value for large-scale refactor tasks on eligible plans; not blocking current workflows
+
+#### Engineering: Claude Code Auto Mode Architecture Validated
+- **Source**: https://www.anthropic.com/engineering/claude-code-auto-mode
+- **Published**: 2026-03-25
+- **Category**: Tooling / Safety
+- **What Changed**: Anthropic published the design of Claude Code's auto mode: two-layer defense — a read-layer classifier (governs what Claude reads) and an output-layer transcript classifier (Sonnet 4.6, evaluates each action against decision criteria before execution). Auto mode users approve 93% of prompts, confirming human-in-the-loop validity.
+- **Impact on ag3nts**: Directly validates the ag3nts `permissions.defaultMode: "auto"` setting in settings.json. The two-stage classifier pipeline (described in `shared/ag3nts.md` under Permission Mode) matches the Anthropic-published design. The 93% approval-rate statistic confirms that auto mode's conservative defaults align with typical developer workflows. No changes needed — this is a reference post confirming correct ag3nts configuration.
+- **Proposed Changes**:
+  - [ ] Add `https://www.anthropic.com/engineering/claude-code-auto-mode` to `shared/claude-code/knowledge-base/repos.md` as validation reference for current auto mode design
+- **Priority**: Low — confirmatory, no config changes needed; good reference documentation
+
+---
+
+### Recommendations
+
+Top 3 actions for June 24:
+
+1. **[Critical — new] Pause Fable 5 model migration planning** — The June 23 stability window tracking is moot. Hold all Fable 5 evaluation until the government suspension is officially lifted. Current model stack (Sonnet 4.6 / Opus 4.8) is stable and unaffected. Update repos.md with the suspension statement URL.
+
+2. **[High — resolved] Evaluate Advisor Tool for REPAIR pipeline** — The June 23 "Unconfirmed" Advisor Tool is now confirmed. Propose adopting the `software-architect` (Opus 4.8, advisor) + `code-reviewer` (Sonnet 4.6, executor) pairing for REPAIR Stage 4/6. Test `max_tokens` cap to reduce Stage 4 latency. Start with a pilot on a small-scope REPAIR run.
+
+3. **[Medium — carry-forward] August 5 deprecation check (42 days out)** — Run `grep -r "claude-opus-4-1\|claude-opus-4-6\|claude-opus-4-7" ~/.claude/ shared/` to confirm no agents are pinned to pre-4.8 Opus snapshots. Note Opus 4.7 is a real intermediate model that also needs checking.
+
+---
+
 ## Latest Scan: 2026-06-23
 
 ### Summary
