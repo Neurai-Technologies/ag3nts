@@ -1,5 +1,55 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-06-25
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 2
+- Actionable integrations: 1
+
+### Context
+
+One day since last scan (June 24). Two new findings this scan: (1) **Anthropic Advanced AI Framework** (June 2026) — new policy document establishing mandatory capability testing, incident reporting within 15 days, and independent evaluator requirements for frontier AI developers; not directly actionable for ag3nts config but relevant safety background; (2) **Anthropic First Public Record** (June 12, 2026) — transparency report on safety incidents and policy compliance. All other Anthropic channels were clean — no new model releases, API changes, or engineering posts since yesterday's scan. Carry-forward: August 5 Opus 4.1 deprecation (**41 days** — run model audit now); Fable 5 suspension still in effect (no reinstatement date announced); Advisor Tool evaluation for REPAIR pipeline still pending.
+
+---
+
+### Findings
+
+#### Anthropic Advanced AI Framework — Mandatory Safety Requirements for Frontier AI Developers
+- **Source**: https://www-cdn.anthropic.com/files/4zrzovbb/website/0a58d567024a8b448ff15158ebc3625328dfcc1f.pdf
+- **Published**: June 2026
+- **Category**: Safety
+- **What Changed**: Anthropic published a policy framework proposing mandatory obligations for frontier AI developers ("Covered Developers"): (1) mandatory capability testing for catastrophic risks before and after deployment; (2) independent external evaluators with privileged model access; (3) 15-day incident reporting window for "Critical Safety Incidents" to a designated regulatory agency; (4) civil penalties for failure to publish safety frameworks or report incidents. Distinct from RSP — this is proposed external regulation Anthropic is advocating for the industry.
+- **Impact on ag3nts**: No direct config changes. Background context for the `security-engineer` agent's threat modeling and the `reality-checker`'s production readiness gate. The 15-day incident reporting timeline is a useful reference if ag3nts is ever deployed in an enterprise regulated environment. Informational.
+- **Proposed Changes**: None required.
+- **Priority**: Low — policy/regulatory document; no ag3nts integration needed; track for future enterprise compliance context
+
+---
+
+#### Anthropic First Public Record — Transparency on Safety Incidents
+- **Source**: https://www.anthropic.com/transparency/system-trust-reporting
+- **Published**: 2026-06-12
+- **Category**: Safety
+- **What Changed**: Anthropic published its first Public Record — a structured transparency report disclosing safety incidents, policy compliance status, and usage policy enforcement. Part of Anthropic's commitment to external accountability, complementing the RSP and ASL framework.
+- **Impact on ag3nts**: Informational. No config changes required. Provides context for how Anthropic responds to model misuse — relevant background for the `security-engineer` agent's instructions.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add Anthropic Transparency Hub URL as reference
+- **Priority**: Low — informational transparency artifact; no ag3nts integration needed
+
+---
+
+### Recommendations
+
+Top 3 actions for June 25:
+
+1. **[Critical — carry-forward, 41 days remaining] August 5 Opus 4.1 deprecation audit** — Run `grep -r "claude-opus-4-1\|claude-opus-4-6\|claude-opus-4-7" ~/.claude/ shared/` to confirm no agents are pinned to pre-4.8 Opus model IDs. All Opus-tier agents (`software-architect`, `security-engineer`) must be on `claude-opus-4-8`. Window is closing.
+
+2. **[High — carry-forward] Evaluate Advisor Tool for REPAIR pipeline** — Advisor Tool is confirmed in API release notes. Pilot `software-architect` (Opus 4.8, advisor) + `code-reviewer` (Sonnet 4.6, executor) pairing for REPAIR Stage 4/6 to reduce per-stage latency. Test `max_tokens` cap on advisor responses.
+
+3. **[Medium — carry-forward] Add new repos.md references** — Add Anthropic Transparency Hub (`/transparency/system-trust-reporting`), the Advanced AI Framework PDF, and Claude Tag announcement to `shared/claude-code/knowledge-base/repos.md`. Also: add mid-task system prompt API docs link documented in June 24 scan.
+
+---
+
 ## Latest Scan: 2026-06-24
 
 ### Summary
