@@ -1,5 +1,148 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-06-26
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 9 (since June 25 scan)
+- Actionable integrations: 5
+
+### Context
+
+One day since last scan (June 25). Nine new findings since yesterday: (1) **Claude Sonnet 4 / Opus 4 Retired** — `claude-sonnet-4-20250514` and `claude-opus-4-20250514` now return errors on all requests (since June 15); (2) **SDK `code_execution_20260120` GA** — REPL state persistence across cells, all major SDKs, no beta header required; (3) **Web Search/Fetch `response_inclusion` parameter** — drops consumed result blocks from API payload, reducing agentic overhead; (4) **WIF GA** — Workload Identity Federation replaces static API keys with short-lived OIDC tokens across all Claude API endpoints; (5) **Managed Agents Scheduled Deployments** — native cron scheduling in Managed Agents, no external scheduler needed; (6) **Managed Agents Vault Env Var Credentials** — secure secrets injection into agent sandboxes; (7) **No Billing for Refused Requests** — `stop_reason: "refusal"` with zero output tokens is now free; (8) **Fable 5 Tokenizer Change** — 30% more tokens vs pre-Opus-4.7 models (pre-migration checklist item); (9) **Server-Side Fallbacks Parameter beta** — auto-retry on fallback model for refused Fable 5 requests. Carry-forward: August 5 Opus 4.1 deprecation (**40 days**); Fable 5 suspension still in effect; Advisor Tool evaluation still pending.
+
+---
+
+### Findings
+
+#### Claude Sonnet 4 / Opus 4 Retired — Breaking Change for Pinned Snapshot Model IDs
+- **Source**: https://platform.claude.com/docs/en/release-notes/overview
+- **Published**: 2026-06-15
+- **Category**: Model
+- **What Changed**: `claude-sonnet-4-20250514` and `claude-opus-4-20250514` now return errors on all API requests. Replacement: Sonnet 4.6 (`claude-sonnet-4-6`) and Opus 4.8 (`claude-opus-4-8`). Researchers wanting access to old weights may apply for the External Researcher Access Program.
+- **Impact on ag3nts**: Any agent pinned to the retired snapshot IDs will fail silently. The ag3nts table in `shared/ag3nts.md` lists agents by capability tier, but agent config files under `~/.claude/agents/` may reference snapshot IDs. Audit required immediately.
+- **Proposed Changes**:
+  - [ ] Run `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514" ~/.claude/ shared/` to confirm no stale IDs exist
+  - [ ] Update any found references to `claude-sonnet-4-6` and `claude-opus-4-8` respectively
+- **Priority**: Critical — retired model IDs return errors; any agent using them is currently broken
+
+---
+
+#### SDK `code_execution_20260120` GA — REPL State Persistence Across Cells
+- **Source**: https://platform.claude.com/docs/en/release-notes/overview
+- **Published**: 2026-06-18
+- **Category**: API
+- **What Changed**: The `code_execution_20260120` tool type (REPL state persistence across cells) is now officially supported in Python, TypeScript, Go, Java, Ruby, PHP, and C# SDKs without a beta header. Variables, imports, and context persist across execution cells within a session. Available on Opus 4.5+ and Sonnet 4.5+.
+- **Impact on ag3nts**: Enables multi-step programmatic analysis in the `code-reviewer` agent or any agent using the code execution tool. REPL persistence means a code reviewer could run tests, inspect output, then make assertions in subsequent cells — all within one session. Opens a new capability tier for code analysis agents at REPAIR Stage 6.
+- **Proposed Changes**:
+  - [ ] Add to `shared/claude-code/knowledge-base/repos.md` as reference for future code-reviewer capability enhancement
+  - [ ] Consider piloting in `code-reviewer` agent for automated test-run verification (REPAIR Stage 6)
+- **Priority**: High — GA feature opening new agent capability; worth evaluating for code-reviewer Stage 6 integration
+
+---
+
+#### Web Search/Fetch `response_inclusion` Parameter — Reduce Agentic Payload Size
+- **Source**: https://platform.claude.com/docs/en/release-notes/overview
+- **Published**: 2026-06-11
+- **Category**: API
+- **What Changed**: New tool versions `web_search_20260318` and `web_fetch_20260318` add a `response_inclusion` parameter that drops consumed result blocks from the API response, reducing payload size in agentic workflows where the model has already processed the web content.
+- **Impact on ag3nts**: Directly relevant to the `anthropic` agent (heavy web scanning) and the `accessibility-auditor` (uses web references). Adopting `web_search_20260318` / `web_fetch_20260318` with `response_inclusion` configured reduces per-scan token overhead. Also applies to `security-engineer` when fetching CVE references.
+- **Proposed Changes**:
+  - [ ] Update `anthropic` agent system prompt to specify `web_search_20260318` / `web_fetch_20260318` tool versions with `response_inclusion` enabled
+  - [ ] Add to `shared/claude-code/knowledge-base/repos.md` as API reference
+- **Priority**: High — directly reduces token overhead for this agent and other web-enabled agents
+
+---
+
+#### Workload Identity Federation GA — Replace Static API Keys with OIDC Tokens
+- **Source**: https://platform.claude.com/docs/en/manage-claude/workload-identity-federation
+- **Published**: 2026-05-04 (GA; within 30-day scan window)
+- **Category**: API / Tooling
+- **What Changed**: WIF is generally available. Short-lived OIDC tokens replace long-lived `sk-ant-...` API keys across all Claude API endpoints including SDKs and Claude Code. Supports AWS IAM, Google Cloud, GitHub Actions, Kubernetes, Microsoft Entra ID, Okta, SPIFFE, and other OIDC providers. Existing API keys remain supported alongside WIF.
+- **Impact on ag3nts**: The `shared/ag3nts.md` Scripted Runs section documents `ANTHROPIC_API_KEY` as required for bare mode. WIF could replace this with GitHub Actions OIDC or AWS IAM tokens, eliminating long-lived key exposure in CI/CD and cron automation. Pre-commit hooks and the `anthropic` agent cron are the primary targets.
+- **Proposed Changes**:
+  - [ ] Add WIF docs URL to `shared/claude-code/knowledge-base/repos.md`
+  - [ ] Evaluate WIF adoption for CI/CD and cron agent invocations to replace static `ANTHROPIC_API_KEY`
+- **Priority**: High — security improvement; eliminates long-lived key exposure in automation paths
+
+---
+
+#### Managed Agents: Scheduled Deployments — Native Cron for Agent Runs
+- **Source**: https://platform.claude.com/docs/en/release-notes/overview
+- **Published**: 2026-06-09
+- **Category**: Agent
+- **What Changed**: Claude Managed Agents now supports scheduled deployments via cron schedule expression, removing the need for external scheduler infrastructure (cron jobs, GitHub Actions scheduled workflows). Includes built-in retry logic and vault-based secrets injection.
+- **Impact on ag3nts**: The `anthropic` agent (this agent) currently runs as an external cron. Managed Agents Scheduled Deployments could formalize this run, providing built-in retry, observability, and secure credentials — without requiring external scheduler maintenance.
+- **Proposed Changes**:
+  - [ ] Evaluate migrating the `anthropic` agent's cron invocation to Managed Agents Scheduled Deployments
+  - [ ] Add to `shared/claude-code/knowledge-base/repos.md` as reference
+- **Priority**: Medium — structural improvement to scheduling; current external cron works but lacks observability
+
+---
+
+#### Managed Agents: Vault Environment Variable Credentials — Secure Secrets Injection
+- **Source**: https://platform.claude.com/docs/en/release-notes/overview
+- **Published**: 2026-06-09
+- **Category**: Agent
+- **What Changed**: Managed Agents Vaults now support environment variable credentials. Secrets (API keys, tokens, CLI credentials) can be injected into the agent sandbox as environment variables, rather than being hardcoded or passed via host environment.
+- **Impact on ag3nts**: The `security-engineer` and other agents accessing external services (GitHub, CVE databases) could use Vault credentials instead of relying on environment variables in the host process. This is the mechanism for secure secrets management if ag3nts migrates toward Managed Agents orchestration.
+- **Proposed Changes**:
+  - [ ] Note as prerequisite for Managed Agents migration path in future planning
+- **Priority**: Medium — relevant to future security posture; no immediate action for current local agent setup
+
+---
+
+#### No Billing for Refused Requests — Cost Model Change
+- **Source**: https://platform.claude.com/docs/en/release-notes/overview
+- **Published**: 2026-06-02
+- **Category**: API
+- **What Changed**: API requests returning `stop_reason: "refusal"` with zero generated output tokens are now free. The `stop_details.category` field now includes `"reasoning_extraction"` (Fable 5 only, for reasoning trace extraction ToS violations) alongside existing `"cyber"` and `"bio"` categories.
+- **Impact on ag3nts**: Low direct impact — ag3nts agents don't typically trigger refusals. Useful cost accounting context: any refusals from `security-engineer` processing sensitive code aren't billed. The `stop_details.category` field provides more granular refusal reason tracking for error handling in automated pipelines.
+- **Proposed Changes**: None required.
+- **Priority**: Low — cost accounting improvement; no agent config changes needed
+
+---
+
+#### Fable 5 Tokenizer Change — 30% More Tokens vs Pre-Opus-4.7 Models
+- **Source**: https://platform.claude.com/docs/en/release-notes/overview
+- **Published**: 2026-06-09
+- **Category**: Model
+- **What Changed**: Claude Fable 5 and Mythos 5 use the new tokenizer introduced in Opus 4.7. Identical text produces roughly 30% more tokens on Fable 5 vs models before Opus 4.7. Developers must re-measure prompts via the token counting API (`model: "claude-fable-5"`) before migrating.
+- **Impact on ag3nts**: Critical pre-migration checklist item for when Fable 5 suspension is lifted. All agent system prompts calibrated for Sonnet 4.6 / Opus 4.8 token counts will need re-measurement. `software-architect` and `code-reviewer` have the longest system prompts and would be most affected.
+- **Proposed Changes**:
+  - [ ] Before any Fable 5 adoption post-suspension: run token count audit across all agent system prompts using `model: "claude-fable-5"`
+- **Priority**: Low — future planning only (Fable 5 still suspended); note for pre-migration checklist
+
+---
+
+#### Server-Side Fallbacks Parameter (Beta) — Auto-Retry on Refused Requests
+- **Source**: https://platform.claude.com/docs/en/release-notes/overview
+- **Published**: 2026-06-09
+- **Category**: API
+- **What Changed**: A beta `fallbacks` parameter on the Messages API enables refused Fable 5 requests to automatically retry on a specified fallback model in the same round trip. Available on Claude API and Claude Platform on AWS; not supported on Message Batches API.
+- **Impact on ag3nts**: Useful for resilient multi-model pipelines post-suspension. Eliminates client-side retry logic for refusal scenarios when Fable 5 is reinstated. Not actionable while Fable 5 is suspended.
+- **Proposed Changes**: None required now.
+- **Priority**: Low — future planning; Fable 5 suspension makes this moot for now
+
+---
+
+### Recommendations
+
+Top 3 actions for June 26:
+
+1. **[Critical — new] Audit for retired model snapshot IDs** — Run `grep -r "claude-sonnet-4-20250514\|claude-opus-4-20250514" ~/.claude/ shared/` immediately. Both snapshots return errors since June 15; any agent pinned to them is currently broken. Update to `claude-sonnet-4-6` and `claude-opus-4-8`.
+
+2. **[High — new] Adopt `web_search_20260318` / `web_fetch_20260318` with `response_inclusion`** — The `anthropic` agent is the primary beneficiary. Update the agent's system prompt (or harness invocation) to specify the new tool versions to reduce per-scan token overhead. Also applicable to `accessibility-auditor` and `security-engineer`.
+
+3. **[High — new] Evaluate WIF adoption for CI/CD and cron invocations** — WIF GA replaces `ANTHROPIC_API_KEY` static secrets with short-lived OIDC tokens. Target: pre-commit hooks and bare-mode cron invocations. Especially valuable for GitHub Actions-based automation. Security improvement that eliminates long-lived key exposure.
+
+Carry-forward:
+- **[Critical — 40 days] August 5 Opus 4.1 deprecation** — Run `grep -r "claude-opus-4-1" ~/.claude/ shared/` to confirm no agents pinned to pre-4.8 Opus snapshots.
+- **[High] Advisor Tool evaluation** — `software-architect` (Opus 4.8, advisor) + `code-reviewer` (Sonnet 4.6, executor) pairing for REPAIR Stage 4/6; not yet piloted.
+- **[Medium] Add new repos.md references** — WIF docs, `code_execution_20260120` reference, `response_inclusion` API docs.
+
+---
+
 ## Latest Scan: 2026-06-25
 
 ### Summary
