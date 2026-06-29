@@ -1,6 +1,69 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-06-28
+## Latest Scan: 2026-06-29
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 2
+- Actionable integrations: 1
+
+### Context
+
+One day since last scan (June 28). Two new findings this scan: (1) **Advisor Tool `max_tokens` parameter** — Managed Agents API added a `max_tokens` parameter to the advisor tool definition, capping output per call to reduce latency and cost on workloads that don't need full-length advisor responses; (2) **Project Fetch Phase Two** — Anthropic research showing Claude Opus 4.7 completed robotics tasks approximately 20x faster than the fastest human team, the strongest robotics benchmark result to date. No new announcements specifically dated June 29. **CRITICAL — DEADLINE TOMORROW**: Mythos Preview retirement is June 30 (tomorrow) — the grep audit flagged in the June 28 scan must be run today if not already done.
+
+---
+
+### Findings
+
+#### Advisor Tool `max_tokens` Parameter — Managed Agents Latency/Cost Control
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: June 2026 (API release notes)
+- **Category**: API
+- **What Changed**: The Managed Agents advisor tool now supports a `max_tokens` parameter set on the tool definition (`tools[].max_tokens`). This caps the advisor model's output tokens per call, reducing both latency and output token cost for workloads that don't require full-length advisor responses. Previously, the advisor model would generate up to its full capacity on every call regardless of task complexity.
+- **Impact on ag3nts**: The `software-architect` agent (Opus) and the `code-reviewer` dispatch pattern are both candidates for advisor-style pairing in REPAIR Stage 4 (the "Advisor Tool evaluation" carry-forward). The new `max_tokens` cap means the advisor pairing can be tuned: brief architectural guidance calls can use a lower cap, while full ADR generation can leave it uncapped. Reduces per-commit review cost if the advisor pairing is adopted.
+- **Proposed Changes**:
+  - [ ] When evaluating Advisor Tool pairing for `software-architect` + `code-reviewer` (carry-forward), include `max_tokens` cap as part of the initial config to control cost baseline
+  - [ ] Note in `shared/claude-code/knowledge-base/repos.md` alongside the Managed Agents reference
+- **Priority**: Medium — enhances the Advisor Tool evaluation carry-forward; does not unblock anything on its own
+
+---
+
+#### Project Fetch Phase Two — Opus 4.7 Robotics Performance Benchmark
+- **Source**: https://www.anthropic.com/research/project-fetch-phase-two
+- **Published**: June 2026
+- **Category**: Model Capabilities
+- **What Changed**: Anthropic published Phase Two of Project Fetch showing Claude Opus 4.7 completing robotics tasks approximately 20x faster than the fastest human team across benchmark scenarios. The research demonstrates Opus 4.7's extended agentic performance advantage in continuous-loop, long-horizon task environments — the same compute envelope as multi-step REPAIR pipeline runs.
+- **Impact on ag3nts**: Informational / model selection signal. Opus 4.7's performance in agentic long-horizon tasks reinforces its fitness for the `software-architect` (Stage 4) and `security-engineer` (Stage 6) roles in the REPAIR pipeline. It also provides a quantitative signal: if Opus 4.7 is meaningfully faster than Opus 4.6 on complex tasks, it may reduce wall-clock time per REPAIR run without increasing cost (same $5/$25 per MTok pricing as 4.6). Note: Opus 4.8 is the current latest; 4.7 may be the relevant baseline for Stage 4 if 4.8 is not yet available on all platforms.
+- **Proposed Changes**:
+  - [ ] No immediate code change needed — informational; monitor for Opus 4.8 availability on ag3nts platforms if currently on 4.7
+- **Priority**: Low — capability benchmark; no breaking changes; validates existing model tier selection
+
+---
+
+### Recommendations
+
+Top 3 actions for June 29:
+
+1. **[CRITICAL — DEADLINE TOMORROW June 30] Mythos Preview retirement audit** — Run `grep -r "mythos-preview\|mythos_preview" ~/.claude/ shared/` today. The `claude-mythos-preview` model ID retires June 30 (tomorrow). Any agent files or scripts referencing it will break. If found, update to `claude-opus-4-8`. This has been carry-forward since June 27 — must not slip past today.
+
+2. **[High] Include `max_tokens` cap in Advisor Tool evaluation** — When piloting the `software-architect` + `code-reviewer` advisor pairing (carry-forward since June 26), set `tools[].max_tokens` from the outset to establish a cost baseline. Start at 1024 tokens for scoped guidance calls and leave uncapped for full ADR generation.
+
+3. **[High] Adopt `web_search_20260318` with `response_inclusion`** — Token savings for `anthropic`, `accessibility-auditor`, `security-engineer`. Carry-forward since June 26; directly reduces per-scan cost for this agent.
+
+Carry-forward:
+- **[CRITICAL — TOMORROW] Mythos Preview retirement** — June 30 deadline (see Recommendation 1 above)
+- **[Critical — 37 days] Opus 4.1 deprecation** — August 5; run `grep -r "claude-opus-4-1" ~/.claude/ shared/`
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — reduces per-scan token overhead. Carry-forward since June 26.
+- **[High] Evaluate WIF adoption** — eliminate long-lived `ANTHROPIC_API_KEY` in CI/CD and cron paths. Carry-forward since June 26.
+- **[High] Advisor Tool evaluation** — `software-architect` (Opus 4.8) + `code-reviewer` (Sonnet 4.6) pairing for REPAIR Stage 4/6; now includes `max_tokens` config (see finding above). Carry-forward since June 26.
+- **[High] Add `/rewind` checkpoints to ag3nts Commands table** — Carry-forward from June 28.
+- **[Medium] Cache Diagnostics audit** — Add `cache-diagnosis-2026-04` beta header temporarily to scripted runs to verify prompt caching is working. Carry-forward from June 28.
+- **[Medium] Pilot mid-array system messages in code-reviewer dispatch** — Carry-forward from June 28.
+- **[Medium] BrowseComp eval awareness design constraint** — Add design note to `reality-checker` about offline eval answer keys. Carry-forward from June 27.
+
+---
+
+## Scan: 2026-06-28
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
