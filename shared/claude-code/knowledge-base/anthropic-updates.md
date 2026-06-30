@@ -1,6 +1,83 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-06-29
+## Latest Scan: 2026-06-30
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 3
+- Actionable integrations: 2
+
+### Context
+
+One day since last scan (June 29). Three new findings this scan: (1) **Memory for Managed Agents — Public Beta** — the memory tool under `managed-agents-2026-04-01` is now in public beta, enabling agents to write context to files for cross-session learning; multi-agent sessions, Outcomes, and self-hosted sandboxes also now in public beta under the same header; (2) **Rate Limits API + Sonnet/Haiku Tier Unification** — new programmatic API to query org/workspace rate limits; Sonnet and Haiku ITPM/RPM limits unified with Opus at every usage tier; tiers consolidated to Start/Build/Scale; (3) **Anthropic Economic Index "Cadences" Report** — June 2026 research on temporal Claude usage patterns (weekday/weekend rhythms, morning news queries, peak-hour patterns) — informational only. **CRITICAL DEADLINE TODAY (June 30)**: Mythos Preview retirement deadline is TODAY. If the grep audit flagged since June 27 has not been run (`grep -r "mythos-preview\|mythos_preview" ~/.claude/ shared/`), run it immediately and update any references to `claude-opus-4-8`. Engineering posts: no new posts found since April 2026.
+
+---
+
+### Findings
+
+#### Memory for Managed Agents — Public Beta
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: June 2026 (public beta launch)
+- **Category**: API / Agent
+- **What Changed**: Memory for Claude Managed Agents is now in public beta under the standard `managed-agents-2026-04-01` beta header. The memory tool lets Claude write context to files, enabling agents to learn and persist state across sessions — no re-stating of preferences or context required on each run. Multi-agent sessions and Outcomes (structured multi-agent result tracking) are also now in public beta under the same header. Self-hosted sandboxes are now available as an alternative to Anthropic's hosted infrastructure for tool execution.
+- **Impact on ag3nts**: The `feedback` agent (Haiku) currently captures user preferences per-session; with memory, it could persist learned preferences across days without the user re-stating them. The `anthropic` agent (this agent) runs daily and currently receives prior scan context via the knowledge-base file; memory could instead maintain rolling scan state as a managed-agent-native artifact. `code-reviewer` and `security-engineer` could persist project-specific rule caches across runs. The self-hosted sandbox option is relevant for REPAIR pipeline Stage 6 (code execution in an isolated environment).
+- **Proposed Changes**:
+  - [ ] Evaluate enabling Managed Agents Memory for the `feedback` agent — would allow preference accumulation across sessions without file-editing workarounds
+  - [ ] Review `managed-agents-2026-04-01` header docs (https://docs.anthropic.com/en/docs/claude-code/memory); assess cost/latency tradeoffs vs. current file-based approach before adopting broadly
+  - [ ] Add memory tool reference to `shared/claude-code/knowledge-base/repos.md`
+- **Priority**: High — directly enables persistent cross-session state for agents that currently operate statelessly across runs; reduces preference re-stating overhead for the `feedback` agent
+
+---
+
+#### Rate Limits API + Sonnet/Haiku Tier Unification
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: June 2026
+- **Category**: API / Developer Tools
+- **What Changed**: Two rate limit changes shipped together: (1) **Rate Limits API** — administrators can now programmatically query the rate limits configured for their organization and workspaces via a dedicated endpoint; response includes current limit, current usage, and reset time; (2) **Unified rate limits** — Sonnet and Haiku rate limits now match Claude Opus at every usage tier; usage tiers consolidated into three: Start, Build, and Scale.
+- **Impact on ag3nts**: The `code-reviewer` agent dispatches 4 parallel Sonnet agents simultaneously per commit review. Previously, Sonnet's lower ITPM ceiling was a potential bottleneck during parallel dispatch. With Sonnet limits now matching Opus, the 4-agent parallel dispatch has significantly more headroom before hitting rate limits. The Rate Limits API enables pre-dispatch rate limit checks in any Python automation that runs parallel agent pools, preventing 429 errors before they occur.
+- **Proposed Changes**:
+  - [ ] No immediate code change required — Sonnet rate limit increase is passive; existing parallel dispatch benefits automatically
+  - [ ] If ag3nts automation ever hits 429 errors during parallel dispatch, implement pre-dispatch rate limit check using the Rate Limits API endpoint before queuing parallel calls
+- **Priority**: Medium — passive capacity improvement; the parallel dispatch pattern benefits without any code change; Rate Limits API is a useful future-proofing tool
+
+---
+
+#### Anthropic Economic Index — "Cadences" June 2026 Report
+- **Source**: https://www.anthropic.com/research/economic-index-june-2026-report
+- **Published**: June 2026
+- **Category**: Research
+- **What Changed**: The third Anthropic Economic Index report focuses on temporal usage cadences — how external world rhythms shape Claude usage. Key patterns: work queries subside on weekends (less dramatically for highest-paid occupations); news queries peak in the morning; sleep advice peaks around 5 AM; tax-related requests surge at filing deadlines. Survey sample: ~9,700 linked respondents (Claude API users matched to survey responses). Most respondents expect significant AI progress over the next year.
+- **Impact on ag3nts**: Informational signal for scheduling the daily `anthropic` agent scan. If Anthropic infrastructure is most loaded during weekday business hours (when work queries peak), scheduling the daily scan in off-peak hours (early morning or late evening) may reduce latency and cost. No code change required; consideration for cron scheduling.
+- **Proposed Changes**:
+  - [ ] Consider scheduling the daily `anthropic` agent cron to run during off-peak hours (e.g., 5–7 AM local time) to benefit from reduced infrastructure load
+- **Priority**: Low — informational research; no breaking changes; scheduling optimization is optional
+
+---
+
+### Recommendations
+
+Top 3 actions for June 30:
+
+1. **[CRITICAL — DEADLINE TODAY] Mythos Preview retirement audit** — `claude-mythos-preview` retires TODAY (June 30). Run `grep -r "mythos-preview\|mythos_preview" ~/.claude/ shared/` right now if not already done. This has been carry-forward since June 27 — today is the final opportunity to find and fix any references before the model ID breaks. Update any hits to `claude-opus-4-8`.
+
+2. **[High] Evaluate Memory for Managed Agents beta** — With memory now in public beta under `managed-agents-2026-04-01`, the `feedback` agent is the primary candidate for adoption: it currently captures user preferences per-session and memory would make those persistent across runs. Review https://docs.anthropic.com/en/docs/claude-code/memory and evaluate cost/latency vs. current file-based approach before enabling.
+
+3. **[High] Adopt `web_search_20260318` with `response_inclusion`** — Token savings for `anthropic`, `accessibility-auditor`, `security-engineer`. Carry-forward since June 26 — 4 days without resolution; represents direct per-scan cost savings for this agent.
+
+Carry-forward:
+- **[Critical — TODAY deadline] Mythos Preview retirement** — June 30 is TODAY (see Recommendation 1 above)
+- **[Critical — 36 days] Opus 4.1 deprecation** — August 5; run `grep -r "claude-opus-4-1" ~/.claude/ shared/`
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — reduces per-scan token overhead. Carry-forward since June 26.
+- **[High] Evaluate WIF adoption** — eliminate long-lived `ANTHROPIC_API_KEY` in CI/CD and cron paths. Carry-forward since June 26.
+- **[High] Advisor Tool evaluation** — `software-architect` (Opus 4.8) + `code-reviewer` (Sonnet 4.6) pairing for REPAIR Stage 4/6. Now includes `max_tokens` config (June 29 finding). Carry-forward since June 26.
+- **[High] Add `/rewind` checkpoints to ag3nts Commands table** — Carry-forward from June 28.
+- **[Medium] Cache Diagnostics audit** — Add `cache-diagnosis-2026-04` beta header to scripted runs to verify prompt caching. Carry-forward from June 28.
+- **[Medium] Pilot mid-array system messages in code-reviewer dispatch** — Carry-forward from June 28.
+- **[Medium] BrowseComp eval awareness design constraint** — Add design note to `reality-checker`. Carry-forward from June 27.
+
+---
+
+## Scan: 2026-06-29
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
