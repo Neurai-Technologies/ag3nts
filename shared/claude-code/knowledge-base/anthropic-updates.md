@@ -1,6 +1,85 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-06-30
+## Latest Scan: 2026-07-01
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 3
+- Actionable integrations: 2
+
+### Context
+
+One day since last scan (June 30). Three new findings: (1) **Claude Code Hook Matcher Bug Fix** — Hooks with hyphenated identifiers (e.g., `code-reviewer`) now exact-match instead of substring-match; directly affects ag3nts hook dispatch rules and should be audited immediately; (2) **Fast Mode for Claude Opus 4.7 Deprecated** — Hard removal deadline July 24, 2026; `claude-opus-4-7` with `speed: "fast"` will error after that date; 23 days remain; (3) **MCP Tunnels Management API Migrated to Claude API** — New beta header `mcp-tunnels-2026-06-22` and endpoint `/v1/tunnels`; old Admin API endpoint remains during migration window. Carry-forward: Mythos Preview grep audit deadline was yesterday (June 30) — verify it completed; Opus 4.1 deprecation August 5 (35 days); `web_search_20260318` adoption (5 days outstanding); WIF adoption (5 days outstanding); Advisor Tool evaluation (5 days outstanding).
+
+---
+
+### Findings
+
+#### Claude Code Hook Matcher Fix — Hyphenated Identifiers Now Exact-Match
+- **Source**: https://docs.anthropic.com/en/release-notes/claude-code
+- **Published**: Late June 2026 (Claude Code changelog)
+- **Category**: Tooling / Developer Tools
+- **What Changed**: Claude Code fixed a bug where hook matchers with hyphenated identifiers (e.g., `code-reviewer`, `mcp__brave-search`) were accidentally substring-matching instead of exact-matching. They now exact-match. This is a behavioral change in the harness hook dispatch layer — hooks that relied on substring behavior may now silently not fire.
+- **Impact on ag3nts**: Direct impact. ag3nts pre-commit and pre-PR hooks fire on command patterns that include hyphenated names (`pre-commit-secrets-scan.sh`, `pre-commit-review-gate.sh`, `pre-pr-review-gate.sh`). If any hook matcher string was relying on substring matching to catch multiple trigger patterns, it will now only fire on exact matches. The fix could also tighten previously over-broad hooks. Either way, the behavioral change warrants explicit verification that all three pre-commit gates still fire as expected.
+- **Proposed Changes**:
+  - [ ] Audit all hook matchers in `shared/claude-code/settings.json` (and platform-specific settings files) for hyphenated identifier strings — confirm they exactly match the intended trigger
+  - [ ] Run a test commit with verbose logging to verify `pre-commit-secrets-scan.sh` and `pre-commit-review-gate.sh` both fire correctly
+- **Priority**: High — silent mis-fires could cause pre-commit security gates to silently skip without any error output
+
+---
+
+#### Fast Mode for Claude Opus 4.7 Deprecated — Hard Removal July 24, 2026
+- **Source**: https://docs.anthropic.com/en/docs/about-claude/model-deprecations
+- **Published**: Late June 2026 (API release notes and deprecations page)
+- **Category**: Model Capabilities / API
+- **What Changed**: Fast mode for `claude-opus-4-7` is deprecated with hard removal on July 24, 2026. After that date, requests to `claude-opus-4-7` with `speed: "fast"` will return an error. The migration target is fast mode for `claude-opus-4-8`, which runs at 2.5× the speed and is 3× cheaper than the equivalent Opus 4.7 fast mode pricing.
+- **Impact on ag3nts**: The `software-architect` (Opus) and `security-engineer` (Opus) agents use the Opus model tier. `ag3nts.md` lists them as "Opus" without version pinning, but any underlying agent definition file in `~/.claude/agents/` could explicitly reference `claude-opus-4-7`. If so, enabling fast mode on those agents would error starting July 24. 23 days to verify and update.
+- **Proposed Changes**:
+  - [ ] Run `grep -r "opus-4-7" ~/.claude/ shared/` to audit for explicit version references
+  - [ ] If found, update to `claude-opus-4-8` (or remove the pin to use the latest Opus alias)
+  - [ ] Confirm `software-architect` and `security-engineer` agent files don't pin `claude-opus-4-7` with fast mode
+- **Priority**: Critical — 23 days to deadline; will hard-error (not silently degrade) after July 24
+
+---
+
+#### MCP Tunnels Management API Migrated to Claude API
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: June 22, 2026 (beta header date: `mcp-tunnels-2026-06-22`)
+- **Category**: API / Developer Tools
+- **What Changed**: The MCP Tunnels management API moved from the Admin API (`/v1/organizations/tunnels`) to the Claude API (`/v1/tunnels`). The new endpoint requires `anthropic-beta: mcp-tunnels-2026-06-22` header and the `workspace:manage_tunnels` WIF scope. The old Admin API endpoint remains available during a migration window. This consolidates API surface and enables workspace-scoped (rather than org-scoped) tunnel management.
+- **Impact on ag3nts**: `repos.md` already references the MCP Tunnels research preview overview. If any ag3nts CI/CD or scripted automation calls the tunnel management API directly, it needs updating to the new endpoint and beta header before the migration window closes. The new `workspace:manage_tunnels` WIF scope is also directly relevant to the outstanding WIF adoption carry-forward.
+- **Proposed Changes**:
+  - [ ] Update `shared/claude-code/knowledge-base/repos.md` MCP Tunnels entry to note new endpoint `/v1/tunnels`, beta header `mcp-tunnels-2026-06-22`, and `workspace:manage_tunnels` WIF scope
+  - [ ] Check ag3nts automation scripts for any direct calls to the old Admin API tunnel endpoint; update if found
+- **Priority**: Medium — migration window active; old endpoint still works; must be tracked before window closes
+
+---
+
+### Recommendations
+
+Top 3 actions for July 1:
+
+1. **[High — Behavioral change] Audit Claude Code hook matchers for hyphenated identifiers** — The hook exact-match fix shipped recently. Audit `settings.json` hook matchers for hyphenated names like `code-reviewer`, `security-engineer`, `pre-commit-secrets-scan`. Silent non-fires on pre-commit gates are a security gap — these must be verified before the next commit.
+
+2. **[Critical — 23 days] Opus 4.7 fast mode deprecation audit** — Run `grep -r "opus-4-7" ~/.claude/ shared/` right now. Any explicit `claude-opus-4-7` + fast mode reference in agent definitions or automation breaks on July 24. Update to `claude-opus-4-8`.
+
+3. **[Medium] Update repos.md MCP Tunnels entry** — Update the existing entry in `shared/claude-code/knowledge-base/repos.md` to reflect the new Claude API endpoint (`/v1/tunnels`) and beta header (`mcp-tunnels-2026-06-22`); link to WIF scope `workspace:manage_tunnels` for the WIF adoption carry-forward.
+
+Carry-forward:
+- **[VERIFY STATUS] Mythos Preview retirement** — Deadline was June 30 (yesterday). Run `grep -r "mythos-preview\|mythos_preview" ~/.claude/ shared/` if not already done; update any hits to `claude-opus-4-8`.
+- **[Critical — 35 days] Opus 4.1 deprecation** — August 5; run `grep -r "claude-opus-4-1" ~/.claude/ shared/`
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — reduces per-scan token overhead. Carry-forward since June 26 (5 days).
+- **[High] Evaluate WIF adoption** — eliminate long-lived `ANTHROPIC_API_KEY`; now additionally relevant due to new `workspace:manage_tunnels` WIF scope in MCP Tunnels API. Carry-forward since June 26 (5 days).
+- **[High] Advisor Tool evaluation** — `software-architect` (Opus 4.8) + `code-reviewer` (Sonnet 4.6) pairing for REPAIR Stage 4/6, with `max_tokens` cap. Carry-forward since June 26 (5 days).
+- **[High] Evaluate Memory for Managed Agents beta** — `feedback` agent (Haiku) primary candidate. Carry-forward from June 30.
+- **[High] Add `/rewind` checkpoints to ag3nts Commands table** — Carry-forward from June 28.
+- **[Medium] Cache Diagnostics audit** — Add `cache-diagnosis-2026-04` beta header to scripted runs. Carry-forward from June 28.
+- **[Medium] Pilot mid-array system messages in code-reviewer dispatch** — Carry-forward from June 28.
+- **[Medium] BrowseComp eval awareness design constraint** — Add design note to `reality-checker`. Carry-forward from June 27.
+
+---
+
+## Scan: 2026-06-30
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
