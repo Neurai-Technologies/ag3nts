@@ -1,6 +1,72 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-07-01
+## Latest Scan: 2026-07-02
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 2
+- Actionable integrations: 2
+
+### Context
+
+One day since last scan (July 1). Two new findings: (1) **Claude Sonnet 5** — Released June 30, 2026; most agentic Sonnet yet, model ID `claude-sonnet-5`; introductory pricing $2/$10 per MTok through Aug 31 then $3/$15; critical: updated tokenizer produces 1.0–1.35× more tokens for equivalent text, affecting token budget and rate limit calculations for all Sonnet-tier agents; (2) **Fable 5 Global Restoration** — July 1, 2026; U.S. Commerce lifted export controls after Anthropic shipped a >99%-block classifier against the Amazon-identified jailbreak technique; Fable 5 now globally available on Claude, Claude.ai, Claude Code, and Claude Cowork; resolves the June 12 suspension carry-forward. Carry-forward: Opus 4.7 fast mode hard removal July 24 (22 days); hook matcher audit outstanding; Opus 4.1 deprecation August 5 (34 days); `web_search_20260318` adoption; WIF adoption; Advisor Tool evaluation; Memory for Managed Agents eval; `/rewind` checkpoints; Cache Diagnostics audit; mid-array system messages pilot; BrowseComp design constraint.
+
+---
+
+### Findings
+
+#### Claude Sonnet 5 — Most Agentic Sonnet Released
+- **Source**: https://www.anthropic.com/news/claude-sonnet-5
+- **Published**: June 30, 2026
+- **Category**: Model Capabilities / API
+- **What Changed**: Anthropic released `claude-sonnet-5`, its most agentic Sonnet model to date, built for autonomous multi-step task execution (planning, tool use, terminal/browser control). Introductory pricing: $2/$10 per MTok through August 31, 2026, rising to $3/$15 afterward. Supports 1M token context and 128k max output tokens. Ships with an updated tokenizer that maps the same text to approximately 1.0–1.35× more tokens than previous Sonnet models — effective cost per text unit may be higher than headline pricing suggests. Now the default model for Free and Pro plans; available on all plans and the API.
+- **Impact on ag3nts**: Three impact dimensions. (1) **Model upgrade path**: All Sonnet-tier agents (`code-reviewer`, `accessibility-auditor`, `reality-checker`, `ux-architect`, `anthropic`) can now target `claude-sonnet-5` for significantly stronger agentic and tool-use capability. (2) **Tokenizer inflation risk**: The 1.0–1.35× token expansion means token budgets and rate limit calculations calibrated against Sonnet 4.6 will under-estimate with Sonnet 5 — the `code-reviewer` (4 parallel specialists) and `security-engineer` (multi-tool audits) are most exposed. (3) **Context window**: 1M confirmed; no change from March 2026 GA.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — Update agent table: note `claude-sonnet-5` as available upgrade for Sonnet-tier agents; add tokenizer inflation warning (1.35× vs Sonnet 4.6) to model notes
+  - [ ] Agent definitions `~/.claude/agents/code-reviewer`, `reality-checker`, `ux-architect` — evaluate updating model to `claude-sonnet-5`; benchmark token usage before switching due to tokenizer inflation
+- **Priority**: High — major model release; tokenizer change is a silent cost and rate-limit risk for multi-agent dispatch patterns
+
+---
+
+#### Fable 5 Export Controls Lifted — Global Access Restored
+- **Source**: https://www.anthropic.com/news/fable-mythos-access (updated July 1)
+- **Published**: July 1, 2026
+- **Category**: Model Capabilities / Safety
+- **What Changed**: The U.S. Department of Commerce lifted the June 12, 2026 export control directive on Claude Fable 5 and Mythos 5. Anthropic agreed to proactively detect security risks, report malicious activity, and coordinate on future release protocols. Critically, Anthropic trained and deployed a new classifier that blocks the jailbreak technique identified by Amazon researchers in >99% of cases — reviewed by Commerce's CAISI before controls were removed. Fable 5 is now globally available on Claude, Claude.ai, Claude Code, and Claude Cowork as of July 1.
+- **Impact on ag3nts**: Resolves the carry-forward from the `repos.md` entry for `https://www.anthropic.com/news/fable-mythos-access`. Fable 5 evaluation for ag3nts use can now resume. The rapid classifier deployment (weeks from Amazon report to >99% fix) is relevant context for `security-engineer` agent threat modeling on AI model robustness and jailbreak mitigations.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — Update Fable 5/Mythos 5 entry: mark suspension lifted July 1; note new >99%-blocking classifier safeguard; clear "track for suspension lift" note
+  - [ ] `shared/ag3nts.md` — Update the Fable 5 suspension note (if any): mark resolved, cleared for evaluation
+- **Priority**: High — resolves a tracked carry-forward; Fable 5 is now eligible for evaluation in agentic workflows
+
+---
+
+### Recommendations
+
+Top 3 actions for July 2:
+
+1. **[High] Evaluate Claude Sonnet 5 for Sonnet-tier agents** — `claude-sonnet-5` is now the most capable Sonnet and default on all plans. Test `code-reviewer` with Sonnet 5 on a representative diff before switching. Primary concern: the 1.35× tokenizer inflation may push the 4-parallel-specialist dispatch pattern against rate limits faster — measure token usage in a dry run first. File: `~/.claude/agents/code-reviewer`.
+
+2. **[High — resolves carry-forward] Update repos.md Fable 5 entry** — Mark the suspension as resolved (July 1). Update `shared/claude-code/knowledge-base/repos.md` Fable 5 entry to note global restoration, the new >99%-blocking classifier, and that Fable 5 evaluation can now resume. Clear the "track for suspension lift" note.
+
+3. **[High — tokenizer warning] Add Sonnet 5 tokenizer note to ag3nts.md** — The 1.35× token inflation is a silent risk for automated pipelines. Add a note to `shared/ag3nts.md` warning that token budgets calibrated against Sonnet 4.6 must be recalibrated for Sonnet 5 before switching agents.
+
+Carry-forward:
+- **[Critical — 22 days] Opus 4.7 fast mode removal** — July 24 deadline; run `grep -r "opus-4-7" ~/.claude/ shared/` immediately if not done
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1 scan; verify pre-commit gates still fire correctly after exact-match fix
+- **[Critical — 34 days] Opus 4.1 deprecation** — August 5; `grep -r "claude-opus-4-1"` audit still pending
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (6 days)
+- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (6 days)
+- **[High] Advisor Tool evaluation** — Carry-forward since June 26 (6 days)
+- **[High] Memory for Managed Agents evaluation** — Carry-forward from June 30 (2 days)
+- **[High] Add `/rewind` checkpoints to ag3nts Commands table** — Carry-forward from June 28 (4 days)
+- **[Medium] Cache Diagnostics audit** — Carry-forward from June 28 (4 days)
+- **[Medium] Mid-array system messages pilot in code-reviewer** — Carry-forward from June 28 (4 days)
+- **[Medium] BrowseComp eval awareness design constraint** — Carry-forward from June 27 (5 days)
+
+---
+
+## Scan: 2026-07-01
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
