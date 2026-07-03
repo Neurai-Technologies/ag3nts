@@ -1,6 +1,98 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-07-02
+## Latest Scan: 2026-07-03
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 4
+- Actionable integrations: 3
+
+### Context
+
+One day since last scan (July 2). Four new findings: (1) **Harness Design for Long-Running Apps** — New Anthropic engineering post formalizing the initializer+coding-agent pattern with `claude-progress.txt` cross-session state file; Opus 4.5 removes Sonnet 4.5 "context anxiety," enabling single-session Agent SDK auto-compaction instead of explicit resets; directly validates and refines the RepairBoss multi-stage pipeline architecture; (2) **Rate Limits API GA** — programmatic query of org/workspace rate limits; useful for the 4-parallel-specialist `code-reviewer` dispatch to proactively avoid limit collisions; (3) **No Billing on `stop_reason: "refusal"`** — API billing change, no charge when a request returns a refusal without output; affects cost accounting in multi-agent pipelines; (4) **Large Output Spillover (>100K tokens)** — agent_toolset and MCP tool outputs over 100K tokens now auto-spill to a sandbox file; model gets truncated preview + read capability; relevant to security-engineer and code-reviewer when processing large diffs. Carry-forward: Opus 4.7 fast mode hard removal July 24 (21 days); hook matcher audit outstanding; Opus 4.1 deprecation August 5 (33 days); `web_search_20260318` adoption; WIF adoption; Advisor Tool evaluation; Memory for Managed Agents eval; `/rewind` checkpoints; Cache Diagnostics audit; mid-array system messages pilot; BrowseComp design constraint.
+
+---
+
+### Findings
+
+#### Harness Design for Long-Running Application Development — Initializer + Coding Agent Pattern
+- **Source**: https://www.anthropic.com/engineering/harness-design-long-running-apps
+- **Published**: Late June / Early July 2026
+- **Category**: Agent Patterns / Tooling
+- **What Changed**: New Anthropic engineering post formalizing harness design for applications that span multiple context windows. Core pattern: (1) an **initializer agent** that on first run creates `init.sh`, a `claude-progress.txt` progress log, and an initial git commit — providing cross-session state without memory; (2) a **coding agent** that makes incremental progress per session, reading `claude-progress.txt` + git history to resume from any state. Critical evolution: the original harness required explicit context resets because Sonnet 4.5 exhibited "context anxiety" (degraded coherence as context filled). Opus 4.5 largely removed this behavior, enabling a single continuous session with Agent SDK **automatic compaction** replacing explicit resets — simpler harness as the model improves.
+- **Impact on ag3nts**: Directly applies to the RepairBoss REPAIR pipeline (Stages 1–6 across potentially long sessions). The `claude-progress.txt` pattern is a concrete, low-overhead alternative to the current stage-by-stage context preservation via `## Compact Instructions` sections in `ag3nts.md`. The initializer concept is relevant to the `software-architect` agent (Stage 4 ADRs) — it could produce a `design-progress.txt` that coding agents reference. The Opus 4.5 single-session finding validates using Opus-tier agents for long REPAIR runs without context-reset complexity.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — Add harness design post URL
+  - [ ] `shared/ag3nts.md` — Note `claude-progress.txt` as the recommended cross-session state pattern for long REPAIR runs; link to harness design post
+  - [ ] Evaluate adding a progress artifact to REPAIR pipeline Stage 1 initialization for Stage 4→5→6 continuity
+- **Priority**: High — actionable architectural upgrade to ag3nts long-running pipeline; auto-compaction finding has immediate applicability
+
+---
+
+#### Rate Limits API — Programmatic Rate Limit Queries
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: June/July 2026
+- **Category**: API / Developer Tools
+- **What Changed**: New Rate Limits API allows administrators to programmatically query the rate limits configured for their organization and workspaces, rather than inferring them from response headers alone.
+- **Impact on ag3nts**: The `code-reviewer` agent dispatches 4 parallel specialists simultaneously. With Claude Sonnet 5's tokenizer inflation (1.35×), hitting ITPM/RPM rate limits during multi-specialist dispatch is more likely. The Rate Limits API enables pre-flight limit checks before dispatch. Also directly useful for scripted/cron automation (like this `anthropic` agent run) to confirm headroom before parallelizing.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — Add Rate Limits API docs URL
+  - [ ] `shared/ag3nts.md` — Note under `code-reviewer` agent row that Rate Limits API is available for pre-flight checks during parallel dispatch
+- **Priority**: Medium — operational improvement; more impactful after Sonnet 5 migration due to tokenizer inflation
+
+---
+
+#### API Billing: No Charge on `stop_reason: "refusal"`
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: June/July 2026
+- **Category**: API / Agent Patterns
+- **What Changed**: Requests that return `stop_reason: "refusal"` without Claude having generated any output are no longer billed. Refusals that include partial output are still billed for generated tokens.
+- **Impact on ag3nts**: Minor passive cost reduction for multi-agent pipelines that occasionally hit safety guardrails on edge-case inputs. Most relevant to the `security-engineer` agent (analyzes potentially sensitive code patterns) and pipelines feeding untrusted user input. No code change required.
+- **Proposed Changes**:
+  - [ ] No code change needed; passive cost reduction
+- **Priority**: Low — passive benefit; no action required
+
+---
+
+#### Large Output Spillover — Agent Tool Outputs >100K Tokens Auto-Filed
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: June/July 2026
+- **Category**: API / Agent Patterns
+- **What Changed**: `agent_toolset` and MCP tool outputs exceeding 100K tokens are now automatically spilled to a file in the sandbox. The model receives a truncated preview plus the file path to read the full content on demand. Previously, large tool outputs would consume context window budget directly.
+- **Impact on ag3nts**: `security-engineer` (OWASP audits) and `code-reviewer` agents can receive very large tool outputs (full file trees, large diffs, verbose audit logs). Auto-spillover prevents these from consuming the entire context window — agents can selectively read needed sections. Most beneficial during Stage 6 OWASP audits on large codebases and pre-PR reviews on large branches.
+- **Proposed Changes**:
+  - [ ] No code change required; auto-spillover is transparent to existing agents
+  - [ ] Note in `shared/ag3nts.md` under security-engineer and code-reviewer: large tool outputs (>100K tokens) now auto-spill; agents can reference the file path to read selectively
+- **Priority**: Medium — passive reliability improvement for large-codebase workflows; no action required but worth noting
+
+---
+
+### Recommendations
+
+Top 3 actions for July 3:
+
+1. **[High] Add Harness Design post to repos.md + evaluate `claude-progress.txt` for REPAIR pipeline** — The initializer+coding-agent pattern is directly applicable to REPAIR Stage 4→6 transitions. Adding a progress artifact at Stage 1 gives downstream agents cross-session state without relying solely on `## Compact Instructions`. Files: `shared/claude-code/knowledge-base/repos.md`, `shared/ag3nts.md`.
+
+2. **[Critical — 21 days] Opus 4.7 fast mode hard removal deadline approaching** — July 24 is 21 days out. Run `grep -r "opus-4-7" ~/.claude/ shared/` now if not done. Hard-error (not degradation) after cutoff.
+
+3. **[Medium] Rate Limits API awareness for code-reviewer dispatch** — After Sonnet 5 tokenizer upgrade, the 4-parallel-specialist dispatch in `code-reviewer` is most exposed to ITPM rate collisions. Add a note to agent docs; consider pre-flight Rate Limits API check for automated dispatch.
+
+Carry-forward:
+- **[Critical — 21 days] Opus 4.7 fast mode removal** — July 24 deadline; `grep -r "opus-4-7" ~/.claude/ shared/` still pending
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1 scan; verify pre-commit gates still fire correctly after exact-match fix
+- **[Critical — 33 days] Opus 4.1 deprecation** — August 5; `grep -r "claude-opus-4-1"` audit still pending
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (7 days)
+- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (7 days)
+- **[High] Advisor Tool evaluation** — max_tokens parameter now documented; carry-forward since June 26 (7 days)
+- **[High] Memory for Managed Agents evaluation** — Public beta confirmed under `managed-agents-2026-04-01`; carry-forward from June 30 (3 days)
+- **[High] Add `/rewind` checkpoints to ag3nts Commands table** — Carry-forward from June 28 (5 days)
+- **[Medium] Cache Diagnostics audit** — Carry-forward from June 28 (5 days)
+- **[Medium] Mid-array system messages pilot in code-reviewer** — Carry-forward from June 28 (5 days)
+- **[Medium] BrowseComp eval awareness design constraint** — Carry-forward from June 27 (6 days)
+
+---
+
+## Scan: 2026-07-02
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
