@@ -1,6 +1,59 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-07-03
+## Latest Scan: 2026-07-04
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 1
+- Actionable integrations: 1
+
+### Context
+
+One day since last scan (July 3). One new finding: **Claude Science — AI Workbench for Scientists** (June 30, 2026) — Not captured in the July 2 scan alongside Claude Sonnet 5 (same-day release). Claude Science is a scientific AI workbench with 60+ pre-configured skills and MCP connectors organized around a generalist coordinator agent that dispatches domain-specialist agents on demand. The architecture mirrors ag3nts' multi-specialist dispatch model (code-reviewer → 4 parallel agents; REPAIR pipeline → specialist stages). Low direct ag3nts impact (consumer product, not an API feature), but the Skills+MCP connector deployment at scale (60+ skills in production) validates and extends the Agent Skills design pattern already referenced in repos.md. No other new findings; all July API/model changes were captured in the July 1–3 scans. Carry-forward: Opus 4.7 fast mode hard removal July 24 (20 days); hook matcher audit outstanding; Opus 4.1 deprecation August 5 (32 days); Claude Sonnet 5 introductory pricing ends August 31 (57 days — $2/$10 → $3/$15 per MTok); `web_search_20260318` adoption (8 days overdue); WIF adoption; Advisor Tool evaluation; Memory for Managed Agents eval; `/rewind` checkpoints; Cache Diagnostics audit; mid-array system messages pilot; BrowseComp design constraint.
+
+---
+
+### Findings
+
+#### Claude Science — AI Workbench for Scientists (60+ Skills, Multi-Agent Coordinator Pattern)
+- **Source**: https://www.anthropic.com/news/claude-science-ai-workbench
+- **Published**: June 30, 2026
+- **Category**: Agent Patterns / Tooling
+- **What Changed**: Anthropic launched Claude Science, an AI workbench for scientific research built on a **generalist coordinator agent** with access to **60+ pre-configured skills and MCP connectors** spanning genomics, single-cell analysis, proteomics, structural biology, and cheminformatics. Specialist agents are dispatched on demand from the skills library; each run produces auditable artifacts with the full code, environment, and message history used to generate results. Architectural note from TechCrunch/MIT Technology Review: it "runs the same Claude models already available to everyone (Opus 4.8); no special model access." Available in beta for Pro/Max/Team/Enterprise subscribers. 50 project grants of up to $30K each; applications open through July 15, notifications by July 31.
+- **Impact on ag3nts**: (1) **Skills architecture validation at scale** — Claude Science is the largest known production deployment of the Agent Skills standard referenced in repos.md. 60+ skills in a single coordinator+specialist dispatch system confirms the Skills model scales beyond the few agents in ag3nts' current registry. (2) **Pattern reference for future domain agents** — If ag3nts needs domain specialization (e.g., a `data-analyst`, `ml-engineer`, or `devops` agent), Claude Science's pattern — curated skill sets per domain, coordinator dispatches specialists on demand — is the production reference. (3) **No immediate ag3nts change required** — ag3nts is a software engineering agent system, not a scientific workbench; the pattern is informational/architectural.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — Add Claude Science URL as agent architecture reference: 60+ skills at scale, coordinator+specialist dispatch in production
+- **Priority**: Low — consumer product launch, not an API/agent capability change; informational for future domain-specialist agent design
+
+---
+
+### Recommendations
+
+Top 3 actions for July 4:
+
+1. **[Critical — 20 days] Run Opus 4.7 fast mode audit immediately** — `grep -r "opus-4-7" ~/.claude/ shared/` — July 24 is 20 days away. Carry-forward for 4 consecutive days without action. Hard error after cutoff (not silent degradation). Migrate any matches to `claude-opus-4-8` with fast mode.
+
+2. **[High — 57 days] Note Claude Sonnet 5 pricing inflection point** — Introductory Sonnet 5 pricing ($2/$10 per MTok) ends August 31, 2026; price rises to $3/$15. Combined with the already-noted 1.35× tokenizer inflation, effective per-text-unit cost for Sonnet 5 relative to Sonnet 4.6 will be materially higher post-August. No code change now, but token budget documentation in `shared/ag3nts.md` should be updated before agents migrate to Sonnet 5.
+
+3. **[High — 8 days overdue] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26. This `anthropic` scanner agent and any agent using web_search would get structured, citation-ready search results. Update agent definitions in `~/.claude/agents/anthropic.md` and any other web-search-using agent.
+
+Carry-forward:
+- **[Critical — 20 days] Opus 4.7 fast mode removal** — July 24 deadline; `grep -r "opus-4-7" ~/.claude/ shared/` still pending
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1 scan; verify pre-commit gates fire correctly after exact-match fix
+- **[Critical — 32 days] Opus 4.1 deprecation** — August 5; `grep -r "claude-opus-4-1"` audit still pending
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (8 days)
+- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (8 days)
+- **[High] Advisor Tool evaluation** — max_tokens parameter documented; carry-forward since June 26 (8 days)
+- **[High] Memory for Managed Agents evaluation** — Public beta confirmed; carry-forward from June 30 (4 days)
+- **[High] Add `/rewind` checkpoints to ag3nts Commands table** — Carry-forward from June 28 (6 days)
+- **[Medium] Cache Diagnostics audit** — Carry-forward from June 28 (6 days)
+- **[Medium] Mid-array system messages pilot in code-reviewer** — Carry-forward from June 28 (6 days)
+- **[Medium] BrowseComp eval awareness design constraint** — Carry-forward from June 27 (7 days)
+- **[Medium] Claude Sonnet 5 introductory pricing ends August 31** — 57 days; update token budget docs before migrating Sonnet-tier agents
+
+---
+
+## Scan: 2026-07-03
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
