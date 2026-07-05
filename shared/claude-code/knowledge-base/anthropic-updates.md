@@ -1,6 +1,112 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-07-04
+## Latest Scan: 2026-07-05
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 5
+- Actionable integrations: 3
+
+### Context
+
+One day since last scan (July 4). Five new findings: (1) **Claude Platform on AWS** — full Claude API on Anthropic-managed AWS infrastructure with IAM auth + AWS billing; direct alternative to the bare-mode `ANTHROPIC_API_KEY` pattern used by automated ag3nts runs; (2) **Industry Jailbreak Severity Framework** — Anthropic, Amazon, Microsoft, Google, and Glasswing partners proposing a scored, industry-standard framework for classifying jailbreak severity; extends the threat modeling surface for the `security-engineer` agent; (3) **"Demystifying evals for AI agents"** engineering post — framework for building agent evals at every lifecycle stage; directly applicable to calibrating `reality-checker` and `code-reviewer` quality bars; (4) **"Writing effective tools for AI agents"** engineering post — best practices for tool documentation and using Claude to optimize its own tools; relevant to all ag3nts agent definitions; (5) **"How we contain Claude across products"** security engineering post — red-team case study showing an employee was phished into launching Claude Code with a malicious prompt; containment strategies and deployment considerations; validates and motivates ag3nts auto-mode safety architecture. Carry-forward: Opus 4.7 fast mode hard removal July 24 (**19 days — CRITICAL**); hook matcher audit outstanding; Opus 4.1 deprecation August 5 (31 days); Claude Sonnet 5 introductory pricing ends August 31 (56 days); `web_search_20260318` adoption (9 days overdue); WIF adoption (9 days overdue); Advisor Tool evaluation (9 days overdue); Memory for Managed Agents eval (5 days); `/rewind` checkpoints (7 days); Cache Diagnostics audit (7 days); mid-array system messages pilot (7 days); BrowseComp design constraint (8 days).
+
+---
+
+### Findings
+
+#### Claude Platform on AWS — Full Claude API via AWS IAM + Billing
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: June/July 2026
+- **Category**: API / Tooling
+- **What Changed**: Anthropic launched **Claude Platform on AWS**, bringing the full Claude API to Anthropic-managed infrastructure accessible through AWS. Authentication runs through existing **IAM policies**; usage is billed by AWS and counts against AWS commitment. Provides access to: Messages API, Files API, Message Batches API, Claude Managed Agents, Agent Skills, code execution, and tool use. New `AnthropicSelfHostedEnvironmentAccess` managed policy available. All models and features are available on day 0, managed by Anthropic. Three AWS access paths now exist: Claude Platform on AWS (Anthropic-managed, IAM auth), Amazon Bedrock (Amazon-managed), and Microsoft Foundry.
+- **Impact on ag3nts**: The `--bare -p` scripted automation pattern in `ag3nts.md` currently requires a long-lived `ANTHROPIC_API_KEY` env var (the WIF carry-forward from June 26). Claude Platform on AWS with IAM auth is the production-grade alternative: no long-lived secret, integrates with existing AWS IAM policies, and usage billing merges with AWS spend. For teams already on AWS (common in enterprise CI/CD), this eliminates the ANTHROPIC_API_KEY credential management problem that the WIF carry-forward has been tracking. Also relevant to the Managed Agents self-hosted sandbox feature referenced in repos.md.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — Add note under "Scripted / Automated Runs" section: Claude Platform on AWS provides IAM-auth alternative to ANTHROPIC_API_KEY for teams on AWS; link to release notes
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — Add Claude Platform on AWS docs URL
+- **Priority**: High — directly resolves the long-standing WIF/credential management carry-forward for AWS users; production-grade auth path for automated ag3nts runs
+
+---
+
+#### Industry Jailbreak Severity Framework — Multi-Vendor Scoring Standard
+- **Source**: https://www.anthropic.com/news (July 2026)
+- **Published**: July 2026
+- **Category**: Safety / Agent Patterns
+- **What Changed**: Anthropic, Amazon, Microsoft, Google, and other Glasswing partners are proposing an **industry-wide framework for scoring jailbreak severity** — a standardized way to classify the risk level of successful jailbreak techniques across AI systems. This follows the June 12 Fable 5 export control incident (Amazon-identified jailbreak technique), where Anthropic deployed a >99%-blocking classifier before Commerce lifted controls on July 1.
+- **Impact on ag3nts**: The `security-engineer` agent's threat model (REPAIR Stage 4, OWASP audit Stage 6) currently operates against OWASP Top 10 and internal coding patterns. The jailbreak severity framework is a new threat-modeling axis: if ag3nts pipelines accept or process user-supplied prompts (e.g., code review of untrusted code with embedded prompt injections), the framework provides a severity vocabulary for classifying injection risks. Also relevant to the `reality-checker` agent for assessing AI-generated content safety. The LLM ATT&CK Navigator (already in repos.md) and this framework are complementary — ATT&CK covers threat actors, jailbreak scoring covers severity triage.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — Add industry jailbreak severity framework URL when a public reference page is available
+  - [ ] Evaluate adding jailbreak severity scoring to `security-engineer` agent threat model template (Stage 4 ADR section)
+- **Priority**: Medium — forward-looking threat modeling enhancement; no immediate code change; watch for public framework docs to land
+
+---
+
+#### "Demystifying Evals for AI Agents" — Lifecycle-Stage Eval Framework
+- **Source**: https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents
+- **Published**: 2026 (exact date not confirmed; not in prior visible scan entries)
+- **Category**: Agent Patterns / Tooling
+- **What Changed**: Anthropic engineering post establishing that evals are valuable at every stage of the agent lifecycle — not just final quality gates. **Early-stage evals** help product teams define and align on what success means before building. **Later-stage evals** maintain a consistent quality bar against regressions. The post frames evals as a continuous discipline, not a one-time test suite. Practical guidance: start with simple, task-specific evals; instrument agent trajectories (not just outputs); test the harness as well as the model.
+- **Impact on ag3nts**: The `reality-checker` agent is ag3nts' production-readiness gate, and the `code-reviewer` enforces pre-commit quality. Both are currently ad-hoc: they block bad commits but don't define success criteria before coding starts. The lifecycle-stage framework suggests: (1) the `software-architect` agent (Stage 4 ADRs) should produce an eval spec as part of design, not just architecture docs; (2) the `reality-checker`'s "NEEDS WORK by default" gate could be supplemented with explicit eval criteria per project type (web app vs CLI vs library). The harness-instrumented trajectory testing guidance is also directly applicable to testing the REPAIR pipeline's Stage 4→6 transitions.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — Add URL as eval methodology reference
+  - [ ] Evaluate adding an "eval spec" output to `software-architect` agent's Stage 4 deliverables (alongside ADRs)
+- **Priority**: High — directly informs how `reality-checker` and `code-reviewer` quality bars are defined and maintained; lifecycle-stage framing is an architectural improvement to the REPAIR pipeline
+
+---
+
+#### "Writing Effective Tools for AI Agents" — Tool Design Best Practices
+- **Source**: https://www.anthropic.com/engineering/writing-tools-for-agents
+- **Published**: 2026 (exact date not confirmed; not in prior visible scan entries)
+- **Category**: Agent Patterns / Tooling
+- **What Changed**: Anthropic engineering post on how to write high-quality tools for agents. Key findings: (1) tool documentation quality directly determines agent performance — poorly named or described tools cause incorrect tool selection; (2) an **evaluation-driven approach** is recommended: write the tool, write a test case, measure failure rate, iterate; (3) **use Claude to optimize its own tools** — Claude can rewrite a tool's description to perform better on observed failure cases, dramatically improving selection accuracy with minimal human effort. Practical output: a checklist for tool name, description, parameter names, and example usage.
+- **Impact on ag3nts**: Every agent in `~/.claude/agents/` exposes tools implicitly via its system prompt (what it can do, how to invoke it, what parameters are expected). The `code-reviewer` dispatch pattern (4 parallel specialists) relies on each specialist understanding its scope — poor tool scoping causes overlap or gaps. The `security-engineer` agent's tool invocations for OWASP audit stages are particularly sensitive to parameter clarity. Recommendation: run each agent's tool definitions through the checklist from this post and use Claude to iterate on descriptions where coverage is incomplete.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — Add URL as tool design reference
+  - [ ] Audit tool descriptions in `~/.claude/agents/code-reviewer.md` and `~/.claude/agents/security-engineer.md` against the checklist (highest-traffic tool-using agents)
+- **Priority**: High — tool description quality is a direct performance multiplier for all ag3nts agents; low-effort improvement with potentially large accuracy gains
+
+---
+
+#### "How We Contain Claude Across Products" — Red-Team Case Study
+- **Source**: https://www.anthropic.com/engineering/how-we-contain-claude
+- **Published**: May 25, 2026 (may have been captured in earlier scans; not visible in recent scan log)
+- **Category**: Safety / Agent Patterns
+- **What Changed**: Anthropic engineering post on containment architecture for Claude across its products. Key incident: in a controlled red-team exercise (February 2026), a researcher successfully **phished an Anthropic employee into launching Claude Code with a malicious prompt** — the prompt attempted to exfiltrate data and escalate permissions. The post details how Anthropic's containment layers (sandboxing, permission scope, output classifiers) limited the blast radius. Broader framework: treat agent deployments with the same containment mindset as production services — least privilege, defense in depth, output monitoring.
+- **Impact on ag3nts**: ag3nts uses auto-mode (`permissions.defaultMode: "auto"`) with a two-layer classifier (read classifier + transcript classifier on Sonnet 4.6). This engineering post validates that design and adds one new concern: **the threat model must include phishing/social engineering as a trigger for agent misuse**, not just direct API abuse. The `pre-commit-secrets-scan.sh` and `security-sensitive-file-check.sh` hooks cover output; the post suggests also covering the input side — e.g., ensuring prompts fed to automated ag3nts runs (cron, CI/CD) come from trusted sources and are not injectable.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — Add URL as containment architecture reference
+  - [ ] Review `shared/claude-code/hooks/` for input-side injection guards on scripted/cron runs (the `--bare -p` pattern)
+- **Priority**: High — red-team case study directly relevant to ag3nts security architecture; input-side injection is an under-addressed attack surface in the current hook set
+
+---
+
+### Recommendations
+
+Top 3 actions for July 5:
+
+1. **[Critical — 19 days] Run Opus 4.7 fast mode audit immediately** — `grep -r "opus-4-7" ~/.claude/ shared/` — July 24 is 19 days away. Carry-forward for 5 consecutive days without action. Hard error after cutoff. Migrate any matches to `claude-opus-4-8` with fast mode (now 3× cheaper than Opus 4.7 fast mode).
+
+2. **[High] Audit tool descriptions in code-reviewer + security-engineer against "Writing effective tools" checklist** — Tool documentation quality directly determines agent accuracy. Both are high-traffic, multi-tool agents where poor scoping causes overlap or missed coverage. Files: `~/.claude/agents/code-reviewer.md`, `~/.claude/agents/security-engineer.md`. Use Claude to iterate on descriptions for observed failure cases.
+
+3. **[High] Document Claude Platform on AWS as ag3nts bare-mode alternative** — Adds IAM-auth path to `shared/ag3nts.md` "Scripted / Automated Runs" section; resolves the WIF carry-forward for AWS users without requiring OAuth key rotation. File: `shared/ag3nts.md`.
+
+Carry-forward:
+- **[Critical — 19 days] Opus 4.7 fast mode removal** — July 24 deadline; `grep -r "opus-4-7" ~/.claude/ shared/` still pending (5 consecutive days)
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1 scan; verify pre-commit gates fire correctly after exact-match fix
+- **[Critical — 31 days] Opus 4.1 deprecation** — August 5; `grep -r "claude-opus-4-1"` audit still pending
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (9 days)
+- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (9 days); Claude Platform on AWS provides an IAM alternative for AWS users
+- **[High] Advisor Tool evaluation** — max_tokens parameter documented; carry-forward since June 26 (9 days)
+- **[High] Memory for Managed Agents evaluation** — Public beta confirmed; carry-forward from June 30 (5 days)
+- **[High] Add `/rewind` checkpoints to ag3nts Commands table** — Carry-forward from June 28 (7 days)
+- **[Medium] Cache Diagnostics audit** — Carry-forward from June 28 (7 days)
+- **[Medium] Mid-array system messages pilot in code-reviewer** — Carry-forward from June 28 (7 days)
+- **[Medium] BrowseComp eval awareness design constraint** — Carry-forward from June 27 (8 days)
+- **[Medium] Claude Sonnet 5 introductory pricing ends August 31** — 56 days; update token budget docs before migrating Sonnet-tier agents
+
+---
+
+## Scan: 2026-07-04
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
