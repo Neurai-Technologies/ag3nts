@@ -1,6 +1,110 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-07-05
+## Latest Scan: 2026-07-06
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 5
+- Actionable integrations: 3
+
+### Context
+
+One day since last scan (July 5). Five new findings: (1) **Claude Opus 4.8 — Formal capability log** — model was referenced throughout prior scans as a migration target but never formally documented; benchmarks include #1 on Super-Agent benchmark, 84% on Online-Mind2Web computer use, SOTA on Legal Agent Benchmark, and fast mode now 3× cheaper than Opus 4.7 fast mode at $10/$50 per MTok; directly relevant to ag3nts software-architect and security-engineer (Opus-tier agents); (2) **"Quantifying Infrastructure Noise in Agentic Coding Evals"** — new Anthropic engineering post showing that infrastructure resource allocation fundamentally changes what agentic coding evals measure; two agents with different CPU/RAM budgets are not taking the same test; directly applicable to `reality-checker` calibration and future eval design in REPAIR pipeline; (3) **"More details on Fable 5's cyber safeguards and our jailbreak framework"** — follow-up to July 5 Industry Jailbreak Severity Framework finding; now includes the actual published multi-vendor scoring schema with defined tiers; applicable to security-engineer threat model; (4) **"Emotion concepts and their function in a large language model"** — interpretability research on Claude Sonnet 4.5 showing emotion-related feature representations shape Claude's behavior and outputs; informational for understanding agent reliability; (5) **"How AI assistance impacts the formation of coding skills"** — RCT finding that AI assistance produces measurable skill acquisition gaps in junior developers; informational for ag3nts design philosophy. Carry-forward: Opus 4.7 fast mode hard removal July 24 (**18 days — CRITICAL**, 6 consecutive days without action); hook matcher audit outstanding; Opus 4.1 deprecation August 5 (30 days); Claude Sonnet 5 introductory pricing ends August 31 (55 days); `web_search_20260318` adoption (10 days overdue); WIF adoption (10 days overdue); Advisor Tool evaluation (10 days overdue); Memory for Managed Agents eval (6 days); `/rewind` checkpoints (8 days); Cache Diagnostics audit (8 days); mid-array system messages pilot (8 days); BrowseComp design constraint (9 days).
+
+---
+
+### Findings
+
+#### Claude Opus 4.8 — Formal Capability and Benchmark Log
+- **Source**: https://www.anthropic.com/news/claude-opus-4-8
+- **Published**: May 28, 2026
+- **Category**: Model Capabilities
+- **What Changed**: Claude Opus 4.8 (`claude-opus-4-8`) is Anthropic's current top-tier model. Referenced extensively in prior scans as the migration target for Opus 4.7 fast mode and deprecated snapshots, but never formally documented as a finding. Key capabilities: (1) **Super-Agent benchmark** — only model to complete every case end-to-end, beating GPT-5.5 at parity cost; (2) **Computer use / browser agent** — 84% on Online-Mind2Web, meaningfully ahead of Opus 4.7 and GPT-5.5; (3) **Legal Agent Benchmark** — SOTA, first model to break 10% overall on all-pass standard; (4) **Dynamic workflows** — Claude Code ships a "dynamic workflows" feature enabling very large-scale multi-step problems; (5) **Fast mode** — 2.5× speed, $10/$50 per MTok (3× cheaper than Opus 4.7 fast mode); regular mode $5/$25 per MTok (unchanged from Opus 4.7).
+- **Impact on ag3nts**: `software-architect` (Opus-tier) and `security-engineer` (Opus-tier) are both configured for Opus-tier but benchmarks were not previously documented. The dynamic workflows feature in Claude Code is the same mechanism underlying this anthropic scanner and REPAIR pipeline orchestration. Fast mode pricing being 3× cheaper makes Opus fast mode economically viable for high-frequency REPAIR stages previously restricted to Sonnet.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — Add Opus 4.8 news URL as capability reference
+  - [ ] `shared/ag3nts.md` — Verify `software-architect` and `security-engineer` agent rows reference `claude-opus-4-8`; confirm model IDs are current
+- **Priority**: High — retroactive documentation; Opus 4.8 fast mode pricing shift makes Opus-tier viable for more pipeline stages; ensures ag3nts model table is accurate
+
+---
+
+#### "Quantifying Infrastructure Noise in Agentic Coding Evals" — Eval Reliability Engineering
+- **Source**: https://www.anthropic.com/engineering/infrastructure-noise
+- **Published**: 2026 (within scan window; not in any prior scan entry)
+- **Category**: Agent Patterns / Tooling
+- **What Changed**: Anthropic engineering post demonstrating that infrastructure resource allocation is an integral component of agentic coding evaluations — two agents with different CPU/RAM budgets are not taking the same test. Key findings: (1) Up to ~3× Terminal-Bench specs, extra resources fix infrastructure reliability (transient spikes); the eval becomes more stable but not easier; (2) Beyond 3× spec, extra resources change what approaches are viable — pulling large dependencies, spawning expensive subprocesses, running memory-intensive test suites; success rate jumps ~4pp with an additional +6pp total lift at uncapped resources; (3) Terminal-Bench 2.0 specifies per-task CPU/RAM, but enforcement methodology varies; Anthropic ran evaluations on GKE. The key insight: **the runtime environment is part of the problem-solving surface for agentic tasks**.
+- **Impact on ag3nts**: The `reality-checker` agent performs production-readiness gating. Its verdicts are sensitive to the environment in which it runs — the same code may produce different outcomes in a resource-constrained CI vs. a developer's local machine vs. uncapped resources. The infrastructure-noise framing explains why `reality-checker` verdicts might disagree across environments. REPAIR Stage 6 OWASP audit (running linters, security scanners) and Stage 4 build verification are both subject to infrastructure noise. Recommendation: `reality-checker` should note the resource envelope when reporting verdicts.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — Add infrastructure-noise engineering post URL as eval reliability reference
+  - [ ] Evaluate adding resource-envelope annotation to `reality-checker` output template (note whether eval ran in CI vs local vs uncapped)
+- **Priority**: Medium — directly informs eval calibration philosophy for `reality-checker` and REPAIR pipeline; no immediate code change but framing should inform how agents report and interpret test results
+
+---
+
+#### "More Details on Fable 5's Cyber Safeguards and Our Jailbreak Framework" — Published Multi-Vendor Scoring Schema
+- **Source**: https://www.anthropic.com/news/fable-safeguards-jailbreak-framework
+- **Published**: July 2026
+- **Category**: Safety / Agent Patterns
+- **What Changed**: Follow-up to the July 5 "Industry Jailbreak Severity Framework" finding. The July 5 entry noted that Anthropic, Amazon, Microsoft, Google, and Glasswing partners were "proposing" a framework — this post publishes the actual multi-vendor scoring schema with defined severity tiers and scoring criteria. Also documents Fable 5's specific cyber safeguards and the >99%-blocking classifier deployed before the July 1 global restoration.
+- **Impact on ag3nts**: The framework is now published (not just proposed), making it concretely referenceable in `security-engineer` threat model templates. For ag3nts pipelines that process user-supplied prompts (code from untrusted repos, user-generated content fed to review agents), the scoring schema provides vocabulary for classifying injection attempt severity. Complements the LLM ATT&CK Navigator (in repos.md) and "How We Contain Claude" (July 5 scan).
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — Add jailbreak framework URL now that the document is published
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — Update the Fable 5 entry to reference this follow-up post
+- **Priority**: Medium — published framework is now concrete; update repos.md references; no immediate agent code change
+
+---
+
+#### "Emotion Concepts and Their Function in a Large Language Model" — Interpretability Research
+- **Source**: https://www.anthropic.com/research/emotion-concepts-function
+- **Published**: 2026 (within scan window; not in any prior scan entry)
+- **Category**: Safety / Model Capabilities
+- **What Changed**: Anthropic interpretability research paper analyzing Claude Sonnet 4.5. The paper finds that Claude has internal representations of emotion-related concepts (analogous to "valence" and "arousal") that causally influence its outputs — not just in language about emotions, but in behavioral patterns during agentic task execution. These representations are consistent across contexts and appear to affect task persistence, hedging behavior, and output framing.
+- **Impact on ag3nts**: Informational for understanding agent reliability and consistency. The `reality-checker` defaults to NEEDS WORK — conservatism may reflect internal state representations, not just logical assessment. The `code-reviewer` and `security-engineer` may exhibit behavioral variation on emotionally charged inputs (e.g., reviewing code with alarming variable names vs. neutral ones) that is now mechanistically explained. Informs system prompt design for agents where consistent conservatism or risk calibration is critical.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — Add URL as interpretability research reference
+- **Priority**: Low — foundational research; informs agent prompt design philosophy but no direct ag3nts change
+
+---
+
+#### "How AI Assistance Impacts the Formation of Coding Skills" — Developer Skill RCT
+- **Source**: https://www.anthropic.com/research/AI-assistance-coding-skills
+- **Published**: 2026 (within scan window)
+- **Category**: Agent Patterns / Safety
+- **What Changed**: Anthropic-sponsored RCT with software developers. Findings: AI assistance produces measurable coding skill acquisition gaps — developers who rely heavily on AI assistance during learning show reduced ability to perform equivalent tasks independently. Effect is most pronounced in junior developers and on tasks where AI handles the reasoning-heavy portions.
+- **Impact on ag3nts**: Validates the REPAIR pipeline's human-in-the-loop design (human plans at Stages 1–4, agent executes at 5–6). The RCT finding supports keeping humans in the planning loop rather than fully automating Stage 1–4. Relevant to how `software-architect` should be prompted: present options and reasoning so humans engage with the design rather than rubber-stamp agent output.
+- **Proposed Changes**:
+  - [ ] No code change needed; informational
+- **Priority**: Low — research finding; no immediate ag3nts change; relevant to design philosophy
+
+---
+
+### Recommendations
+
+Top 3 actions for July 6:
+
+1. **[Critical — 18 days, 6 days overdue] Opus 4.7 fast mode audit — act now** — July 24 hard error, 6 consecutive days without action. Run `grep -r "opus-4-7" ~/.claude/ shared/` immediately. Any hit with fast mode breaks in 18 days. Migrate to `claude-opus-4-8` with fast mode (now 3× cheaper at $10/$50 per MTok). No reason to wait further.
+
+2. **[High — 10 days overdue] Adopt `web_search_20260318` with `response_inclusion`** — Overdue since June 26. Update `~/.claude/agents/anthropic.md` (this scanner) and any other web-search agent to adopt the structured citation response format.
+
+3. **[Medium] Apply infra-noise framing to reality-checker output guidance** — The "Quantifying Infrastructure Noise" post gives concrete vocabulary for annotating `reality-checker` verdicts with execution context (CI vs local vs uncapped). A one-line addition to the `reality-checker` agent prompt noting the execution environment when reporting PASS/NEEDS WORK verdicts.
+
+Carry-forward:
+- **[Critical — 18 days] Opus 4.7 fast mode removal** — July 24 deadline; `grep -r "opus-4-7" ~/.claude/ shared/` still pending (6 consecutive days)
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1 scan; verify pre-commit gates fire correctly
+- **[Critical — 30 days] Opus 4.1 deprecation** — August 5; `grep -r "claude-opus-4-1"` audit still pending
+- **[High — 10 days overdue] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26
+- **[High — 10 days overdue] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; Claude Platform on AWS IAM-auth is the alternative for AWS users; carry-forward since June 26
+- **[High — 10 days overdue] Advisor Tool evaluation** — max_tokens parameter documented; carry-forward since June 26
+- **[High — 6 days] Memory for Managed Agents evaluation** — Public beta confirmed; carry-forward from June 30
+- **[High — 8 days] Add `/rewind` checkpoints to ag3nts Commands table** — Carry-forward from June 28
+- **[Medium — 8 days] Cache Diagnostics audit** — Carry-forward from June 28
+- **[Medium — 8 days] Mid-array system messages pilot in code-reviewer** — Carry-forward from June 28
+- **[Medium — 9 days] BrowseComp eval awareness design constraint** — Carry-forward from June 27
+- **[Medium — 55 days] Claude Sonnet 5 introductory pricing ends August 31** — Update token budget docs before migrating Sonnet-tier agents
+
+---
+
+## Scan: 2026-07-05
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
