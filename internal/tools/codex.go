@@ -140,8 +140,8 @@ func (c *Codex) findReleaseAsset(ctx context.Context) (downloadURL, tag string, 
 	patterns := []string{
 		fmt.Sprintf("darwin-%s", arch),
 		fmt.Sprintf("macos-%s", arch),
-		fmt.Sprintf("apple-darwin"),
-		fmt.Sprintf("aarch64-apple"),
+		"apple-darwin",
+		"aarch64-apple",
 	}
 
 	for _, asset := range release.Assets {

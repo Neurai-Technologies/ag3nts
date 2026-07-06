@@ -18,8 +18,6 @@ var (
 	colorDefault = lipgloss.Color("#90A4AE") // grey
 	colorError   = lipgloss.Color("#EF5350") // red
 	colorSystem  = lipgloss.Color("#42A5F5") // blue
-	colorBorder  = lipgloss.Color("#546E7A") // dark grey
-	colorFocused = lipgloss.Color("#B0BEC5") // light grey
 )
 
 // agentColor returns the display color for a given agent name.
@@ -49,22 +47,6 @@ func agentColor(name string) color.Color {
 		return colorDefault
 	}
 }
-
-// Panel border styles.
-var (
-	borderNormal = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colorBorder)
-
-	borderFocused = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colorFocused)
-)
-
-// Status bar style.
-var statusBarStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color("#90A4AE")).
-	Padding(0, 1)
 
 // Agent status icons.
 func statusIcon(status string) string {

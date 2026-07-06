@@ -109,12 +109,14 @@ func TestSessionCRUD(t *testing.T) {
 func TestTokenAccumulation(t *testing.T) {
 	db := openTestDB(t)
 
-	db.CreateSession(&SessionRecord{ID: "s-tok", Status: "active"})
+	if err := db.CreateSession(&SessionRecord{ID: "s-tok", Status: "active"}); err != nil {
+		t.Fatal(err)
+	}
 
 	// Add tokens multiple times.
-	db.AddTokenUsage("s-tok", 100, 50, 10, 0.01)
-	db.AddTokenUsage("s-tok", 200, 100, 20, 0.02)
-	db.AddTokenUsage("s-tok", 300, 150, 30, 0.03)
+	_ = db.AddTokenUsage("s-tok", 100, 50, 10, 0.01)
+	_ = db.AddTokenUsage("s-tok", 200, 100, 20, 0.02)
+	_ = db.AddTokenUsage("s-tok", 300, 150, 30, 0.03)
 
 	got, _ := db.GetSession("s-tok")
 	if got.TotalInputTokens != 600 {
@@ -134,7 +136,9 @@ func TestTokenAccumulation(t *testing.T) {
 
 func TestTaskCRUD(t *testing.T) {
 	db := openTestDB(t)
-	db.CreateSession(&SessionRecord{ID: "s-task", Status: "active"})
+	if err := db.CreateSession(&SessionRecord{ID: "s-task", Status: "active"}); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create task.
 	rec := &TaskRecord{
@@ -164,7 +168,7 @@ func TestTaskCRUD(t *testing.T) {
 	}
 
 	// Update status to running.
-	db.UpdateTaskStatus("t-001", "running")
+	_ = db.UpdateTaskStatus("t-001", "running")
 	got, _ = db.GetTask("t-001")
 	if got.Status != "running" {
 		t.Errorf("status = %q, want running", got.Status)
@@ -174,7 +178,7 @@ func TestTaskCRUD(t *testing.T) {
 	}
 
 	// Update result.
-	db.UpdateTaskResult("t-001", "gemini", "found 14 patterns", "",
+	_ = db.UpdateTaskResult("t-001", "gemini", "found 14 patterns", "",
 		TokenRecord{InputTokens: 500, OutputTokens: 200, CostUSD: 0.005}, 3200)
 	got, _ = db.GetTask("t-001")
 	if got.Status != "completed" {
@@ -199,10 +203,12 @@ func TestTaskCRUD(t *testing.T) {
 
 func TestTaskDependencies(t *testing.T) {
 	db := openTestDB(t)
-	db.CreateSession(&SessionRecord{ID: "s-dep", Status: "active"})
+	if err := db.CreateSession(&SessionRecord{ID: "s-dep", Status: "active"}); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create task with dependencies.
-	db.CreateTask(&TaskRecord{
+	_ = db.CreateTask(&TaskRecord{
 		ID:          "t-dep",
 		SessionID:   "s-dep",
 		Status:      "pending",
@@ -221,11 +227,13 @@ func TestTaskDependencies(t *testing.T) {
 
 func TestEventInsertAndQuery(t *testing.T) {
 	db := openTestDB(t)
-	db.CreateSession(&SessionRecord{ID: "s-evt", Status: "active"})
+	if err := db.CreateSession(&SessionRecord{ID: "s-evt", Status: "active"}); err != nil {
+		t.Fatal(err)
+	}
 
 	// Insert events.
 	for i := 1; i <= 5; i++ {
-		db.InsertEvent(&EventRecord{
+		_ = db.InsertEvent(&EventRecord{
 			SessionID: "s-evt",
 			TaskID:    "t-001",
 			Agent:     "claude",
@@ -260,17 +268,19 @@ func TestEventInsertAndQuery(t *testing.T) {
 
 func TestTokensByAgent(t *testing.T) {
 	db := openTestDB(t)
-	db.CreateSession(&SessionRecord{ID: "s-agents", Status: "active"})
+	if err := db.CreateSession(&SessionRecord{ID: "s-agents", Status: "active"}); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create tasks for different agents.
-	db.CreateTask(&TaskRecord{ID: "t-c1", SessionID: "s-agents", Agent: "claude", Status: "completed"})
-	db.UpdateTaskResult("t-c1", "claude", "ok", "", TokenRecord{InputTokens: 100, OutputTokens: 50, CostUSD: 0.01}, 1000)
+	_ = db.CreateTask(&TaskRecord{ID: "t-c1", SessionID: "s-agents", Agent: "claude", Status: "completed"})
+	_ = db.UpdateTaskResult("t-c1", "claude", "ok", "", TokenRecord{InputTokens: 100, OutputTokens: 50, CostUSD: 0.01}, 1000)
 
-	db.CreateTask(&TaskRecord{ID: "t-c2", SessionID: "s-agents", Agent: "claude", Status: "completed"})
-	db.UpdateTaskResult("t-c2", "claude", "ok", "", TokenRecord{InputTokens: 200, OutputTokens: 100, CostUSD: 0.02}, 2000)
+	_ = db.CreateTask(&TaskRecord{ID: "t-c2", SessionID: "s-agents", Agent: "claude", Status: "completed"})
+	_ = db.UpdateTaskResult("t-c2", "claude", "ok", "", TokenRecord{InputTokens: 200, OutputTokens: 100, CostUSD: 0.02}, 2000)
 
-	db.CreateTask(&TaskRecord{ID: "t-g1", SessionID: "s-agents", Agent: "gemini", Status: "completed"})
-	db.UpdateTaskResult("t-g1", "gemini", "ok", "", TokenRecord{InputTokens: 500, OutputTokens: 200, CostUSD: 0.005}, 3000)
+	_ = db.CreateTask(&TaskRecord{ID: "t-g1", SessionID: "s-agents", Agent: "gemini", Status: "completed"})
+	_ = db.UpdateTaskResult("t-g1", "gemini", "ok", "", TokenRecord{InputTokens: 500, OutputTokens: 200, CostUSD: 0.005}, 3000)
 
 	summaries, err := db.TokensByAgent("s-agents")
 	if err != nil {
@@ -294,7 +304,9 @@ func TestTokensByAgent(t *testing.T) {
 
 func TestConcurrentReads(t *testing.T) {
 	db := openTestDB(t)
-	db.CreateSession(&SessionRecord{ID: "s-conc", Status: "active"})
+	if err := db.CreateSession(&SessionRecord{ID: "s-conc", Status: "active"}); err != nil {
+		t.Fatal(err)
+	}
 
 	// Concurrent reads should not panic or error with WAL mode.
 	var wg sync.WaitGroup
@@ -302,8 +314,8 @@ func TestConcurrentReads(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			db.GetSession("s-conc")
-			db.ListSessions(10)
+			_, _ = db.GetSession("s-conc")
+			_, _ = db.ListSessions(10)
 		}()
 	}
 	wg.Wait()
@@ -311,7 +323,9 @@ func TestConcurrentReads(t *testing.T) {
 
 func TestConcurrentWrites(t *testing.T) {
 	db := openTestDB(t)
-	db.CreateSession(&SessionRecord{ID: "s-cw", Status: "active"})
+	if err := db.CreateSession(&SessionRecord{ID: "s-cw", Status: "active"}); err != nil {
+		t.Fatal(err)
+	}
 
 	// Concurrent token additions should serialize correctly.
 	var wg sync.WaitGroup

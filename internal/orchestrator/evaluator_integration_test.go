@@ -78,7 +78,7 @@ func TestEvaluatorLoopIntegration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	_ = orch.Start(ctx)
-	defer orch.Stop()
+	defer func() { _ = orch.Stop() }()
 
 	// Build a minimal 2-stage recipe and run it.
 	r := &recipe.Recipe{
@@ -204,7 +204,7 @@ func TestEvaluatorLoopMaxRetriesExhausted(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	_ = orch.Start(ctx)
-	defer orch.Stop()
+	defer func() { _ = orch.Stop() }()
 
 	r := &recipe.Recipe{
 		Name: "loop-forever",
@@ -310,7 +310,7 @@ func TestEvaluatorLoopBlockedVerdict(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	_ = orch.Start(ctx)
-	defer orch.Stop()
+	defer func() { _ = orch.Stop() }()
 
 	r := &recipe.Recipe{
 		Name: "unrecoverable",

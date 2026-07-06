@@ -329,18 +329,6 @@ func publishProgress(b *bus.Bus, agentName, content string) {
 	})
 }
 
-// publishComplete emits a completion event to the bus.
-func publishComplete(b *bus.Bus, agentName string, tokens int) {
-	b.Publish("system", agentName, agent.AgentEvent{
-		Kind:  agent.EventComplete,
-		Agent: agentName,
-		Usage: &agent.TokenUsage{
-			OutputTokens: tokens,
-		},
-		Timestamp: time.Now(),
-	})
-}
-
 // publishEvent emits an agent event to the bus.
 func publishEvent(b *bus.Bus, event agent.AgentEvent) {
 	b.Publish("system", event.Agent, event)

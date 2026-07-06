@@ -9,7 +9,9 @@ import (
 
 func TestContextChunkInsert(t *testing.T) {
 	db := openTestDB(t)
-	db.CreateSession(&SessionRecord{ID: "s-ctx", Status: "active"})
+	if err := db.CreateSession(&SessionRecord{ID: "s-ctx", Status: "active"}); err != nil {
+		t.Fatal(err)
+	}
 
 	id, err := db.InsertContextChunk(&ContextChunkRecord{
 		SessionID:  "s-ctx",
@@ -31,7 +33,9 @@ func TestContextChunkInsert(t *testing.T) {
 
 func TestContextChunkTotalTokens(t *testing.T) {
 	db := openTestDB(t)
-	db.CreateSession(&SessionRecord{ID: "s-tot", Status: "active"})
+	if err := db.CreateSession(&SessionRecord{ID: "s-tot", Status: "active"}); err != nil {
+		t.Fatal(err)
+	}
 
 	// Insert 5 chunks with varying token counts.
 	for i := 0; i < 5; i++ {
@@ -58,7 +62,9 @@ func TestContextChunkTotalTokens(t *testing.T) {
 
 func TestContextChunkTotalTokensEmpty(t *testing.T) {
 	db := openTestDB(t)
-	db.CreateSession(&SessionRecord{ID: "s-empty", Status: "active"})
+	if err := db.CreateSession(&SessionRecord{ID: "s-empty", Status: "active"}); err != nil {
+		t.Fatal(err)
+	}
 
 	total, err := db.TotalContextTokens("s-empty")
 	if err != nil {
@@ -115,8 +121,8 @@ func TestContextChunkEvictionUnderTarget(t *testing.T) {
 	db.CreateSession(&SessionRecord{ID: "s-under", Status: "active"})
 
 	// Insert 200 tokens total.
-	db.InsertContextChunk(&ContextChunkRecord{SessionID: "s-under", TokenCount: 100, Seq: 1})
-	db.InsertContextChunk(&ContextChunkRecord{SessionID: "s-under", TokenCount: 100, Seq: 2})
+	_, _ = db.InsertContextChunk(&ContextChunkRecord{SessionID: "s-under", TokenCount: 100, Seq: 1})
+	_, _ = db.InsertContextChunk(&ContextChunkRecord{SessionID: "s-under", TokenCount: 100, Seq: 2})
 
 	// Try to evict with target 500 — should be no-op.
 	evicted, err := db.EvictOldestContextChunks("s-under", 500)
@@ -133,15 +139,15 @@ func TestContextChunkQueryByKeywords(t *testing.T) {
 	db.CreateSession(&SessionRecord{ID: "s-query", Status: "active"})
 
 	// Insert chunks with different keywords.
-	db.InsertContextChunk(&ContextChunkRecord{
+	_, _ = db.InsertContextChunk(&ContextChunkRecord{
 		SessionID: "s-query", Kind: "task_result",
 		Content: "analyzed the codebase", Keywords: "analyzed codebase structure", Seq: 1,
 	})
-	db.InsertContextChunk(&ContextChunkRecord{
+	_, _ = db.InsertContextChunk(&ContextChunkRecord{
 		SessionID: "s-query", Kind: "task_result",
 		Content: "wrote unit tests", Keywords: "wrote unit tests golang", Seq: 2,
 	})
-	db.InsertContextChunk(&ContextChunkRecord{
+	_, _ = db.InsertContextChunk(&ContextChunkRecord{
 		SessionID: "s-query", Kind: "task_result",
 		Content: "fixed security issue", Keywords: "fixed security vulnerability", Seq: 3,
 	})

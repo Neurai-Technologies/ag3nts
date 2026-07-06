@@ -216,7 +216,6 @@ func TestUpdateRoutesInvalidPatternKeepsExistingRoutes(t *testing.T) {
 
 type mockAgent struct {
 	name    string
-	avail   bool // when true → available; when false with unavail set → unavailable
 	unavail bool // explicitly mark as unavailable
 }
 

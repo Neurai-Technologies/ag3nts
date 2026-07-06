@@ -31,7 +31,6 @@ func DisableBracketedPaste() {
 //	13 = Enter (submit), 27 = Alt+Enter (continue multi-line)
 type PasteReader struct {
 	r              io.Reader
-	buf            []byte // look-ahead buffer for detecting escape sequences
 	pasting        bool
 	sawESC         bool // true if last byte of previous chunk was ESC
 	LastTerminator byte // 13 = Enter, 27 = Alt+Enter

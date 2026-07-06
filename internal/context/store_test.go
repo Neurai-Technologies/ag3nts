@@ -79,7 +79,7 @@ func TestRollingStoreTotalTokens(t *testing.T) {
 
 	content := "chunk content with some words for token estimation"
 	for i := 0; i < 5; i++ {
-		rs.Append(&Chunk{Kind: "event", Content: content})
+		_ = rs.Append(&Chunk{Kind: "event", Content: content})
 	}
 
 	total := rs.TotalTokens()
@@ -93,7 +93,7 @@ func TestRollingStoreJSONL(t *testing.T) {
 
 	// Append 5 chunks.
 	for i := 0; i < 5; i++ {
-		rs.Append(&Chunk{
+		_ = rs.Append(&Chunk{
 			Kind:    "event",
 			Content: fmt.Sprintf("chunk %d content", i),
 		})
@@ -149,9 +149,9 @@ func TestRollingStoreEviction(t *testing.T) {
 func TestRollingStoreRetrieveByKeyword(t *testing.T) {
 	rs, _ := openTestStore(t)
 
-	rs.Append(&Chunk{Kind: "task_result", Content: "analyzed the authentication flow"})
-	rs.Append(&Chunk{Kind: "task_result", Content: "implemented the login endpoint"})
-	rs.Append(&Chunk{Kind: "task_result", Content: "reviewed the security policies"})
+	_ = rs.Append(&Chunk{Kind: "task_result", Content: "analyzed the authentication flow"})
+	_ = rs.Append(&Chunk{Kind: "task_result", Content: "implemented the login endpoint"})
+	_ = rs.Append(&Chunk{Kind: "task_result", Content: "reviewed the security policies"})
 
 	// Query for "authentication".
 	chunks, err := rs.Retrieve("authentication", time.Now())

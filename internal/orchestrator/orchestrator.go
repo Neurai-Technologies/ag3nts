@@ -21,9 +21,6 @@ import (
 	"github.com/rohanrgit/ag3nts/internal/task"
 )
 
-// Default session timeout for automated task dispatch (not interactive).
-const taskSessionTimeout = 300 * time.Second
-
 // Config holds orchestrator initialization parameters.
 type Config struct {
 	Primary        string         // default primary agent name
