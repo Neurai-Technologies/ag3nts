@@ -367,11 +367,13 @@ func TestTimestampParsing(t *testing.T) {
 	db := openTestDB(t)
 
 	now := time.Now().UTC()
-	db.CreateSession(&SessionRecord{
+	if err := db.CreateSession(&SessionRecord{
 		ID:        "s-ts",
 		Status:    "active",
 		CreatedAt: now,
-	})
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	got, _ := db.GetSession("s-ts")
 	// Should be within 2 seconds (RFC3339 truncates sub-second).

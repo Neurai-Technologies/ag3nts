@@ -179,7 +179,9 @@ func TestContextChunkQueryByKeywords(t *testing.T) {
 
 func TestContextChunkQueryEmptyKeywords(t *testing.T) {
 	db := openTestDB(t)
-	db.CreateSession(&SessionRecord{ID: "s-rec", Status: "active"})
+	if err := db.CreateSession(&SessionRecord{ID: "s-rec", Status: "active"}); err != nil {
+		t.Fatal(err)
+	}
 
 	// Insert 5 chunks.
 	for i := 0; i < 5; i++ {
@@ -206,7 +208,9 @@ func TestContextChunkQueryEmptyKeywords(t *testing.T) {
 
 func TestContextChunkListBySeq(t *testing.T) {
 	db := openTestDB(t)
-	db.CreateSession(&SessionRecord{ID: "s-list", Status: "active"})
+	if err := db.CreateSession(&SessionRecord{ID: "s-list", Status: "active"}); err != nil {
+		t.Fatal(err)
+	}
 
 	for i := 0; i < 10; i++ {
 		_, _ = db.InsertContextChunk(&ContextChunkRecord{
@@ -231,7 +235,9 @@ func TestContextChunkListBySeq(t *testing.T) {
 
 func TestContextChunkMaxSeq(t *testing.T) {
 	db := openTestDB(t)
-	db.CreateSession(&SessionRecord{ID: "s-max", Status: "active"})
+	if err := db.CreateSession(&SessionRecord{ID: "s-max", Status: "active"}); err != nil {
+		t.Fatal(err)
+	}
 
 	// Empty session.
 	maxSeq, err := db.MaxContextSeq("s-max")
@@ -255,7 +261,9 @@ func TestContextChunkMaxSeq(t *testing.T) {
 
 func TestContextChunkConcurrentInsert(t *testing.T) {
 	db := openTestDB(t)
-	db.CreateSession(&SessionRecord{ID: "s-conc", Status: "active"})
+	if err := db.CreateSession(&SessionRecord{ID: "s-conc", Status: "active"}); err != nil {
+		t.Fatal(err)
+	}
 
 	// 20 goroutines × 10 inserts each.
 	var wg sync.WaitGroup
