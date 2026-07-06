@@ -77,7 +77,9 @@ func TestContextChunkTotalTokensEmpty(t *testing.T) {
 
 func TestContextChunkEviction(t *testing.T) {
 	db := openTestDB(t)
-	db.CreateSession(&SessionRecord{ID: "s-evict", Status: "active"})
+	if err := db.CreateSession(&SessionRecord{ID: "s-evict", Status: "active"}); err != nil {
+		t.Fatal(err)
+	}
 
 	// Insert 10 chunks with 100 tokens each = 1000 total.
 	for i := 0; i < 10; i++ {
@@ -118,7 +120,9 @@ func TestContextChunkEviction(t *testing.T) {
 
 func TestContextChunkEvictionUnderTarget(t *testing.T) {
 	db := openTestDB(t)
-	db.CreateSession(&SessionRecord{ID: "s-under", Status: "active"})
+	if err := db.CreateSession(&SessionRecord{ID: "s-under", Status: "active"}); err != nil {
+		t.Fatal(err)
+	}
 
 	// Insert 200 tokens total.
 	_, _ = db.InsertContextChunk(&ContextChunkRecord{SessionID: "s-under", TokenCount: 100, Seq: 1})
@@ -136,7 +140,9 @@ func TestContextChunkEvictionUnderTarget(t *testing.T) {
 
 func TestContextChunkQueryByKeywords(t *testing.T) {
 	db := openTestDB(t)
-	db.CreateSession(&SessionRecord{ID: "s-query", Status: "active"})
+	if err := db.CreateSession(&SessionRecord{ID: "s-query", Status: "active"}); err != nil {
+		t.Fatal(err)
+	}
 
 	// Insert chunks with different keywords.
 	_, _ = db.InsertContextChunk(&ContextChunkRecord{
@@ -177,7 +183,7 @@ func TestContextChunkQueryEmptyKeywords(t *testing.T) {
 
 	// Insert 5 chunks.
 	for i := 0; i < 5; i++ {
-		db.InsertContextChunk(&ContextChunkRecord{
+		_, _ = db.InsertContextChunk(&ContextChunkRecord{
 			SessionID: "s-rec", Kind: "task_result",
 			Content: fmt.Sprintf("chunk %d", i), Seq: int64(i + 1),
 			CreatedAt: time.Now().Add(time.Duration(i) * time.Second),
@@ -203,7 +209,7 @@ func TestContextChunkListBySeq(t *testing.T) {
 	db.CreateSession(&SessionRecord{ID: "s-list", Status: "active"})
 
 	for i := 0; i < 10; i++ {
-		db.InsertContextChunk(&ContextChunkRecord{
+		_, _ = db.InsertContextChunk(&ContextChunkRecord{
 			SessionID: "s-list", Kind: "event",
 			Content: fmt.Sprintf("event %d", i), Seq: int64(i + 1),
 		})
@@ -237,9 +243,9 @@ func TestContextChunkMaxSeq(t *testing.T) {
 	}
 
 	// With chunks.
-	db.InsertContextChunk(&ContextChunkRecord{SessionID: "s-max", Seq: 1})
-	db.InsertContextChunk(&ContextChunkRecord{SessionID: "s-max", Seq: 5})
-	db.InsertContextChunk(&ContextChunkRecord{SessionID: "s-max", Seq: 3})
+	_, _ = db.InsertContextChunk(&ContextChunkRecord{SessionID: "s-max", Seq: 1})
+	_, _ = db.InsertContextChunk(&ContextChunkRecord{SessionID: "s-max", Seq: 5})
+	_, _ = db.InsertContextChunk(&ContextChunkRecord{SessionID: "s-max", Seq: 3})
 
 	maxSeq, _ = db.MaxContextSeq("s-max")
 	if maxSeq != 5 {

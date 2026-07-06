@@ -346,10 +346,12 @@ func TestConcurrentWrites(t *testing.T) {
 
 func TestFailedTask(t *testing.T) {
 	db := openTestDB(t)
-	db.CreateSession(&SessionRecord{ID: "s-fail", Status: "active"})
-	db.CreateTask(&TaskRecord{ID: "t-fail", SessionID: "s-fail", Status: "pending"})
+	if err := db.CreateSession(&SessionRecord{ID: "s-fail", Status: "active"}); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.CreateTask(&TaskRecord{ID: "t-fail", SessionID: "s-fail", Status: "pending"})
 
-	db.UpdateTaskResult("t-fail", "codex", "", "rate limited",
+	_ = db.UpdateTaskResult("t-fail", "codex", "", "rate limited",
 		TokenRecord{InputTokens: 50}, 500)
 
 	got, _ := db.GetTask("t-fail")

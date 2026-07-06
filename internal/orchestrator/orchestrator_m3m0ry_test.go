@@ -77,7 +77,7 @@ func TestM3m0ry_CapturesTaskResults(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = orch.Start(ctx)
-	defer orch.Stop()
+	defer func() { _ = orch.Stop() }()
 
 	_ = orch.CreateTask(&task.Task{
 		ID:          "t-m1",
@@ -135,7 +135,7 @@ func TestM3m0ry_ContextFlowsToDownstreamTask(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = orch.Start(ctx)
-	defer orch.Stop()
+	defer func() { _ = orch.Stop() }()
 
 	// First task produces content.
 	_ = orch.CreateTask(&task.Task{
@@ -174,7 +174,7 @@ func TestM3m0ry_EventBusRecording(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = orch.Start(ctx)
-	defer orch.Stop()
+	defer func() { _ = orch.Stop() }()
 
 	_ = orch.CreateTask(&task.Task{
 		ID: "t-events", Description: "test events",
@@ -238,7 +238,7 @@ func TestM3m0ry_ProgressStreamFallback(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = orch.Start(ctx)
-	defer orch.Stop()
+	defer func() { _ = orch.Stop() }()
 
 	_ = orch.CreateTask(&task.Task{
 		ID:          "t-progress",
@@ -291,7 +291,7 @@ func TestM3m0ry_MessagePreferredOverProgress(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = orch.Start(ctx)
-	defer orch.Stop()
+	defer func() { _ = orch.Stop() }()
 
 	_ = orch.CreateTask(&task.Task{
 		ID: "t-pref", Description: "test", Type: "review", Status: task.StatusPending,
@@ -331,7 +331,7 @@ func TestM3m0ry_SkipsCodexTurnStartedNoise(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = orch.Start(ctx)
-	defer orch.Stop()
+	defer func() { _ = orch.Stop() }()
 
 	_ = orch.CreateTask(&task.Task{
 		ID: "t-noise", Description: "codex noise", Type: "review", Status: task.StatusPending,
