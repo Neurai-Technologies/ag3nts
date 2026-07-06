@@ -71,6 +71,12 @@ func (r *RecordingAgent) Start(ctx context.Context, prompt string, opts *StartOp
 		Meta: recordMeta{Agent: r.inner.Name(), Prompt: prompt, TaskID: taskID},
 	})
 
+	// Snapshot fields from the inner session before the replay goroutine can
+	// mutate Status via sess.Close(). mu guards Status writes in Close().
+	sess.mu.Lock()
+	initialStatus := sess.Status
+	sess.mu.Unlock()
+
 	// Wrap the session's event channel to record events as they flow.
 	wrappedCh := make(chan AgentEvent, 256)
 	go func() {
@@ -86,7 +92,7 @@ func (r *RecordingAgent) Start(ctx context.Context, prompt string, opts *StartOp
 	recorded := &Session{
 		ID:        sess.ID,
 		Agent:     sess.Agent,
-		Status:    sess.Status,
+		Status:    initialStatus,
 		TaskID:    sess.TaskID,
 		StartedAt: sess.StartedAt,
 		events:    wrappedCh,
