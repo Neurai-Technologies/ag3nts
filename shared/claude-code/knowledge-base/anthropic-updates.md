@@ -1,6 +1,62 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-07-05
+## Latest Scan: 2026-07-07
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 1
+- Actionable integrations: 1
+
+### Context
+
+Two days since last scan (July 5). One new finding: **"A global workspace in language models"** — interpretability research (July 6, 2026) showing that Claude's internals have self-organized into a structure resembling the global neuronal workspace (GNW) from neuroscience, a privileged information-integration hub analogous to the conscious access mechanism described by Dehaene and Naccache. Includes open-source implementation + Neuronpedia interactive demo. Carry-forward: Opus 4.7 fast mode hard removal July 24 (**17 days — CRITICAL**); hook matcher audit outstanding; Opus 4.1 deprecation August 5 (29 days); Claude Sonnet 5 introductory pricing ends August 31 (54 days); `web_search_20260318` adoption (11 days overdue); WIF adoption (11 days overdue); Advisor Tool evaluation (11 days overdue); Memory for Managed Agents eval (7 days); `/rewind` checkpoints (9 days); Cache Diagnostics audit (9 days); mid-array system messages pilot (9 days); BrowseComp design constraint (10 days); Demystifying evals — eval spec output for `software-architect` (2 days); Writing effective tools — audit `code-reviewer`/`security-engineer` tool descriptions (2 days); How We Contain Claude — input-side injection guard review (2 days); Claude Platform on AWS — add to `ag3nts.md` scripted runs (2 days).
+
+---
+
+### Findings
+
+#### A Global Workspace in Language Models — Interpretability Research
+- **Source**: https://www.anthropic.com/research/global-workspace
+- **Published**: July 6, 2026
+- **Category**: Safety / Agent Patterns
+- **What Changed**: Anthropic published interpretability research demonstrating that Claude's internal representations have self-organized into a structure resembling the **global neuronal workspace (GNW)** from neuroscience — a privileged, globally-accessible hub that integrates information from diverse processing streams and broadcasts it across the model. Key findings: (1) a distinct global workspace layer emerges in Claude without being explicitly trained for; (2) the organization parallels GNW properties identified in human brains; (3) **open-source implementation** of the core methods released; (4) partnered with **Neuronpedia** for an interactive demo on open-weights models. Expert commentary from Dehaene and Naccache (the neuroscientists who developed GNW theory) validates the analogy.
+- **Impact on ag3nts**: Direct tooling impact is low — this is interpretability research, not an API or agent pattern change. Indirect relevance: (1) the `reality-checker` agent's coherence gate maps conceptually to GNW bottleneck behavior — understanding when Claude's global workspace is overloaded with conflicting information could inform better prompting strategies for coherence checks; (2) the `security-engineer` agent's prompt-injection threat model (carry-forward from "How We Contain Claude") can incorporate the insight that adversarial inputs that fragment or overload the global workspace may be more likely to produce incoherent outputs; (3) the Neuronpedia interactive demo on open-weights models is a concrete tool for investigating unexpected agent behavior. The open-source implementation is directly usable for research into ag3nts agent failure modes.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — Add https://www.anthropic.com/research/global-workspace as an interpretability reference
+- **Priority**: Low — foundational interpretability research; no immediate code change required; useful background for designing and diagnosing safety-oriented agent behavior
+
+---
+
+### Recommendations
+
+Top 3 actions for July 7:
+
+1. **[Critical — 17 days] Run Opus 4.7 fast mode audit immediately** — `grep -r "opus-4-7" ~/.claude/ shared/` — July 24 is 17 days away. Carry-forward for 7 consecutive days without action. Hard error after cutoff. Migrate any matches to `claude-opus-4-8` with fast mode (3× cheaper than Opus 4.7 fast mode).
+
+2. **[High] Audit tool descriptions in code-reviewer + security-engineer against "Writing effective tools" checklist** — Carry-forward from July 5 (2 days). Tool documentation quality is a direct performance multiplier for all ag3nts agents. Files: `~/.claude/agents/code-reviewer.md`, `~/.claude/agents/security-engineer.md`. Use Claude to iterate on descriptions for observed failure cases.
+
+3. **[High] Document Claude Platform on AWS as ag3nts bare-mode alternative** — Carry-forward from July 5 (2 days). Adds IAM-auth path to `shared/ag3nts.md` "Scripted / Automated Runs" section; resolves the long-standing WIF carry-forward for AWS users without requiring OAuth key rotation. File: `shared/ag3nts.md`.
+
+Carry-forward:
+- **[Critical — 17 days] Opus 4.7 fast mode removal** — July 24 deadline; `grep -r "opus-4-7" ~/.claude/ shared/` still pending (7 consecutive days without action)
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1 scan; verify pre-commit gates fire correctly; outstanding
+- **[Critical — 29 days] Opus 4.1 deprecation** — August 5; `grep -r "claude-opus-4-1"` audit still pending
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (11 days overdue)
+- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (11 days); Claude Platform on AWS + `workspace:manage_tunnels` WIF scope both now support IAM auth
+- **[High] Advisor Tool evaluation** — max_tokens parameter documented; carry-forward since June 26 (11 days)
+- **[High] Memory for Managed Agents evaluation** — Public beta confirmed; carry-forward from June 30 (7 days)
+- **[High] Add `/rewind` checkpoints to ag3nts Commands table** — Carry-forward from June 28 (9 days)
+- **[Medium] Cache Diagnostics audit** — Add `cache-diagnosis-2026-04` beta header to scripted runs; carry-forward from June 28 (9 days)
+- **[Medium] Pilot mid-array system messages in code-reviewer dispatch** — Carry-forward from June 28 (9 days)
+- **[Medium] Review BrowseComp design constraint** — Carry-forward from June 28 (10 days)
+- **[High] Demystifying evals — add eval spec to software-architect Stage 4 deliverables** — Carry-forward from July 5 (2 days)
+- **[High] Writing effective tools — audit code-reviewer + security-engineer tool descriptions** — Carry-forward from July 5 (2 days)
+- **[High] How We Contain Claude — review hooks for input-side injection guards on scripted/cron runs** — Carry-forward from July 5 (2 days)
+- **[High] Claude Platform on AWS — add to ag3nts.md Scripted / Automated Runs section** — Carry-forward from July 5 (2 days)
+
+---
+
+## Scan: 2026-07-05
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
