@@ -1,6 +1,75 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-07-08
+## Latest Scan: 2026-07-09
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 2
+- Actionable integrations: 2
+
+### Context
+
+One day since last scan (July 8). Two new findings: (1) **Claude Code release with multiple agent/subagent fixes** (July 8–9) — SessionStart hook streaming in headless sessions fixed (prevents idle-reaping mid-hook in `--bare -p` automated runs); background agents silently stopping subagents fixed; stale PATH in background agents on Windows fixed; `ANTHROPIC_BASE_URL` drop in agent-view sessions fixed (was causing 401 failures); Bash "argument list too long" in many-worktree repos fixed; worktree-isolated subagents running in parent checkout fixed. (2) **Claude for Government public beta** (July 7, not captured in July 7 or July 8 scans) — Claude Code and Claude Cowork now available in a FedRAMP High authorized environment with hash-chained audit logs and two-person approval for sensitive Anthropic operations. Carry-forward: Opus 4.7 fast mode hard removal July 24 (**15 days — CRITICAL, 9 consecutive days without action**); hook matcher audit outstanding; Opus 4.1 deprecation August 5 (27 days); Claude Sonnet 5 introductory pricing ends August 31 (53 days); `web_search_20260318` adoption (13 days overdue); WIF adoption (13 days overdue); Advisor Tool evaluation (13 days overdue); Memory for Managed Agents eval (9 days); `/rewind` checkpoints (11 days); Cache Diagnostics audit (11 days); mid-array system messages pilot (11 days); BrowseComp design constraint (12 days); Demystifying evals (4 days); Writing effective tools audit (4 days); How We Contain Claude injection guard (4 days); Claude Platform on AWS (4 days).
+
+---
+
+### Findings
+
+#### Claude Code: Agent and Headless Session Fixes (July 8–9, 2026)
+- **Source**: https://docs.anthropic.com/en/release-notes/claude-code
+- **Published**: July 8–9, 2026
+- **Category**: Tooling
+- **What Changed**: A Claude Code release shipped multiple agent, subagent, and headless session bug fixes: (1) **SessionStart hook event streaming fixed in headless sessions** — remote workers were being idle-reaped mid-hook; hook execution now completes before the idle timer fires; (2) **Background agents silently stopping subagents fixed** — returning to a claude agent no longer re-runs the prompt from scratch; prior subagent work now carries over; (3) **Stale PATH fixed in background agents on Windows** — background agents were inheriting a stale PATH from the daemon instead of the dispatching shell, causing missing tools; (4) **`ANTHROPIC_BASE_URL` drop fixed in agent-view sessions** — background and agent-view sessions were dropping a shell-exported `ANTHROPIC_BASE_URL`, sending API keys to the default endpoint and failing with 401; (5) **Bash "argument list too long" fixed** in repos with many git worktrees; (6) **Worktree-isolated subagents fixed** — were running shell commands in the parent checkout instead of their own worktree. Additional improvements: login-expiry warnings, clearer agent status and manual mode badges, improved streaming responsiveness, trimmed startup memory, VS Code remote control setting.
+- **Impact on ag3nts**: Multiple fixes are directly relevant: (a) The SessionStart hook fix is critical for ag3nts automated runs using `--bare -p` — headless sessions (cron/CI) were at risk of being idle-reaped mid-hook, silently failing the pre-commit pipeline; (b) The `ANTHROPIC_BASE_URL` drop fix is critical for any ag3nts users with a custom API base URL (e.g., via the HTTPS proxy setup documented in CLAUDE.md) — background sessions would fail with 401; (c) The worktree isolation fix directly affects the `code-reviewer` agent's 4-parallel-specialist dispatch, which spawns worktree-isolated subagents; (d) The PATH fix addresses ag3nts on Windows, where the portable SSD setup means tools may only be on the dispatching shell's PATH, not the daemon's.
+- **Proposed Changes**:
+  - [ ] Update Claude Code to latest: `npm install -g @anthropic-ai/claude-code@latest`
+  - [ ] Verify ag3nts automated (cron/bare-mode) runs succeed post-update, specifically the SessionStart hook path
+- **Priority**: High — multiple fixes directly address silent failure modes in ag3nts automated/headless contexts; update before next cron run
+
+---
+
+#### Claude for Government Public Beta — FedRAMP High with Claude Code + Cowork (July 7, 2026)
+- **Source**: https://claude.com/blog/bringing-claude-code-and-claude-cowork-to-government
+- **Published**: July 7, 2026 (not captured in July 7 or July 8 scans)
+- **Category**: Tooling / Safety
+- **What Changed**: Anthropic launched Claude Code and Claude Cowork in public beta through **Claude for Government Desktop**, delivered in a FedRAMP High authorized environment. Key features: conversation history stored locally on agency-managed devices; every administrative action recorded in a **hash-chained audit log** reviewable by org admins; sensitive Anthropic-side operations require **two-person approval**; inference runs inside FedRAMP High. Claude Cowork adds desktop file-based work, memo/RFP/casework delegation.
+- **Impact on ag3nts**: Indirect — government/enterprise product tier, not a developer API change. The hash-chained audit log pattern is conceptually applicable to ag3nts automated pipeline logging for audit trail integrity; the two-person approval mirrors the ag3nts pre-commit dual-checkpoint design (secrets scan + review gate). No immediate ag3nts code changes required.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — Add Claude for Government URL as enterprise deployment reference
+- **Priority**: Low — enterprise/government product; no ag3nts code change required; useful reference for enterprise deployments
+
+---
+
+### Recommendations
+
+Top 3 actions for July 9:
+
+1. **[Critical — 15 days] Run Opus 4.7 fast mode audit immediately** — `grep -r "opus-4-7" ~/.claude/ shared/` — July 24 is 15 days away. Carry-forward for **9 consecutive days without action**. Hard error after cutoff. Migrate any matches to `claude-opus-4-8` with fast mode.
+
+2. **[High] Update Claude Code and verify cron/bare-mode runs** — July 8–9 release fixes SessionStart hook streaming in headless sessions (prevents idle-reaping mid-hook) and `ANTHROPIC_BASE_URL` drop in agent-view sessions (prevents 401 failures). Both are silent failure modes in ag3nts automated pipelines. Run: `npm install -g @anthropic-ai/claude-code@latest`, then test a `--bare -p` run end-to-end.
+
+3. **[High] Audit tool descriptions in code-reviewer + security-engineer against "Writing effective tools" checklist** — Carry-forward from July 5 (4 days). Files: `~/.claude/agents/code-reviewer.md`, `~/.claude/agents/security-engineer.md`.
+
+Carry-forward:
+- **[Critical — 15 days] Opus 4.7 fast mode removal** — July 24 deadline; `grep -r "opus-4-7" ~/.claude/ shared/` still pending (9 consecutive days without action)
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1 scan; verify pre-commit gates fire correctly; outstanding
+- **[Critical — 27 days] Opus 4.1 deprecation** — August 5; `grep -r "claude-opus-4-1"` audit still pending
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (13 days overdue)
+- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (13 days)
+- **[High] Advisor Tool evaluation** — max_tokens parameter documented; carry-forward since June 26 (13 days)
+- **[High] Memory for Managed Agents evaluation** — Public beta confirmed; carry-forward from June 30 (9 days)
+- **[High] Add `/rewind` checkpoints to ag3nts Commands table** — Carry-forward from June 28 (11 days)
+- **[Medium] Cache Diagnostics audit** — Add `cache-diagnosis-2026-04` beta header to scripted runs; carry-forward from June 28 (11 days)
+- **[Medium] Pilot mid-array system messages in code-reviewer dispatch** — Carry-forward from June 28 (11 days)
+- **[Medium] Review BrowseComp design constraint** — Carry-forward from June 28 (12 days)
+- **[High] Demystifying evals — add eval spec to software-architect Stage 4 deliverables** — Carry-forward from July 5 (4 days)
+- **[High] Writing effective tools — audit code-reviewer + security-engineer tool descriptions** — Carry-forward from July 5 (4 days)
+- **[High] How We Contain Claude — review hooks for input-side injection guards on scripted/cron runs** — Carry-forward from July 5 (4 days)
+- **[High] Claude Platform on AWS — add to ag3nts.md Scripted / Automated Runs section** — Carry-forward from July 5 (4 days)
+
+---
+
+## Scan: 2026-07-08
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
