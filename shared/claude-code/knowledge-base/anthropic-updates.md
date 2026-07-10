@@ -1,6 +1,63 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-07-09
+## Latest Scan: 2026-07-10
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 1
+- Actionable integrations: 1
+
+### Context
+
+One day since last scan (July 9). One new finding missed by yesterday's scan: **GRAM — Off Switch for Dual-Use Knowledge** (Anthropic + AE Studio, July 8, 2026), introducing removable knowledge modules that let deployers configure which dual-use capabilities are present at inference time. No new announcements published on July 10 itself. Carry-forward: Opus 4.7 fast mode hard removal July 24 (**14 days — CRITICAL, 10 consecutive days without action**); hook matcher audit outstanding; Opus 4.1 deprecation August 5 (26 days); Claude Sonnet 5 introductory pricing ends August 31 (52 days); `web_search_20260318` adoption (14 days overdue); WIF adoption (14 days overdue); Advisor Tool max_tokens evaluation (14 days overdue); Memory for Managed Agents eval (10 days); `/rewind` checkpoints (12 days); Cache Diagnostics audit (12 days); mid-array system messages pilot (12 days); BrowseComp design constraint (13 days); Demystifying evals (5 days); Writing effective tools audit (5 days); How We Contain Claude injection guard (5 days); Claude Platform on AWS scripted runs (5 days); Claude for Government reference (1 day).
+
+---
+
+### Findings
+
+#### GRAM: Off Switch for Dual-Use Knowledge in AI Models (July 8, 2026)
+- **Source**: https://www.anthropic.com/research/off-switch-dual-use
+- **Published**: July 8, 2026 (missed by July 9 scan)
+- **Category**: Safety
+- **What Changed**: AE Studio, in collaboration with Anthropic, published research on **GRAM (Grouped Removable Additive Modules)** — a training technique that stores dual-use knowledge in dedicated, removable compartments rather than distributed across all model weights. After training, each module can be deleted entirely (removing that capability class) or retained for trusted deployments. One training run produces a model configurable in 2^N ways, where N is the number of dual-use categories. In their experiments, four dual-use categories (e.g., CBRN, cybersecurity, biohazards, illicit synthesis) yielded 16 distinct runtime configurations — each with different safety/capability tradeoffs — without retraining. Deletion is clean: removing a module eliminates the capability without degrading general performance on benign tasks.
+- **Impact on ag3nts**: Foundational context for the `security-engineer` agent's threat modeling. GRAM is the production-safety mechanism behind how Anthropic hardens models for different deployment tiers (consumer vs. enterprise vs. government) — it explains the export control chain that gated Fable 5 (June 12 suspension, July 1 restoration) and the 99%-blocking classifier added before redeployment. For ag3nts, this is reference-level knowledge: no code changes required, but directly relevant to how `security-engineer` should communicate risk tiers and capability boundaries to clients deploying Claude in regulated or government contexts.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — Add GRAM URL as safety research reference for `security-engineer` threat modeling
+- **Priority**: Medium — foundational safety research; no ag3nts code change required; useful context for security-engineer threat modeling in regulated deployments
+
+---
+
+### Recommendations
+
+Top 3 actions for July 10:
+
+1. **[Critical — 14 days] Run Opus 4.7 fast mode audit immediately** — `grep -r "opus-4-7" ~/.claude/ shared/` — July 24 is 14 days away. Carry-forward for **10 consecutive days without action**. Hard error after cutoff. Migrate any matches to `claude-opus-4-8` with fast mode.
+
+2. **[High] Audit tool descriptions in code-reviewer + security-engineer against "Writing effective tools" checklist** — Carry-forward from July 5 (5 days). Files: `~/.claude/agents/code-reviewer.md`, `~/.claude/agents/security-engineer.md`. Tool documentation quality is a direct performance multiplier.
+
+3. **[High] Review hooks for input-side injection guards on scripted/cron runs** — Carry-forward from July 5 (5 days). "How We Contain Claude" pattern. Files: `shared/claude-code/hooks/pre-commit-review-gate.sh`, `shared/claude-code/hooks/pre-pr-review-gate.sh`.
+
+Carry-forward:
+- **[Critical — 14 days] Opus 4.7 fast mode removal** — July 24 deadline; `grep -r "opus-4-7" ~/.claude/ shared/` still pending (10 consecutive days without action)
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1; verify pre-commit gates fire correctly; outstanding
+- **[Critical — 26 days] Opus 4.1 deprecation** — August 5; `grep -r "claude-opus-4-1"` audit still pending
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (14 days overdue)
+- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (14 days)
+- **[High] Advisor Tool evaluation** — max_tokens parameter documented; carry-forward since June 26 (14 days)
+- **[High] Memory for Managed Agents evaluation** — Public beta confirmed; carry-forward from June 30 (10 days)
+- **[High] Add `/rewind` checkpoints to ag3nts Commands table** — Carry-forward from June 28 (12 days)
+- **[Medium] Cache Diagnostics audit** — Add `cache-diagnosis-2026-04` beta header to scripted runs; carry-forward from June 28 (12 days)
+- **[Medium] Pilot mid-array system messages in code-reviewer dispatch** — Carry-forward from June 28 (12 days)
+- **[Medium] Review BrowseComp design constraint** — Carry-forward from June 28 (13 days)
+- **[High] Demystifying evals — add eval spec to software-architect Stage 4 deliverables** — Carry-forward from July 5 (5 days)
+- **[High] Writing effective tools — audit code-reviewer + security-engineer tool descriptions** — Carry-forward from July 5 (5 days)
+- **[High] How We Contain Claude — review hooks for input-side injection guards on scripted/cron runs** — Carry-forward from July 5 (5 days)
+- **[High] Claude Platform on AWS — add to ag3nts.md Scripted / Automated Runs section** — Carry-forward from July 5 (5 days)
+- **[Medium] Claude for Government reference** — Add URL to repos.md; carry-forward from July 9
+
+---
+
+## Scan: 2026-07-09
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
