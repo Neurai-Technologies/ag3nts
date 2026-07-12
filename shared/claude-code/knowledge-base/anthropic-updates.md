@@ -1,6 +1,56 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-07-11
+## Latest Scan: 2026-07-12
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 0
+- Actionable integrations: 0
+
+### Context
+
+One day since last scan (July 11). No new findings — no research papers, product announcements, engineering posts, or API changes published on July 11 or July 12. Carry-forward: Opus 4.7 fast mode hard removal July 24 (**12 days — CRITICAL, 12 consecutive days without action**); hook matcher audit outstanding; Opus 4.1 deprecation August 5 (24 days); Claude Sonnet 5 introductory pricing ends August 31 (50 days); `web_search_20260318` adoption (16 days overdue); WIF adoption (16 days overdue); Advisor Tool max_tokens evaluation (16 days overdue); Memory for Managed Agents eval (12 days); `/rewind` checkpoints (14 days); Cache Diagnostics audit (14 days); mid-array system messages pilot (14 days); BrowseComp design constraint (15 days); Demystifying evals (7 days); Writing effective tools audit (7 days); How We Contain Claude injection guard (7 days); Claude Platform on AWS scripted runs (7 days); Claude for Government reference (3 days); GRAM repos.md entry (3 days).
+
+---
+
+### Findings
+
+No new findings since July 11 scan.
+
+---
+
+### Recommendations
+
+Top 3 actions for July 12:
+
+1. **[Critical — 12 days] Run Opus 4.7 fast mode audit immediately** — `grep -r "opus-4-7" ~/.claude/ shared/` — July 24 is 12 days away. Carry-forward for **12 consecutive days without action**. Hard error after cutoff. Migrate any matches to `claude-opus-4-8` with fast mode.
+
+2. **[High] Audit tool descriptions in code-reviewer + security-engineer against "Writing effective tools" checklist** — Carry-forward from July 5 (7 days). Files: `~/.claude/agents/code-reviewer.md`, `~/.claude/agents/security-engineer.md`. Tool documentation quality is a direct performance multiplier.
+
+3. **[High] Review hooks for input-side injection guards on scripted/cron runs** — Carry-forward from July 5 (7 days). "How We Contain Claude" pattern. Files: `shared/claude-code/hooks/pre-commit-review-gate.sh`, `shared/claude-code/hooks/pre-pr-review-gate.sh`.
+
+Carry-forward:
+- **[Critical — 12 days] Opus 4.7 fast mode removal** — July 24 deadline; `grep -r "opus-4-7" ~/.claude/ shared/` still pending (12 consecutive days without action)
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1; verify pre-commit gates fire correctly; outstanding
+- **[Critical — 24 days] Opus 4.1 deprecation** — August 5; `grep -r "claude-opus-4-1"` audit still pending
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (16 days overdue)
+- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (16 days)
+- **[High] Advisor Tool evaluation** — max_tokens parameter documented; carry-forward since June 26 (16 days)
+- **[High] Memory for Managed Agents evaluation** — Public beta confirmed; `agent-memory-2026-07-22` header replaces `managed-agents-2026-04-01` (sending both returns 400); carry-forward from June 30 (12 days)
+- **[High] Add `/rewind` checkpoints to ag3nts Commands table** — Carry-forward from June 28 (14 days)
+- **[Medium] Cache Diagnostics audit** — Add `cache-diagnosis-2026-04` beta header to scripted runs; carry-forward from June 28 (14 days)
+- **[Medium] Pilot mid-array system messages in code-reviewer dispatch** — Carry-forward from June 28 (14 days)
+- **[Medium] Review BrowseComp design constraint** — Carry-forward from June 28 (15 days)
+- **[High] Demystifying evals — add eval spec to software-architect Stage 4 deliverables** — Carry-forward from July 5 (7 days)
+- **[High] Writing effective tools — audit code-reviewer + security-engineer tool descriptions** — Carry-forward from July 5 (7 days)
+- **[High] How We Contain Claude — review hooks for input-side injection guards on scripted/cron runs** — Carry-forward from July 5 (7 days)
+- **[High] Claude Platform on AWS — add to ag3nts.md Scripted / Automated Runs section** — Carry-forward from July 5 (7 days)
+- **[Medium] Claude for Government reference** — Add URL to repos.md; carry-forward from July 9 (3 days)
+- **[Medium] GRAM repos.md entry** — Add https://www.anthropic.com/research/off-switch-dual-use to repos.md; carry-forward from July 10 (3 days)
+
+---
+
+## Scan: 2026-07-11
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
