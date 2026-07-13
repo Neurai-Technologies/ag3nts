@@ -1,6 +1,78 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-07-12
+## Latest Scan: 2026-07-13
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 2
+- Actionable integrations: 1
+
+### Context
+
+One day since last scan (July 12). Two missed findings uncovered: (1) **Claude Reflect Dashboard** (July 9, 2026) — missed by the July 9 scan that found Claude Code fixes and Claude for Government; personal usage analytics with topic breakdown and usage cadence; consumer feature, low direct ag3nts impact; (2) **Claude Code v2.1.207** (July 10–11, 2026) — missed by July 11 and July 12 scans; auto mode now on-by-default for Bedrock, Vertex AI, and Foundry sessions without requiring `CLAUDE_CODE_ENABLE_AUTO_MODE=1`; Bedrock updated to Claude Opus 4.8; terminal streaming freeze fixed. Nothing new published on July 13 itself. Carry-forward: Opus 4.7 fast mode hard removal July 24 (**11 days — CRITICAL, 13 consecutive days without action**); hook matcher audit outstanding; Opus 4.1 deprecation August 5 (23 days); Claude Sonnet 5 introductory pricing ends August 31 (49 days); `web_search_20260318` adoption (17 days overdue); WIF adoption (17 days overdue); Advisor Tool evaluation (17 days overdue); Memory for Managed Agents eval (13 days); `/rewind` checkpoints (15 days); Cache Diagnostics audit (15 days); mid-array system messages pilot (15 days); BrowseComp design constraint (16 days); Demystifying evals (8 days); Writing effective tools audit (8 days); How We Contain Claude injection guard (8 days); Claude Platform on AWS scripted runs (8 days); Claude for Government reference (4 days); GRAM repos.md entry (3 days).
+
+---
+
+### Findings
+
+#### Claude Reflect Dashboard — Personal Usage Analytics Beta (July 9, 2026)
+- **Source**: https://www.anthropic.com/news (July 9, 2026)
+- **Published**: July 9, 2026 (missed by July 9–12 scans)
+- **Category**: Tooling
+- **What Changed**: Anthropic introduced **Claude Reflect**, a beta usage analytics dashboard available in the Settings → Reflect tab on Claude web and desktop. Available for all Free, Pro, and Max users with Memory enabled. Displays: natural-language summary of recent activity; most-active day, peak hour, and total chat count with chart; topic breakdown by percentage; look-back windows of 1, 3, 6, or 12 months. Also adds **quiet hours** setting — suppresses Claude notifications during specified times. Positioned as helping users use AI more intentionally rather than maximizing usage.
+- **Impact on ag3nts**: Low direct impact — consumer/UX feature, not an API change. Indirect relevance: (1) if Rohan uses Claude.ai alongside the CLI, Reflect data can confirm which workflows (code review, security audits, etc.) dominate — useful for calibrating which agents need refinement; (2) the quiet hours concept is worth knowing for automated run windows — Claude.ai-side notifications can be suppressed during cron runs to avoid confusion between automation and personal use. No ag3nts code changes required.
+- **Proposed Changes**:
+  - [ ] No code changes required; awareness item
+- **Priority**: Low — consumer UX feature; no API integration surface; informational only
+
+---
+
+#### Claude Code v2.1.207 — Auto Mode Default on Bedrock, Vertex AI, and Foundry (July 10–11, 2026)
+- **Source**: https://docs.anthropic.com/en/release-notes/claude-code
+- **Published**: July 10–11, 2026 (missed by July 11 and July 12 scans)
+- **Category**: Tooling / API
+- **What Changed**: Claude Code v2.1.207 made **auto mode the default** for sessions routed through Amazon Bedrock, Google Vertex AI, and Microsoft Foundry — removing the previous `CLAUDE_CODE_ENABLE_AUTO_MODE=1` opt-in requirement. Additional changes: (1) **Bedrock updated to Claude Opus 4.8** as the default model (previously Opus 4.7); (2) terminal streaming freeze fixed — long lists, tables, code blocks caused keystroke lag during streaming; (3) remote managed settings from non-interactive runs no longer permanently record consent without showing the security dialog; (4) general improvements to background agent stability. This release follows v2.1.200 (July 3, Manual mode default for interactive CLI sessions) in establishing distinct defaults for interactive vs. cloud-routed enterprise sessions.
+- **Impact on ag3nts**: (1) **Bedrock users** — if any ag3nts CI/CD pipelines route through Bedrock, auto mode now applies without the env var; aligns with ag3nts `permissions.defaultMode: "auto"` already in settings.json; (2) **Bedrock → Opus 4.8 migration** — directly supports the Opus 4.7 fast mode deadline (July 24, 11 days away); Bedrock itself has already moved to Opus 4.8 by default; (3) **Streaming freeze fix** — affects `code-reviewer` multi-specialist dispatch when specialists return large diffs or long code tables; reduces stuck-session risk in parallel dispatch; (4) **Consent dialog fix** — scripted/`--bare -p` runs were silently accepting remote managed settings consent; patched.
+- **Proposed Changes**:
+  - [ ] Update Claude Code: `npm install -g @anthropic-ai/claude-code@latest`
+  - [ ] If using Bedrock: verify Opus 4.8 is active and remove `CLAUDE_CODE_ENABLE_AUTO_MODE=1` from CI scripts if present (now redundant)
+- **Priority**: Medium — streaming fix and consent patch are correctness improvements; Bedrock Opus 4.8 default assists the July 24 migration; fast, low-risk update
+
+---
+
+### Recommendations
+
+Top 3 actions for July 13:
+
+1. **[Critical — 11 days] Run Opus 4.7 fast mode audit immediately** — `grep -r "opus-4-7" ~/.claude/ shared/` — July 24 is 11 days away. Carry-forward for **13 consecutive days without action**. Hard error after cutoff. Migrate any matches to `claude-opus-4-8` with fast mode. Note: Bedrock already migrated to Opus 4.8 by default in v2.1.207.
+
+2. **[Medium] Update Claude Code to v2.1.207+** — `npm install -g @anthropic-ai/claude-code@latest`. Fixes streaming freeze in long-output sessions (affects code-reviewer parallel dispatch), patches the silent consent issue in non-interactive runs, and removes need for `CLAUDE_CODE_ENABLE_AUTO_MODE=1` on cloud platforms. Fast, low-risk update.
+
+3. **[High] Audit tool descriptions in code-reviewer + security-engineer against "Writing effective tools" checklist** — Carry-forward from July 5 (8 days). Files: `~/.claude/agents/code-reviewer.md`, `~/.claude/agents/security-engineer.md`. Tool documentation quality is a direct performance multiplier.
+
+Carry-forward:
+- **[Critical — 11 days] Opus 4.7 fast mode removal** — July 24 deadline; `grep -r "opus-4-7" ~/.claude/ shared/` still pending (13 consecutive days without action)
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1; verify pre-commit gates fire correctly; outstanding
+- **[Critical — 23 days] Opus 4.1 deprecation** — August 5; `grep -r "claude-opus-4-1"` audit still pending
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (17 days overdue)
+- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (17 days)
+- **[High] Advisor Tool evaluation** — max_tokens parameter documented; carry-forward since June 26 (17 days)
+- **[High] Memory for Managed Agents evaluation** — Public beta confirmed; `agent-memory-2026-07-22` header replaces `managed-agents-2026-04-01` (sending both returns 400); carry-forward from June 30 (13 days)
+- **[High] Add `/rewind` checkpoints to ag3nts Commands table** — Carry-forward from June 28 (15 days)
+- **[Medium] Cache Diagnostics audit** — Add `cache-diagnosis-2026-04` beta header to scripted runs; carry-forward from June 28 (15 days)
+- **[Medium] Pilot mid-array system messages in code-reviewer dispatch** — Carry-forward from June 28 (15 days)
+- **[Medium] Review BrowseComp design constraint** — Carry-forward from June 28 (16 days)
+- **[High] Demystifying evals — add eval spec to software-architect Stage 4 deliverables** — Carry-forward from July 5 (8 days)
+- **[High] Writing effective tools — audit code-reviewer + security-engineer tool descriptions** — Carry-forward from July 5 (8 days)
+- **[High] How We Contain Claude — review hooks for input-side injection guards on scripted/cron runs** — Carry-forward from July 5 (8 days)
+- **[High] Claude Platform on AWS — add to ag3nts.md Scripted / Automated Runs section** — Carry-forward from July 5 (8 days)
+- **[Medium] Claude for Government reference** — Add URL to repos.md; carry-forward from July 9 (4 days)
+- **[Medium] GRAM repos.md entry** — Add https://www.anthropic.com/research/off-switch-dual-use to repos.md; carry-forward from July 10 (3 days)
+- **[Medium] Update Claude Code to v2.1.207+** — Auto mode default on Bedrock/Vertex/Foundry; streaming freeze fix; consent dialog patch; `npm install -g @anthropic-ai/claude-code@latest`; carry-forward from July 10 (3 days)
+
+---
+
+## Scan: 2026-07-12
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
