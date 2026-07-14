@@ -1,6 +1,93 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-07-13
+## Latest Scan: 2026-07-14
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 3
+- Actionable integrations: 2
+
+### Context
+
+One day since last scan (July 13). Three missed findings uncovered: (1) **"How Claude's values vary by model and language"** (July 13, 2026) — research analyzing 700,000 conversations for how Claude's expressed values differ across models (Sonnet 4.6, Opus 4.6, Opus 4.7) and 30+ languages; published on the July 13 scan date but missed; (2) **Project Fetch Phase Two** (July 9, 2026) — Frontier Red Team robotics research showing Claude Opus 4.7 operating 20× faster than fastest human team on all robotics tasks; missed by all prior scans despite Claude for Government (same date) being captured; (3) **Claude Science beta** (June 30, 2026) — AI research workbench for scientists launched in beta for Pro/Max/Team/Enterprise; missed by all prior scans; **application deadline for $30K compute credit projects is July 15, 2026 (tomorrow)**. No new engineering blog posts (last post remains April 23). Carry-forward: Opus 4.7 fast mode hard removal July 24 (**10 days — CRITICAL, 14 consecutive days without action**); hook matcher audit outstanding; Opus 4.1 deprecation August 5 (22 days); Claude Sonnet 5 introductory pricing ends August 31 (48 days); `web_search_20260318` adoption (18 days overdue); WIF adoption (18 days overdue); Advisor Tool evaluation (18 days overdue); Memory for Managed Agents eval (14 days); `/rewind` checkpoints (16 days); Cache Diagnostics audit (16 days); mid-array system messages pilot (16 days); BrowseComp design constraint (17 days); Demystifying evals (9 days); Writing effective tools audit (9 days); How We Contain Claude injection guard (9 days); Claude Platform on AWS scripted runs (9 days); Claude for Government reference (5 days); GRAM repos.md entry (4 days); Update Claude Code to v2.1.207+ (4 days).
+
+---
+
+### Findings
+
+#### How Claude's Values Vary by Model and Language (July 13, 2026)
+- **Source**: https://www.anthropic.com/research/claude-values-models-languages
+- **Published**: July 13, 2026 (missed by July 13 scan)
+- **Category**: Research / Safety
+- **What Changed**: Anthropic analyzed 700,000 anonymized Claude.ai conversations from May 2026, spanning three models (Sonnet 4.6, Opus 4.6, Opus 4.7) and 30+ languages. Researchers identified 3,000+ distinct values expressed in Claude's responses and measured how often each appeared. High-frequency universal values (helpfulness, clarity, following instructions) were excluded; the remaining variance reveals that which values Claude expresses differs by model version and language in ways not deliberately designed — and can now be studied and evaluated.
+- **Impact on ag3nts**: (1) **Model selection** — Sonnet 4.6, Opus 4.6, and Opus 4.7 express values differently; agents using Opus for high-stakes tasks (security-engineer, software-architect) may behave differently than Sonnet-based agents in nuanced ways beyond capability; (2) **Multi-language workflows** — value expression varies by language, relevant if ag3nts sessions process non-English code comments, docs, or prompts; (3) **Eval framework** — the 3,000+ value taxonomy and conversation-level analysis methodology is directly applicable to the Demystifying evals carry-forward (Stage 4 eval spec for software-architect).
+- **Proposed Changes**:
+  - [ ] Add https://www.anthropic.com/research/claude-values-models-languages to repos.md as reference for agent behavioral evaluation methodology
+- **Priority**: Medium — research insight; no breaking changes; useful for eval design and multi-model agent calibration
+
+---
+
+#### Project Fetch Phase Two — Claude at Robotics Tasks (July 9, 2026)
+- **Source**: https://www.anthropic.com/research/project-fetch-phase-two
+- **Published**: July 9, 2026 (missed by all prior scans)
+- **Category**: Research / Agent Patterns
+- **What Changed**: Anthropic's Frontier Red Team published Phase Two of Project Fetch, testing Claude Opus 4.7 on direct robotics task control without human assistance. Key finding: Claude Opus 4.7 completed all tasks that human participants accomplished within their first year — **approximately 20× faster than the fastest human team**. However, Claude still struggled with precise physical manipulation (moving a beach ball). A broader simulation study tested multiple models on diverse robotics tasks to evaluate direct robot control capability at scale.
+- **Impact on ag3nts**: Low direct code impact — robotics is outside ag3nts scope. Informational relevance: (1) validates that Claude excels at high-level autonomous task orchestration while struggling with micro-precision tasks — directly maps to why ag3nts uses human-plans/agent-executes architecture; (2) the 20× speed improvement over humans on structured tasks supports confidence in multi-agent parallel dispatch (code-reviewer 4-specialist pattern); (3) the "struggles with precision" finding is a useful calibration for setting agent scope boundaries.
+- **Proposed Changes**:
+  - [ ] Add https://www.anthropic.com/research/project-fetch-phase-two to repos.md as Frontier Red Team reference for Claude autonomous task performance benchmarks
+- **Priority**: Low — informational; validates existing architecture choices; no config changes needed
+
+---
+
+#### Claude Science Beta — AI Workbench for Scientists (June 30, 2026)
+- **Source**: https://www.anthropic.com/news/claude-science-ai-workbench
+- **Published**: June 30, 2026 (missed by all prior scans)
+- **Category**: Tooling
+- **What Changed**: Anthropic launched **Claude Science** in beta for Pro, Max, Team, and Enterprise users — a purpose-built AI research workbench that integrates scientific tools (genomics, proteomics, cheminformatics), databases, compute resources, and literature access into a single environment. Uses Claude Opus 4.8 (same API models, not a new model). Produces auditable artifacts and reproducible research pipelines. Concurrent with launch, Anthropic opened applications for up to 50 "AI for Science" projects receiving up to $30,000 in compute credits each; application deadline is **July 15, 2026 (tomorrow)**.
+- **Impact on ag3nts**: (1) **Tooling awareness** — Claude Science is a product-layer offering, not a raw API feature; no direct ag3nts code changes needed; (2) **Time-sensitive opportunity** — the $30K compute credit window closes July 15, 2026 (tomorrow); if Rohan has science-adjacent projects (biomedical, genomics, bioinformatics), this is the only time-sensitive action in today's scan; (3) **Architecture reference** — "integrates fragmented tools into a single research environment producing auditable artifacts" mirrors ag3nts multi-agent dispatch and code-reviewer Stage 6 deliverables; worth adding to repos.md as a design reference.
+- **Proposed Changes**:
+  - [ ] **[Time-sensitive — tomorrow]** If interested in scientific computing: apply at https://www.anthropic.com/news/claude-science-ai-workbench before July 15, 2026 for up to $30K in compute credits
+  - [ ] Add https://www.anthropic.com/news/claude-science-ai-workbench to repos.md
+- **Priority**: Medium — tooling awareness; application deadline makes this uniquely time-sensitive today
+
+---
+
+### Recommendations
+
+Top 3 actions for July 14:
+
+1. **[Critical — 10 days] Run Opus 4.7 fast mode audit immediately** — `grep -r "opus-4-7" ~/.claude/ shared/` — July 24 is 10 days away. Carry-forward for **14 consecutive days without action**. Hard error after cutoff. Migrate any matches to `claude-opus-4-8` with fast mode.
+
+2. **[Time-sensitive — tomorrow] Claude Science application deadline** — If interested in scientific computing, apply at https://www.anthropic.com/news/claude-science-ai-workbench before July 15, 2026 for up to $30K in compute credits. Missed opportunity if skipped — next cohort unknown.
+
+3. **[High] Audit tool descriptions in code-reviewer + security-engineer against "Writing effective tools" checklist** — Carry-forward from July 5 (9 days). Files: `~/.claude/agents/code-reviewer.md`, `~/.claude/agents/security-engineer.md`. Tool documentation quality is a direct performance multiplier.
+
+Carry-forward:
+- **[Critical — 10 days] Opus 4.7 fast mode removal** — July 24 deadline; `grep -r "opus-4-7" ~/.claude/ shared/` still pending (14 consecutive days without action)
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1; verify pre-commit gates fire correctly; outstanding
+- **[Critical — 22 days] Opus 4.1 deprecation** — August 5; `grep -r "claude-opus-4-1"` audit still pending
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (18 days overdue)
+- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (18 days)
+- **[High] Advisor Tool evaluation** — max_tokens parameter documented; carry-forward since June 26 (18 days)
+- **[High] Memory for Managed Agents evaluation** — Public beta confirmed; `agent-memory-2026-07-22` header replaces `managed-agents-2026-04-01` (sending both returns 400); carry-forward from June 30 (14 days)
+- **[High] Add `/rewind` checkpoints to ag3nts Commands table** — Carry-forward from June 28 (16 days)
+- **[Medium] Cache Diagnostics audit** — Add `cache-diagnosis-2026-04` beta header to scripted runs; carry-forward from June 28 (16 days)
+- **[Medium] Pilot mid-array system messages in code-reviewer dispatch** — Carry-forward from June 28 (16 days)
+- **[Medium] Review BrowseComp design constraint** — Carry-forward from June 28 (17 days)
+- **[High] Demystifying evals — add eval spec to software-architect Stage 4 deliverables** — Carry-forward from July 5 (9 days)
+- **[High] Writing effective tools — audit code-reviewer + security-engineer tool descriptions** — Carry-forward from July 5 (9 days)
+- **[High] How We Contain Claude — review hooks for input-side injection guards on scripted/cron runs** — Carry-forward from July 5 (9 days)
+- **[High] Claude Platform on AWS — add to ag3nts.md Scripted / Automated Runs section** — Carry-forward from July 5 (9 days)
+- **[Medium] Claude for Government reference** — Add URL to repos.md; carry-forward from July 9 (5 days)
+- **[Medium] GRAM repos.md entry** — Add https://www.anthropic.com/research/off-switch-dual-use to repos.md; carry-forward from July 10 (4 days)
+- **[Medium] Update Claude Code to v2.1.207+** — `npm install -g @anthropic-ai/claude-code@latest`; carry-forward from July 10 (4 days)
+- **[Medium] Add Project Fetch Phase Two to repos.md** — https://www.anthropic.com/research/project-fetch-phase-two; new today
+- **[Medium] Add values research to repos.md** — https://www.anthropic.com/research/claude-values-models-languages; new today
+- **[Medium] Add Claude Science to repos.md** — https://www.anthropic.com/news/claude-science-ai-workbench; new today
+
+---
+
+## Scan: 2026-07-13
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
