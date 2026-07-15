@@ -1,5 +1,92 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-07-15
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 3
+- Actionable integrations: 2
+
+### Context
+
+One day since last scan (July 14). Three missed findings uncovered: (1) **Claude Cowork Web + Mobile Expansion** (July 7, 2026) — missed by the July 7, 8, and 9 scans; Claude Cowork now available on web and mobile for Max subscribers, with doubled usage limits extended through August 5; (2) **Microsoft 365 Write Tools for Claude** (July 7, 2026) — missed by the same scans; M365 connector upgraded from read-only to read/write, enabling Claude to draft/send email, manage calendar events, and create/update OneDrive and SharePoint files with attribution headers and per-user rate limits; (3) **"How Canada uses Claude: Findings from the Anthropic Economic Index"** (July 14, 2026) — published on the same date as the July 14 scan, which was focused on July 13 catch-ups and missed it. Nothing new published on July 15 itself. **Time-sensitive: Claude Science application deadline is TODAY (July 15, 2026)** — $30K compute credit window closes today. Carry-forward: Opus 4.7 fast mode hard removal July 24 (**9 days — CRITICAL, 15 consecutive days without action**); hook matcher audit outstanding; Opus 4.1 deprecation August 5 (21 days); Claude Sonnet 5 introductory pricing ends August 31 (47 days); `web_search_20260318` adoption (19 days overdue); WIF adoption (19 days overdue); Advisor Tool evaluation (19 days overdue); Memory for Managed Agents eval (15 days); `/rewind` checkpoints (17 days); Cache Diagnostics audit (17 days); mid-array system messages pilot (17 days); BrowseComp design constraint (18 days); Demystifying evals (10 days); Writing effective tools audit (10 days); How We Contain Claude injection guard (10 days); Claude Platform on AWS scripted runs (10 days); Claude for Government reference (6 days); GRAM repos.md entry (5 days); Update Claude Code to v2.1.207+ (5 days); Project Fetch Phase Two repos.md entry (1 day); Values research repos.md entry (1 day); Claude Science repos.md entry (1 day).
+
+---
+
+### Findings
+
+#### Claude Cowork Web + Mobile Expansion (July 7, 2026)
+- **Source**: https://www.anthropic.com/news (July 7, 2026); coverage at https://9to5mac.com/2026/07/13/anthropic-expanding-claude-cowork-to-mobile-and-web-details-here/
+- **Published**: July 7, 2026 (missed by July 7, 8, and 9 scans)
+- **Category**: Tooling
+- **What Changed**: Anthropic expanded Claude Cowork from desktop-only to web and mobile, with Max subscribers receiving access first and other plans following in the coming weeks. Doubled Cowork usage limits (introduced at the Cowork launch) extended through **August 5, 2026**. Usage data released: across 1.2M Cowork sessions in 600K+ organizations, software development = 8.7% of use; business process work = 33.4%; content creation = 16.4% — demonstrating Cowork is primarily a business-process tool, not a coding one.
+- **Impact on ag3nts**: Low direct impact — ag3nts uses Claude CLI/API, not Cowork. Indirect relevance: (1) **August 5 deadline** — doubled usage limits expire August 5; Rohan should verify whether any Cowork usage overlaps with ag3nts workflows before limits revert; (2) the usage breakdown (33% business process vs. 8.7% dev) validates that ag3nts' developer-focused specialization occupies a distinct and well-defined niche from what most Cowork users do; (3) **effort control** — the effort level selector (Low/Medium/High/Max) introduced with Cowork is now also in Claude.ai; not yet in the API, but watch for API-side `effort` parameter as a follow-on.
+- **Proposed Changes**:
+  - [ ] No code changes required; awareness item — doubled limits expire August 5
+- **Priority**: Low — tooling expansion; no ag3nts API or config changes; one date to note (August 5)
+
+---
+
+#### Microsoft 365 Write Tools — Claude M365 Connector Upgraded to Read/Write (July 7, 2026)
+- **Source**: https://claude.com/connectors/microsoft-365; https://support.claude.com/en/articles/12542951-set-up-the-microsoft-365-connector
+- **Published**: July 7, 2026 (missed by July 7, 8, and 9 scans)
+- **Category**: Tooling / Agent Patterns
+- **What Changed**: Anthropic upgraded the Microsoft 365 connector for Claude Enterprise from read-only to read/write. New write capabilities: draft and send email, manage calendar events (create/update/delete), create and update files in OneDrive and SharePoint. Safety guardrails: all agent-sent emails include an attribution header identifying them as agent-initiated; per-user rate limits apply to sends and writes; attachments not supported in any write path; Teams remains read-only. Requires Microsoft Entra admin consent for the new permission scope before write tools activate.
+- **Impact on ag3nts**: Medium relevance as a connector pattern reference. (1) **Direct tooling opportunity** — if Rohan's workflow involves M365 (email, calendar, SharePoint), this connector enables Claude to act as a writing/scheduling agent within the existing subscription; no new API keys needed beyond Entra admin consent; (2) **Agent pattern** — the attribution header + per-user rate limit + attachment restriction design is a clean model for safe write-capable agent connectors; directly applicable to any future ag3nts connector that performs write operations against an external system; (3) **MCP reference** — the connector is implemented as an MCP server accessible via Claude Cowork and Claude.ai enterprise; architecture reference for security-engineer threat modeling of write-enabled MCP connectors.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — Add https://claude.com/connectors/microsoft-365 as reference for write-capable MCP connector design patterns and safe agentic write guardrails
+- **Priority**: Medium — connector architecture reference; potentially directly useful if Rohan uses M365; safe-write pattern is a reusable design insight for security-engineer threat models
+
+---
+
+#### How Canada Uses Claude — Anthropic Economic Index (July 14, 2026)
+- **Source**: https://www.anthropic.com/research/economic-index-canada (inferred; confirmed by coverage at https://connect.cfauk.org/discussion/the-anthropic-economic-index-report-first-for-2026)
+- **Published**: July 14, 2026 (missed by July 14 scan)
+- **Category**: Research
+- **What Changed**: Anthropic published a focused Economic Index report on Canadian Claude usage. Key findings: Canada ranks 8th worldwide in Claude.ai use; on a per-capita basis, Canadians use Claude at 4× the rate the population predicts, with only the US ranking higher in the top 10; per-person usage is highest in British Columbia (tech/professional concentration) followed by Ontario; translation requests are disproportionately high in government-heavy provinces due to Canada's bilingualism regulations for federal services.
+- **Impact on ag3nts**: Low direct impact — economic/research report, no API or agent changes. Informational value: (1) validates that professional/technical users (like the ag3nts developer profile) drive disproportionate Claude adoption; (2) the bilingualism translation use case is worth noting for multi-language agent design, specifically if ag3nts prompts ever process French-English bilingual codebases, government docs, or bilingual comments.
+- **Proposed Changes**:
+  - [ ] No code changes required; awareness item
+- **Priority**: Low — research/economic data; no ag3nts integration surface
+
+---
+
+### Recommendations
+
+Top 3 actions for July 15:
+
+1. **[Critical — 9 days] Run Opus 4.7 fast mode audit NOW** — `grep -r "opus-4-7" ~/.claude/ shared/` — July 24 is 9 days away. Carry-forward for **15 consecutive days without action**. This is the last practical week to migrate before the hard cutoff. Migrate any matches to `claude-opus-4-8` with fast mode.
+
+2. **[Time-sensitive — TODAY] Claude Science application deadline** — If interested in scientific computing or adjacent projects, apply at https://www.anthropic.com/news/claude-science-ai-workbench today (July 15). $30K compute credit window closes today — no further cohort dates announced.
+
+3. **[High] Audit tool descriptions in code-reviewer + security-engineer against "Writing effective tools" checklist** — Carry-forward from July 5 (10 days). Files: `~/.claude/agents/code-reviewer.md`, `~/.claude/agents/security-engineer.md`. Tool documentation quality is a direct performance multiplier.
+
+Carry-forward:
+- **[Critical — 9 days] Opus 4.7 fast mode removal** — July 24 deadline; `grep -r "opus-4-7" ~/.claude/ shared/` still pending (15 consecutive days without action)
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1; verify pre-commit gates fire correctly; outstanding
+- **[Critical — 21 days] Opus 4.1 deprecation** — August 5; `grep -r "claude-opus-4-1"` audit still pending
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (19 days overdue)
+- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (19 days)
+- **[High] Advisor Tool evaluation** — max_tokens parameter documented; carry-forward since June 26 (19 days)
+- **[High] Memory for Managed Agents evaluation** — Public beta confirmed; `agent-memory-2026-07-22` header replaces `managed-agents-2026-04-01` (sending both returns 400); carry-forward from June 30 (15 days)
+- **[High] Add `/rewind` checkpoints to ag3nts Commands table** — Carry-forward from June 28 (17 days)
+- **[Medium] Cache Diagnostics audit** — Add `cache-diagnosis-2026-04` beta header to scripted runs; carry-forward from June 28 (17 days)
+- **[Medium] Pilot mid-array system messages in code-reviewer dispatch** — Carry-forward from June 28 (17 days)
+- **[Medium] Review BrowseComp design constraint** — Carry-forward from June 28 (18 days)
+- **[High] Demystifying evals — add eval spec to software-architect Stage 4 deliverables** — Carry-forward from July 5 (10 days)
+- **[High] Writing effective tools — audit code-reviewer + security-engineer tool descriptions** — Carry-forward from July 5 (10 days)
+- **[High] How We Contain Claude — review hooks for input-side injection guards on scripted/cron runs** — Carry-forward from July 5 (10 days)
+- **[High] Claude Platform on AWS — add to ag3nts.md Scripted / Automated Runs section** — Carry-forward from July 5 (10 days)
+- **[Medium] Claude for Government reference** — Add URL to repos.md; carry-forward from July 9 (6 days)
+- **[Medium] GRAM repos.md entry** — Add https://www.anthropic.com/research/off-switch-dual-use to repos.md; carry-forward from July 10 (5 days)
+- **[Medium] Update Claude Code to v2.1.207+** — `npm install -g @anthropic-ai/claude-code@latest`; carry-forward from July 10 (5 days)
+- **[Medium] Add Project Fetch Phase Two to repos.md** — https://www.anthropic.com/research/project-fetch-phase-two; carry-forward from July 14 (1 day)
+- **[Medium] Add values research to repos.md** — https://www.anthropic.com/research/claude-values-models-languages; carry-forward from July 14 (1 day)
+- **[Medium] Add Claude Science to repos.md** — https://www.anthropic.com/news/claude-science-ai-workbench; carry-forward from July 14 (1 day)
+- **[Medium] Add M365 write connector to repos.md** — https://claude.com/connectors/microsoft-365; new today
+
+---
+
 ## Latest Scan: 2026-07-14
 
 ### Summary
