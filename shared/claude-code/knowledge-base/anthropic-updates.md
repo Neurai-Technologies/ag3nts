@@ -1,5 +1,98 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-07-17
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 3
+- Actionable integrations: 2
+
+### Context
+
+One day since last scan (July 16). Three new findings: (1) **Claude Mythos Preview retirement July 21, 2026** — discovered in API release notes; `claude-mythos-preview` being retired in 4 days with no existing carry-forward warning; any agent config referencing this model ID will break with errors starting July 21; migrate immediately to `claude-mythos-5`; (2) **Dreams Research Preview adds Fable 5 + Sonnet 5 support** — from API release notes; low direct ag3nts impact but confirms Fable 5/Sonnet 5 are cleared for research-preview features post-July-1 redeployment; (3) **Claude Code broad stability update** — subagent text streaming, screen reader mode, vim insert remaps, mouse support, smarter /doctor, and a notable fix for a ANTHROPIC_BASE_URL bug that sent API keys to the default endpoint in background/scripted sessions (broken with 401). No new research papers or news published July 17 specifically. Carry-forward: Opus 4.7 fast mode removal July 24 (**CRITICAL — 7 days, 17 consecutive days without action**); Mythos Preview retirement July 21 (**NEW CRITICAL — 4 days**); hook matcher audit outstanding; Opus 4.1 deprecation August 5 (19 days); Claude Sonnet 5 introductory pricing ends August 31 (45 days); `web_search_20260318` adoption (21 days overdue); WIF adoption (21 days overdue); Advisor Tool evaluation (21 days overdue); Memory for Managed Agents (17 days); `/rewind` checkpoints (19 days); Cache Diagnostics (19 days); mid-array system messages (19 days); BrowseComp (20 days); Demystifying evals (12 days); Writing effective tools (12 days); How We Contain Claude injection guard (12 days); Claude Platform on AWS (12 days); Claude for Government (8 days); GRAM repos.md (7 days); Update Claude Code (7 days); Project Fetch Phase Two (3 days); Values research repos.md (3 days); Claude Science repos.md (3 days); M365 write connector repos.md (2 days); agentic misalignment paper repos.md (1 day); Alberta cybersecurity case study repos.md (1 day); Global Workspace paper repos.md (1 day); Admin API docs repos.md (1 day).
+
+---
+
+### Findings
+
+#### Claude Mythos Preview Retirement — July 21, 2026
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: July 2026 (retirement date: July 21, 2026)
+- **Category**: API / Model
+- **What Changed**: `claude-mythos-preview` will be retired on July 21, 2026 (4 days from today). All requests to this model ID will return errors after retirement. Anthropic recommends migrating to `claude-mythos-5`.
+- **Impact on ag3nts**: High if any agent definitions or scripted runs reference `claude-mythos-preview`. This model was used in Project Glasswing red-team workflows by external partners. If the security-engineer agent or any ag3nts workflow references Mythos Preview it will break in 4 days.
+- **Proposed Changes**:
+  - [ ] `grep -r "claude-mythos-preview" ~/.claude/ shared/` — audit all agent definitions and scripts; replace with `claude-mythos-5`
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — note retirement in Mythos-related entries
+- **Priority**: Critical — 4 days until breakage; must audit and migrate before July 21
+
+---
+
+#### Dreams Research Preview Adds Fable 5 + Sonnet 5 Support
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: July 2026
+- **Category**: API / Tooling
+- **What Changed**: Anthropic's Dreams research preview feature (which enables persistent, multi-session agent memory and reasoning) now supports both Claude Fable 5 and Claude Sonnet 5 as underlying models, in addition to prior model support.
+- **Impact on ag3nts**: Low direct impact — ag3nts primarily uses CLI/API, not Dreams-specific endpoints. Indirectly confirms Fable 5 is now fully cleared for research-preview features following the July 1 export-control redeployment. Worth noting if any future ag3nts workflow evaluates Dreams for long-horizon agent memory.
+- **Proposed Changes**:
+  - [ ] No code changes required; awareness item — Dreams now viable for Fable 5 / Sonnet 5 agent experiments if desired
+- **Priority**: Low — no immediate action; filed for future Dreams evaluation
+
+---
+
+#### Claude Code Broad Stability & Workflow Update
+- **Source**: https://docs.anthropic.com/en/release-notes/claude-code; https://github.com/anthropics/claude-code/releases
+- **Published**: July 2026
+- **Category**: Tooling
+- **What Changed**: Recent Claude Code release shipped: subagent text streaming (output visible in real time during sub-agent runs); screen reader mode; vim insert remaps; mouse support; stronger corporate launcher handling; smarter `/doctor` checkup. Critical bug fixes: (1) fixed background/scripted sessions dropping a shell-exported `ANTHROPIC_BASE_URL`, causing API keys to route to the default endpoint and fail with 401; (2) fixed background agents crash-looping when their working directory was deleted, replaced by a file, or became an invalid path; (3) fixed `/clear` not resetting the session cost counter. Wide fixes across Chrome, Windows, Bedrock, Vertex, hooks, and session recovery.
+- **Impact on ag3nts**: Medium. The `ANTHROPIC_BASE_URL` bug fix is notable for any ag3nts scripted/cron runs that set a custom base URL via shell environment — previously these would silently send API keys to the wrong endpoint with 401 errors. The working-directory crash fix improves resilience of background agent sessions (like this anthropic scan agent). Update Claude Code immediately.
+- **Proposed Changes**:
+  - [ ] `npm install -g @anthropic-ai/claude-code@latest` — update to get ANTHROPIC_BASE_URL bug fix and working-directory crash fix (consolidates the existing "Update Claude Code to v2.1.207+" carry-forward)
+- **Priority**: Medium-High — bug fixes directly affect scripted/cron runs; should update today
+
+---
+
+### Recommendations
+
+Top 3 actions for July 17:
+
+1. **[Critical — 4 days] Audit for claude-mythos-preview IMMEDIATELY** — `grep -r "claude-mythos-preview" ~/.claude/ shared/` — retirement is July 21 (4 days). If any matches found, replace with `claude-mythos-5`. This was not in any prior carry-forward — newly discovered today.
+
+2. **[Critical — 7 days] Run Opus 4.7 fast mode audit NOW** — `grep -r "opus-4-7" ~/.claude/ shared/` — July 24 is 7 days away. **17 consecutive days without action.** Migrate any matches to `claude-opus-4-8` with fast mode.
+
+3. **[Medium-High] Update Claude Code** — `npm install -g @anthropic-ai/claude-code@latest` — gets the ANTHROPIC_BASE_URL bug fix that affects scripted/cron runs including this anthropic scan agent, plus working-directory crash fix. Resolves the existing "Update Claude Code to v2.1.207+" carry-forward (7 days).
+
+Carry-forward:
+- **[Critical — 4 days] claude-mythos-preview retirement** — July 21 deadline; `grep -r "claude-mythos-preview" ~/.claude/ shared/` audit (new today)
+- **[Critical — 7 days] Opus 4.7 fast mode removal** — July 24 deadline; `grep -r "opus-4-7" ~/.claude/ shared/` still pending (17 consecutive days without action)
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1; verify pre-commit gates fire correctly; outstanding
+- **[Critical — 19 days] Opus 4.1 deprecation** — August 5; `grep -r "claude-opus-4-1"` audit still pending
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (21 days overdue)
+- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (21 days)
+- **[High] Advisor Tool evaluation** — max_tokens parameter documented; carry-forward since June 26 (21 days)
+- **[High] Memory for Managed Agents evaluation** — `agent-memory-2026-07-22` header replaces `managed-agents-2026-04-01`; carry-forward from June 30 (17 days)
+- **[High] Add `/rewind` checkpoints to ag3nts Commands table** — Carry-forward from June 28 (19 days)
+- **[Medium] Cache Diagnostics audit** — Add `cache-diagnosis-2026-04` beta header to scripted runs; carry-forward from June 28 (19 days)
+- **[Medium] Pilot mid-array system messages in code-reviewer dispatch** — Carry-forward from June 28 (19 days)
+- **[Medium] Review BrowseComp design constraint** — Carry-forward from June 28 (20 days)
+- **[High] Demystifying evals — add eval spec to software-architect Stage 4 deliverables** — Carry-forward from July 5 (12 days)
+- **[High] Writing effective tools — audit code-reviewer + security-engineer tool descriptions** — Carry-forward from July 5 (12 days)
+- **[High] How We Contain Claude — review hooks for input-side injection guards on scripted/cron runs** — Carry-forward from July 5 (12 days)
+- **[High] Claude Platform on AWS — add to ag3nts.md Scripted / Automated Runs section** — Carry-forward from July 5 (12 days)
+- **[Medium] Claude for Government reference** — Add URL to repos.md; carry-forward from July 9 (8 days)
+- **[Medium] GRAM repos.md entry** — Add https://www.anthropic.com/research/off-switch-dual-use to repos.md; carry-forward from July 10 (7 days)
+- **[Medium] Update Claude Code to latest** — `npm install -g @anthropic-ai/claude-code@latest`; carry-forward from July 10 (7 days); now elevated to Medium-High due to ANTHROPIC_BASE_URL bug fix
+- **[Medium] Add Project Fetch Phase Two to repos.md** — https://www.anthropic.com/research/project-fetch-phase-two; carry-forward from July 14 (3 days)
+- **[Medium] Add values research to repos.md** — https://www.anthropic.com/research/claude-values-models-languages; carry-forward from July 14 (3 days)
+- **[Medium] Add Claude Science to repos.md** — https://www.anthropic.com/news/claude-science-ai-workbench; carry-forward from July 14 (3 days)
+- **[Medium] Add M365 write connector to repos.md** — https://claude.com/connectors/microsoft-365; carry-forward from July 15 (2 days)
+- **[Medium] Add agentic misalignment paper to repos.md** — https://alignment.anthropic.com/2026/agentic-misalignment-summer-2026/; carry-forward from July 16 (1 day)
+- **[Medium] Add Alberta cybersecurity case study to repos.md** — https://www.anthropic.com/news/alberta-government-claude-cybersecurity; carry-forward from July 16 (1 day)
+- **[Medium] Add Global Workspace paper to repos.md** — https://www.anthropic.com/research/global-workspace; carry-forward from July 16 (1 day)
+- **[Medium] Add Admin API docs to repos.md** — https://docs.anthropic.com/en/docs/administration/administration-api; carry-forward from July 16 (1 day)
+
+---
+
 ## Latest Scan: 2026-07-16
 
 ### Summary
