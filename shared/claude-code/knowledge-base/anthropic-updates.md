@@ -1,5 +1,74 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-07-18
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 1
+- Actionable integrations: 0
+
+### Context
+
+One day since last scan (July 17). One new finding: **Ben Bernanke appointed to Anthropic's Long-Term Benefit Trust** — former Federal Reserve Chair (2006–2014) and 2022 Nobel Prize in Economics laureate joins LTBT as newest member; brings economic expertise relevant to Anthropic's AI-economic-impact research agenda; organizational governance change, no direct technical impact on ag3nts. No new engineering blog posts (last post remains April 23, 2026). No new API features or model releases beyond carry-forward. Urgency update: **claude-mythos-preview retirement is NOW 3 DAYS AWAY (July 21)** — must audit immediately; **Opus 4.7 fast mode removal is 6 DAYS AWAY (July 24)** — 18 consecutive days without action. Carry-forward: Opus 4.7 fast mode removal July 24 (**CRITICAL — 6 days, 18 consecutive days without action**); Mythos Preview retirement July 21 (**CRITICAL — 3 days**); hook matcher audit outstanding; Opus 4.1 deprecation August 5 (18 days); Claude Sonnet 5 introductory pricing ends August 31 (44 days); `web_search_20260318` adoption (22 days overdue); WIF adoption (22 days); Advisor Tool evaluation (22 days); Memory for Managed Agents (18 days); `/rewind` checkpoints (20 days); Cache Diagnostics (20 days); mid-array system messages (20 days); BrowseComp (21 days); Demystifying evals (13 days); Writing effective tools (13 days); How We Contain Claude injection guard (13 days); Claude Platform on AWS (13 days); Claude for Government (9 days); GRAM repos.md (8 days); Update Claude Code (8 days); Project Fetch Phase Two repos.md (4 days); Values research repos.md (4 days); Claude Science repos.md (4 days); M365 write connector repos.md (3 days); agentic misalignment paper repos.md (2 days); Alberta cybersecurity case study repos.md (2 days); Global Workspace paper repos.md (2 days); Admin API docs repos.md (2 days); Ben Bernanke LTBT (new today, low).
+
+---
+
+### Findings
+
+#### Ben Bernanke Appointed to Anthropic's Long-Term Benefit Trust
+- **Source**: https://www.anthropic.com/news/ben-bernanke
+- **Published**: July 2026
+- **Category**: Safety / Governance
+- **What Changed**: Dr. Ben Bernanke — former Federal Reserve Chair (2006–2014), 2022 Nobel Prize in Economics, Distinguished Fellow at the Brookings Institution — has been appointed as a new member of Anthropic's Long-Term Benefit Trust (LTBT). The LTBT is Anthropic's independent oversight body charged with holding the company to its mission of responsible AI development. Bernanke's appointment was highlighted for his economic expertise, particularly relevant to Anthropic's Economic Index research series on AI's economic impact.
+- **Impact on ag3nts**: None direct. Organizational governance change. Indirectly: stronger LTBT membership with economic expertise may correlate with continued Economic Index publications relevant to agent-workflow economic-impact research.
+- **Proposed Changes**:
+  - None required
+- **Priority**: Low — awareness only; no technical changes needed
+
+---
+
+### Recommendations
+
+No new high-priority actions for July 18. All critical items are carry-forward:
+
+1. **[Critical — 3 days] claude-mythos-preview retirement** — July 21 deadline. Run now: `grep -r "claude-mythos-preview" ~/.claude/ shared/`; replace any matches with `claude-mythos-5`.
+
+2. **[Critical — 6 days] Opus 4.7 fast mode removal** — July 24 deadline. 18 consecutive days without action. Run: `grep -r "opus-4-7" ~/.claude/ shared/`; migrate any matches to `claude-opus-4-8` fast mode.
+
+3. **[Medium-High] Update Claude Code** — `npm install -g @anthropic-ai/claude-code@latest` — ANTHROPIC_BASE_URL bug fix affects scripted/cron runs including this scan agent (8 days overdue).
+
+Carry-forward:
+- **[Critical — 3 days] claude-mythos-preview retirement** — July 21; `grep -r "claude-mythos-preview" ~/.claude/ shared/` audit; replace with `claude-mythos-5`
+- **[Critical — 6 days] Opus 4.7 fast mode removal** — July 24; `grep -r "opus-4-7" ~/.claude/ shared/`; 18 consecutive days without action
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1; verify pre-commit gates fire correctly; outstanding
+- **[Critical — 18 days] Opus 4.1 deprecation** — August 5; `grep -r "claude-opus-4-1"` audit still pending
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (22 days overdue)
+- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (22 days)
+- **[High] Advisor Tool evaluation** — max_tokens parameter documented; carry-forward since June 26 (22 days)
+- **[High] Memory for Managed Agents evaluation** — `agent-memory-2026-07-22` header; carry-forward from June 30 (18 days)
+- **[High] Add `/rewind` checkpoints to ag3nts Commands table** — Carry-forward from June 28 (20 days)
+- **[Medium] Cache Diagnostics audit** — Add `cache-diagnosis-2026-04` beta header to scripted runs; carry-forward from June 28 (20 days)
+- **[Medium] Pilot mid-array system messages in code-reviewer dispatch** — Carry-forward from June 28 (20 days)
+- **[Medium] Review BrowseComp design constraint** — Carry-forward from June 28 (21 days)
+- **[High] Demystifying evals — add eval spec to software-architect Stage 4 deliverables** — Carry-forward from July 5 (13 days)
+- **[High] Writing effective tools — audit code-reviewer + security-engineer tool descriptions** — Carry-forward from July 5 (13 days)
+- **[High] How We Contain Claude — review hooks for input-side injection guards on scripted/cron runs** — Carry-forward from July 5 (13 days)
+- **[High] Claude Platform on AWS — add to ag3nts.md Scripted / Automated Runs section** — Carry-forward from July 5 (13 days)
+- **[Medium] Claude for Government reference** — Add URL to repos.md; carry-forward from July 9 (9 days)
+- **[Medium] GRAM repos.md entry** — Add https://www.anthropic.com/research/off-switch-dual-use to repos.md; carry-forward from July 10 (8 days)
+- **[Medium-High] Update Claude Code to latest** — `npm install -g @anthropic-ai/claude-code@latest`; carry-forward from July 10 (8 days)
+- **[Medium] Add Project Fetch Phase Two to repos.md** — https://www.anthropic.com/research/project-fetch-phase-two; carry-forward from July 14 (4 days)
+- **[Medium] Add values research to repos.md** — https://www.anthropic.com/research/claude-values-models-languages; carry-forward from July 14 (4 days)
+- **[Medium] Add Claude Science to repos.md** — https://www.anthropic.com/news/claude-science-ai-workbench; carry-forward from July 14 (4 days)
+- **[Medium] Add M365 write connector to repos.md** — https://claude.com/connectors/microsoft-365; carry-forward from July 15 (3 days)
+- **[Medium] Add agentic misalignment paper to repos.md** — https://alignment.anthropic.com/2026/agentic-misalignment-summer-2026/; carry-forward from July 16 (2 days)
+- **[Medium] Add Alberta cybersecurity case study to repos.md** — https://www.anthropic.com/news/alberta-government-claude-cybersecurity; carry-forward from July 16 (2 days)
+- **[Medium] Add Global Workspace paper to repos.md** — https://www.anthropic.com/research/global-workspace; carry-forward from July 16 (2 days)
+- **[Medium] Add Admin API docs to repos.md** — https://docs.anthropic.com/en/docs/administration/administration-api; carry-forward from July 16 (2 days)
+- **[Low] Ben Bernanke LTBT appointment** — awareness item; no action required; logged July 18
+
+---
+
 ## Latest Scan: 2026-07-17
 
 ### Summary
