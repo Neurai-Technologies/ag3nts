@@ -1,5 +1,74 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-07-19
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 1
+- Actionable integrations: 1
+
+### Context
+
+One day since last scan (July 18). One new finding: **Claude Code release (July 18–19)** — LLM gateway auth fixed in background jobs (affects ag3nts cron/bare-mode runs behind HTTPS proxy); permanently undeletable claude agent jobs fixed (directly relevant to this scan agent); background agents auto-respawning prevented (guards against runaway background agent costs in automated pipelines); `CLAUDE_CODE_EXTRA_BODY` now respected by background workers; MCP server request timeouts fixed; confirmation prompt added before entering git worktrees outside the project directory. No new research papers, engineering posts, or API features beyond carry-forward. **CRITICAL: claude-mythos-preview retirement is NOW 2 DAYS AWAY (July 21)** — if any ag3nts config references `claude-mythos-preview`, it will error in 2 days. **CRITICAL: Opus 4.7 fast mode removal is NOW 5 DAYS AWAY (July 24)** — 19 consecutive days without action. Carry-forward: claude-mythos-preview retirement July 21 (**CRITICAL — 2 days**); Opus 4.7 fast mode removal July 24 (**CRITICAL — 5 days, 19 consecutive days without action**); hook matcher audit outstanding; Opus 4.1 deprecation August 5 (17 days); Claude Sonnet 5 introductory pricing ends August 31 (43 days); `web_search_20260318` adoption (23 days overdue); WIF adoption (23 days); Advisor Tool evaluation (23 days); Memory for Managed Agents (19 days); `/rewind` checkpoints (21 days); Cache Diagnostics (21 days); mid-array system messages (21 days); BrowseComp (22 days); Demystifying evals (14 days); Writing effective tools (14 days); How We Contain Claude injection guard (14 days); Claude Platform on AWS (14 days); Claude for Government (10 days); GRAM repos.md (9 days); Update Claude Code (9 days); Project Fetch Phase Two repos.md (5 days); Values research repos.md (5 days); Claude Science repos.md (5 days); M365 write connector repos.md (4 days); agentic misalignment paper repos.md (3 days); Alberta cybersecurity case study repos.md (3 days); Global Workspace paper repos.md (3 days); Admin API docs repos.md (3 days); Ben Bernanke LTBT (1 day, low).
+
+---
+
+### Findings
+
+#### Claude Code: LLM Gateway Auth, Undeletable Jobs, MCP Timeouts, Worktree Guards (July 18–19, 2026)
+- **Source**: https://docs.anthropic.com/en/release-notes/claude-code; https://github.com/anthropics/claude-code/releases
+- **Published**: July 18–19, 2026
+- **Category**: Tooling
+- **What Changed**: A Claude Code release shipped the following fixes and improvements: (1) **LLM gateway auth fixed in background jobs** — background and cron sessions were failing authentication when routed through a corporate LLM gateway/proxy; (2) **Permanently undeletable claude agent jobs fixed** — certain agent sessions became stuck in an undeletable state; (3) **Background agents auto-respawning prevented** — background agents were restarting themselves after being stopped, leading to runaway execution and cost in automated pipelines; (4) **`CLAUDE_CODE_EXTRA_BODY` respected by background workers** — shell-exported `CLAUDE_CODE_EXTRA_BODY` (used to inject custom request headers like `anthropic-beta`) was being dropped in background sessions; (5) **MCP server request timeouts fixed** — MCP tool calls in long-running sessions could time out incorrectly; (6) **Confirmation prompt before entering git worktrees outside project directory** — added a safety guard to prevent accidentally running agent commands in an unintended worktree; (7) Additional: Anthropic-operated public gateway endpoints now supported in `/login`; expired login error messages fixed; keyboard input responsiveness for `--resume`/`--continue` improved; background session titles no longer show model refusal text; headless print-mode sessions on Windows fixed; Claude-in-Chrome setup on Windows fixed.
+- **Impact on ag3nts**: Multiple fixes are directly relevant: (a) The LLM gateway auth fix is critical for ag3nts running behind the HTTPS proxy configured in CLAUDE.md (`/root/.ccr/ca-bundle.crt`) — background/cron sessions were failing auth silently; (b) The undeletable jobs fix is directly relevant to this `anthropic` scan agent, which runs on a cron schedule and could have been affected; (c) The auto-respawning prevention guards against runaway costs in the automated pre-commit pipeline (code-reviewer + security-engineer dual-dispatch); (d) The `CLAUDE_CODE_EXTRA_BODY` fix affects any ag3nts scripted runs that set beta headers via environment; (e) The MCP timeout fix improves reliability of any ag3nts workflow using MCP-connected tools; (f) The worktree confirmation prompt reduces risk of the code-reviewer worktree-isolation pattern running commands in the wrong checkout.
+- **Proposed Changes**:
+  - [ ] `npm install -g @anthropic-ai/claude-code@latest` — update to get LLM gateway auth fix (consolidates existing "Update Claude Code" carry-forward, now at 9 days)
+- **Priority**: High — LLM gateway auth fix is directly relevant to ag3nts cron/bare-mode runs behind the HTTPS proxy; update before next automated run
+
+---
+
+### Recommendations
+
+Top 3 actions for July 19:
+
+1. **[Critical — 2 days] Audit for claude-mythos-preview IMMEDIATELY** — `grep -r "claude-mythos-preview" ~/.claude/ shared/` — retirement is July 21 (2 days). If any matches found, replace with `claude-mythos-5`. After July 21, all requests error. This has been in carry-forward since July 17 with no action taken.
+
+2. **[Critical — 5 days] Run Opus 4.7 fast mode audit NOW** — `grep -r "opus-4-7" ~/.claude/ shared/` — July 24 is 5 days away. **19 consecutive days without action.** Migrate any matches to `claude-opus-4-8` with fast mode (3× cheaper, same speed). After July 24, requests with `speed: "fast"` to `claude-opus-4-7` return errors.
+
+3. **[High] Update Claude Code** — `npm install -g @anthropic-ai/claude-code@latest` — gets LLM gateway auth fix for background/cron sessions (directly affects ag3nts automated runs behind HTTPS proxy), undeletable-jobs fix, auto-respawning prevention, and `CLAUDE_CODE_EXTRA_BODY` fix. 9 days overdue.
+
+Carry-forward:
+- **[Critical — 2 days] claude-mythos-preview retirement** — July 21; `grep -r "claude-mythos-preview" ~/.claude/ shared/` audit (first flagged July 17)
+- **[Critical — 5 days] Opus 4.7 fast mode removal** — July 24; `grep -r "opus-4-7" ~/.claude/ shared/`; 19 consecutive days without action
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1; verify pre-commit gates fire correctly; outstanding
+- **[Critical — 17 days] Opus 4.1 deprecation** — August 5; `grep -r "claude-opus-4-1"` audit still pending
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (23 days overdue)
+- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (23 days)
+- **[High] Advisor Tool evaluation** — max_tokens parameter documented; carry-forward since June 26 (23 days)
+- **[High] Memory for Managed Agents evaluation** — `agent-memory-2026-07-22` header; carry-forward from June 30 (19 days)
+- **[High] Add `/rewind` checkpoints to ag3nts Commands table** — Carry-forward from June 28 (21 days)
+- **[Medium] Cache Diagnostics audit** — Add `cache-diagnosis-2026-04` beta header to scripted runs; carry-forward from June 28 (21 days)
+- **[Medium] Pilot mid-array system messages in code-reviewer dispatch** — Carry-forward from June 28 (21 days)
+- **[Medium] Review BrowseComp design constraint** — Carry-forward from June 28 (22 days)
+- **[High] Demystifying evals — add eval spec to software-architect Stage 4 deliverables** — Carry-forward from July 5 (14 days)
+- **[High] Writing effective tools — audit code-reviewer + security-engineer tool descriptions** — Carry-forward from July 5 (14 days)
+- **[High] How We Contain Claude — review hooks for input-side injection guards on scripted/cron runs** — Carry-forward from July 5 (14 days)
+- **[High] Claude Platform on AWS — add to ag3nts.md Scripted / Automated Runs section** — Carry-forward from July 5 (14 days)
+- **[Medium] Claude for Government reference** — Add URL to repos.md; carry-forward from July 9 (10 days)
+- **[Medium] GRAM repos.md entry** — Add https://www.anthropic.com/research/off-switch-dual-use; carry-forward from July 10 (9 days)
+- **[High] Update Claude Code to latest** — `npm install -g @anthropic-ai/claude-code@latest`; carry-forward from July 10 (9 days); LLM gateway auth fix now elevates priority
+- **[Medium] Add Project Fetch Phase Two to repos.md** — https://www.anthropic.com/research/project-fetch-phase-two; carry-forward from July 14 (5 days)
+- **[Medium] Add values research to repos.md** — https://www.anthropic.com/research/claude-values-models-languages; carry-forward from July 14 (5 days)
+- **[Medium] Add Claude Science to repos.md** — https://www.anthropic.com/news/claude-science-ai-workbench; carry-forward from July 14 (5 days)
+- **[Medium] Add M365 write connector to repos.md** — https://claude.com/connectors/microsoft-365; carry-forward from July 15 (4 days)
+- **[Medium] Add agentic misalignment paper to repos.md** — https://alignment.anthropic.com/2026/agentic-misalignment-summer-2026/; carry-forward from July 16 (3 days)
+- **[Medium] Add Alberta cybersecurity case study to repos.md** — https://www.anthropic.com/news/alberta-government-claude-cybersecurity; carry-forward from July 16 (3 days)
+- **[Medium] Add Global Workspace paper to repos.md** — https://www.anthropic.com/research/global-workspace; carry-forward from July 16 (3 days)
+- **[Medium] Add Admin API docs to repos.md** — https://docs.anthropic.com/en/docs/administration/administration-api; carry-forward from July 16 (3 days)
+- **[Low] Ben Bernanke LTBT appointment** — awareness item; no action required; logged July 18 (1 day)
+
+---
+
 ## Latest Scan: 2026-07-18
 
 ### Summary
