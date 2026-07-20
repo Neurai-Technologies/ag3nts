@@ -1,5 +1,96 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-07-20
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 3
+- Actionable integrations: 3
+
+### Context
+
+One day since last scan (July 19). Three new findings: (1) **Harness Design for Long-Running Application Development** — new engineering post presenting a planner/generator/evaluator three-agent architecture for multi-hour autonomous full-stack coding; introduces structured "context reset + handoff" technique; directly relevant to RepairBoss dispatch pattern. (2) **Building Agents with the Claude Agent SDK** — engineering post marking the Claude Code SDK rename to Claude Agent SDK; includes best practices for subagents, background tasks, and plugin integration. (3) **Claude Code: EndConversation tool + periodic heartbeat** — EndConversation tool lets Claude terminate sessions with abusive users or jailbreak attempts; periodic progress heartbeat added for long-running tool calls to reduce timeout false-positives in automated pipelines; ISO modified timestamp added to memory file frontmatter. **CRITICAL: claude-mythos-preview retirement is NOW 1 DAY AWAY (July 21)** — if any ag3nts config references `claude-mythos-preview`, it will error TOMORROW. **CRITICAL: Opus 4.7 fast mode removal is NOW 4 DAYS AWAY (July 24)** — 20 consecutive days without action. Carry-forward: all previous items advance by 1 day.
+
+---
+
+### Findings
+
+#### Harness Design for Long-Running Application Development (July 2026)
+- **Source**: https://www.anthropic.com/engineering/harness-design-long-running-apps
+- **Published**: July 2026
+- **Category**: Agent
+- **What Changed**: New engineering post from Anthropic's Labs team describing how they got Claude to autonomously build complete full-stack applications without human intervention. The final architecture is a three-agent system — planner, generator, evaluator — running over multi-hour sessions. Key technique: **context resets** — clearing the context window entirely at defined checkpoints and starting a fresh agent with a structured handoff carrying the previous agent's state and next steps. This solves context-window drift in long-running pipelines and ensures each sub-agent starts clean.
+- **Impact on ag3nts**: Directly reinforces and refines the RepairBoss/specialist-agent dispatch architecture. The planner→generator→evaluator pattern maps onto RepairBoss (planner) → code-reviewer/security-engineer specialists (evaluators). The context-reset-with-structured-handoff technique is actionable for REPAIR pipeline Stage 4/6 transitions — passing a structured summary of prior-stage findings rather than full context improves reliability on long tasks.
+- **Proposed Changes**:
+  - [ ] Add `https://www.anthropic.com/engineering/harness-design-long-running-apps` to `shared/claude-code/knowledge-base/repos.md`
+- **Priority**: Medium — validates and refines existing architecture; structured handoff pattern is worth documenting for RepairBoss prompt engineering
+
+#### Building Agents with the Claude Agent SDK (July 2026)
+- **Source**: https://www.anthropic.com/engineering/building-agents-with-the-claude-agent-sdk
+- **Published**: July 2026
+- **Category**: Tooling / Agent
+- **What Changed**: Engineering post marking the rename of the Claude Code SDK to the **Claude Agent SDK**, reflecting its broader use beyond coding (deep research, video creation, note-taking). Covers best practices for building agents on top of Claude Code: subagent patterns, background task design, plugin integration, and SDK composition.
+- **Impact on ag3nts**: ag3nts.md "Scripted / Automated Runs" section and any agent descriptions should reference "Claude Agent SDK" going forward instead of "Claude Code SDK". The rename signals Anthropic's broader vision for the SDK as a general agent platform, which aligns with the ag3nts multi-agent architecture.
+- **Proposed Changes**:
+  - [ ] Add `https://www.anthropic.com/engineering/building-agents-with-the-claude-agent-sdk` to `shared/claude-code/knowledge-base/repos.md`
+- **Priority**: Medium — nomenclature update + best-practice reference; worth tracking for documentation accuracy
+
+#### Claude Code: EndConversation Tool, Periodic Heartbeat, Memory Timestamps (post-July 19, 2026)
+- **Source**: https://docs.anthropic.com/en/release-notes/claude-code
+- **Published**: July 2026 (post-July 19)
+- **Category**: Tooling
+- **What Changed**: New Claude Code features: (1) **EndConversation tool** — Claude can now terminate sessions when users are highly abusive or attempting jailbreaks; (2) **Periodic progress heartbeat** — long-running tool calls now emit heartbeat signals, reducing timeout false-positives in automated pipelines; (3) **ISO modified timestamp in memory file frontmatter** — memory files now carry structured last-modified dates, improving memory management in long-running sessions; (4) Bug fixes: startup hang when Chrome extension enabled but Chrome not running; 300ms delay revealing async content in Settings tabs and diff views.
+- **Impact on ag3nts**: The periodic heartbeat is directly relevant to ag3nts automated runs — reduces risk of timeouts in the code-reviewer 4-parallel-specialist dispatch and cron-based anthropic scan. The EndConversation tool provides a new safety boundary for the feedback agent and any user-facing agents. Memory timestamps improve the feedback and anthropic agents' ability to track recency of stored memories.
+- **Proposed Changes**:
+  - [ ] `npm install -g @anthropic-ai/claude-code@latest` — update to get periodic heartbeat (reduces timeout false-positives in cron pipeline); consolidates existing "Update Claude Code" carry-forward
+- **Priority**: High — periodic heartbeat directly improves reliability of ag3nts automated pipelines; 10 days overdue on update
+
+---
+
+### Recommendations
+
+Top 3 actions for July 20:
+
+1. **[Critical — 1 day] Audit for claude-mythos-preview IMMEDIATELY** — `grep -r "claude-mythos-preview" ~/.claude/ shared/` — retirement is July 21 (TOMORROW). Replace any matches with `claude-mythos-5`. After July 21, all requests error. First flagged July 17; no action taken in 3 days.
+
+2. **[Critical — 4 days] Run Opus 4.7 fast mode audit NOW** — `grep -r "opus-4-7" ~/.claude/ shared/` — July 24 is 4 days away. **20 consecutive days without action.** Migrate any matches to `claude-opus-4-8` with fast mode (3× cheaper, same speed). After July 24, requests with `speed: "fast"` to `claude-opus-4-7` return errors.
+
+3. **[High] Update Claude Code** — `npm install -g @anthropic-ai/claude-code@latest` — gets periodic heartbeat (reduces timeout false-positives in cron pipeline), EndConversation tool, LLM gateway auth fix, and memory timestamps. 10 days overdue.
+
+Carry-forward:
+- **[Critical — 1 day] claude-mythos-preview retirement** — July 21 (TOMORROW); `grep -r "claude-mythos-preview" ~/.claude/ shared/` audit (first flagged July 17; 3 days without action)
+- **[Critical — 4 days] Opus 4.7 fast mode removal** — July 24; `grep -r "opus-4-7" ~/.claude/ shared/`; 20 consecutive days without action
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1; verify pre-commit gates fire correctly; outstanding
+- **[Critical — 16 days] Opus 4.1 deprecation** — August 5; `grep -r "claude-opus-4-1"` audit still pending
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (24 days overdue)
+- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (24 days)
+- **[High] Advisor Tool evaluation** — max_tokens parameter documented; carry-forward since June 26 (24 days)
+- **[High] Memory for Managed Agents evaluation** — `agent-memory-2026-07-22` header; carry-forward from June 30 (20 days)
+- **[High] Add `/rewind` checkpoints to ag3nts Commands table** — Carry-forward from June 28 (22 days)
+- **[Medium] Cache Diagnostics audit** — Add `cache-diagnosis-2026-04` beta header to scripted runs; carry-forward from June 28 (22 days)
+- **[Medium] Pilot mid-array system messages in code-reviewer dispatch** — Carry-forward from June 28 (22 days)
+- **[Medium] Review BrowseComp design constraint** — Carry-forward from June 28 (23 days)
+- **[High] Demystifying evals — add eval spec to software-architect Stage 4 deliverables** — Carry-forward from July 5 (15 days)
+- **[High] Writing effective tools — audit code-reviewer + security-engineer tool descriptions** — Carry-forward from July 5 (15 days)
+- **[High] How We Contain Claude — review hooks for input-side injection guards on scripted/cron runs** — Carry-forward from July 5 (15 days)
+- **[High] Claude Platform on AWS — add to ag3nts.md Scripted / Automated Runs section** — Carry-forward from July 5 (15 days)
+- **[Medium] Claude for Government reference** — Add URL to repos.md; carry-forward from July 9 (11 days)
+- **[Medium] GRAM repos.md entry** — Add https://www.anthropic.com/research/off-switch-dual-use; carry-forward from July 10 (10 days)
+- **[High] Update Claude Code to latest** — `npm install -g @anthropic-ai/claude-code@latest`; carry-forward from July 10 (10 days); periodic heartbeat now adds further urgency
+- **[Medium] Add Project Fetch Phase Two to repos.md** — https://www.anthropic.com/research/project-fetch-phase-two; carry-forward from July 14 (6 days)
+- **[Medium] Add values research to repos.md** — https://www.anthropic.com/research/claude-values-models-languages; carry-forward from July 14 (6 days)
+- **[Medium] Add Claude Science to repos.md** — https://www.anthropic.com/news/claude-science-ai-workbench; carry-forward from July 14 (6 days)
+- **[Medium] Add M365 write connector to repos.md** — https://claude.com/connectors/microsoft-365; carry-forward from July 15 (5 days)
+- **[Medium] Add agentic misalignment paper to repos.md** — https://alignment.anthropic.com/2026/agentic-misalignment-summer-2026/; carry-forward from July 16 (4 days)
+- **[Medium] Add Alberta cybersecurity case study to repos.md** — https://www.anthropic.com/news/alberta-government-claude-cybersecurity; carry-forward from July 16 (4 days)
+- **[Medium] Add Global Workspace paper to repos.md** — https://www.anthropic.com/research/global-workspace; carry-forward from July 16 (4 days)
+- **[Medium] Add Admin API docs to repos.md** — https://docs.anthropic.com/en/docs/administration/administration-api; carry-forward from July 16 (4 days)
+- **[Low] Ben Bernanke LTBT appointment** — awareness item; no action required; logged July 18 (2 days)
+- **[Medium] Add Harness Design for Long-Running Apps to repos.md** — https://www.anthropic.com/engineering/harness-design-long-running-apps; new today (July 20)
+- **[Medium] Add Claude Agent SDK engineering post to repos.md** — https://www.anthropic.com/engineering/building-agents-with-the-claude-agent-sdk; new today (July 20)
+
+---
+
 ## Latest Scan: 2026-07-19
 
 ### Summary
