@@ -1,5 +1,90 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-07-21
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 2
+- Actionable integrations: 2
+
+### Context
+
+One day since last scan (July 20). Two new findings: (1) **Code Execution Tool SDK Native Support** — all major language SDKs now support `code_execution_20260120` (REPL state persistence, programmatic tool calling) without a beta header; affects code-reviewer and security-engineer agent tool configs. (2) **Claude Sonnet 5 Agentic Upgrade Path** — Sonnet 5 (released June 30, 2026) not yet tracked in ag3nts agent model assignments; close to Opus 4.8 performance at Sonnet pricing; all Sonnet agents (code-reviewer, accessibility-auditor, reality-checker, ux-architect, anthropic) should be evaluated for upgrade. **CRITICAL: claude-mythos-preview IS RETIRED TODAY (July 21)** — any config referencing it NOW errors immediately; 4 days without action since first flagged. **CRITICAL: Opus 4.7 fast mode removal is 3 DAYS AWAY (July 24)** — 21 consecutive days without action; migrate to Opus 4.8 fast mode. Carry-forward: all previous items advance by 1 day.
+
+---
+
+### Findings
+
+#### Code Execution Tool: SDK Native Support Without Beta Header (July 2026)
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: July 2026
+- **Category**: API
+- **What Changed**: The Python, TypeScript, Go, Java, Ruby, PHP, and C# SDKs now natively support `code_execution_20260120` — the code execution tool version that adds REPL state persistence and is the minimum version for programmatic tool calling. No beta header is required to use it; simply set `type: "code_execution_20260120"` in the tool definition.
+- **Impact on ag3nts**: The code-reviewer and security-engineer agents can now include code execution tools with REPL state persistence without requiring experimental beta headers in scripted/automated runs. Previously, adopting the newer code execution version required opting into a beta; this is now stable and generally available across all supported SDKs.
+- **Proposed Changes**:
+  - [ ] Add `https://docs.anthropic.com/en/release-notes/api` (code execution entry) to `shared/claude-code/knowledge-base/repos.md`
+  - [ ] Evaluate adding `code_execution_20260120` to code-reviewer or security-engineer agent tool definitions if code execution is desired
+- **Priority**: Medium — stable GA of REPL-persistent code execution; low urgency but worth noting for future tool augmentation
+
+#### Claude Sonnet 5 — Untracked Agentic Upgrade Path for ag3nts Sonnet Agents (June 30, 2026)
+- **Source**: https://www.anthropic.com/news/claude-sonnet-5
+- **Published**: June 30, 2026
+- **Category**: Model
+- **What Changed**: Claude Sonnet 5 (`claude-sonnet-5`) was released June 30, 2026. It is the most agentic Sonnet model to date — closes the gap with Opus 4.8 on reasoning, tool use, coding, and knowledge work. Finishes complex tasks where prior Sonnet models stopped short, self-verifies output. Introductory pricing: $2/M input, $10/M output through August 31, 2026 ($3/$15 thereafter). Safety assessments show lower rate of undesirable agentic behaviors vs Sonnet 4.6.
+- **Impact on ag3nts**: The ag3nts agent table in `shared/ag3nts.md` lists five agents as "Sonnet" — code-reviewer, accessibility-auditor, reality-checker, ux-architect, and anthropic — currently running on Sonnet 4.6. Sonnet 5 offers meaningfully better agentic performance at comparable cost, making it a strong upgrade candidate. The anthropic scan agent (this agent) runs scheduled automated tasks where Sonnet 5's improved tool-use consistency is directly beneficial.
+- **Proposed Changes**:
+  - [ ] Audit `~/.claude/agents/` for agent frontmatter `model: claude-sonnet-4-6` entries — replace with `claude-sonnet-5` for: code-reviewer, accessibility-auditor, reality-checker, ux-architect, anthropic
+  - [ ] Update the ag3nts.md agent table "Model" column for all five Sonnet agents
+- **Priority**: High — Sonnet 5 is released, priced competitively, and demonstrably more agentic; not upgrading leaves measurable capability on the table
+
+---
+
+### Recommendations
+
+Top 3 actions for July 21:
+
+1. **[CRITICAL — NOW] claude-mythos-preview is RETIRED TODAY** — `grep -r "claude-mythos-preview" ~/.claude/ shared/` — any config referencing this model ID NOW returns errors. Replace with `claude-mythos-5`. First flagged July 17; 4 days without action. Every minute of delay risks live pipeline failures.
+
+2. **[Critical — 3 days] Opus 4.7 fast mode removal July 24** — `grep -r "opus-4-7" ~/.claude/ shared/` — 3 days remain. Fast mode for Opus 4.8 is 3× cheaper. **21 consecutive days without action.** After July 24, `claude-opus-4-7` with `speed: "fast"` returns errors.
+
+3. **[High] Upgrade Sonnet agents to claude-sonnet-5** — `grep -r "claude-sonnet-4-6" ~/.claude/agents/` — audit and replace in code-reviewer, accessibility-auditor, reality-checker, ux-architect, and anthropic agent files. Sonnet 5 is more agentic, self-verifying, and safer in automated contexts. Introductory pricing through August 31.
+
+Carry-forward:
+- **[CRITICAL — NOW] claude-mythos-preview retired** — TODAY July 21; `grep -r "claude-mythos-preview" ~/.claude/ shared/`; errors live NOW; 4 days without action
+- **[Critical — 3 days] Opus 4.7 fast mode removal** — July 24; `grep -r "opus-4-7" ~/.claude/ shared/`; 21 consecutive days without action
+- **[CRITICAL — 15 days] Opus 4.1 deprecation** — August 5; `grep -r "claude-opus-4-1"` audit pending
+- **[High] Upgrade Sonnet agents to claude-sonnet-5** — code-reviewer, accessibility-auditor, reality-checker, ux-architect, anthropic; new today (July 21)
+- **[High] Update Claude Code** — `npm install -g @anthropic-ai/claude-code@latest`; 11 days overdue
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1; outstanding
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (25 days overdue)
+- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (25 days)
+- **[High] Advisor Tool evaluation** — max_tokens parameter documented; carry-forward since June 26 (25 days)
+- **[High] Memory for Managed Agents evaluation** — `agent-memory-2026-07-22` header goes live TOMORROW (July 22); carry-forward from June 30
+- **[High] Add `/rewind` checkpoints to ag3nts Commands table** — Carry-forward from June 28 (23 days)
+- **[Medium] Cache Diagnostics audit** — Add `cache-diagnosis-2026-04` beta header to scripted runs; carry-forward from June 28 (23 days)
+- **[Medium] Pilot mid-array system messages in code-reviewer dispatch** — Carry-forward from June 28 (23 days)
+- **[Medium] Review BrowseComp design constraint** — Carry-forward from June 28 (24 days)
+- **[High] Demystifying evals — add eval spec to software-architect Stage 4 deliverables** — Carry-forward from July 5 (16 days)
+- **[High] Writing effective tools — audit code-reviewer + security-engineer tool descriptions** — Carry-forward from July 5 (16 days)
+- **[High] How We Contain Claude — review hooks for input-side injection guards on scripted/cron runs** — Carry-forward from July 5 (16 days)
+- **[High] Claude Platform on AWS — add to ag3nts.md Scripted / Automated Runs section** — Carry-forward from July 5 (16 days)
+- **[Medium] Claude for Government reference** — Add URL to repos.md; carry-forward from July 9 (12 days)
+- **[Medium] GRAM repos.md entry** — Add https://www.anthropic.com/research/off-switch-dual-use; carry-forward from July 10 (11 days)
+- **[Medium] Add Project Fetch Phase Two to repos.md** — https://www.anthropic.com/research/project-fetch-phase-two; carry-forward from July 14 (7 days)
+- **[Medium] Add values research to repos.md** — https://www.anthropic.com/research/claude-values-models-languages; carry-forward from July 14 (7 days)
+- **[Medium] Add Claude Science to repos.md** — https://www.anthropic.com/news/claude-science-ai-workbench; carry-forward from July 14 (7 days)
+- **[Medium] Add M365 write connector to repos.md** — https://claude.com/connectors/microsoft-365; carry-forward from July 15 (6 days)
+- **[Medium] Add agentic misalignment paper to repos.md** — https://alignment.anthropic.com/2026/agentic-misalignment-summer-2026/; carry-forward from July 16 (5 days)
+- **[Medium] Add Alberta cybersecurity case study to repos.md** — https://www.anthropic.com/news/alberta-government-claude-cybersecurity; carry-forward from July 16 (5 days)
+- **[Medium] Add Global Workspace paper to repos.md** — https://www.anthropic.com/research/global-workspace; carry-forward from July 16 (5 days)
+- **[Medium] Add Admin API docs to repos.md** — https://docs.anthropic.com/en/docs/administration/administration-api; carry-forward from July 16 (5 days)
+- **[Low] Ben Bernanke LTBT appointment** — awareness item; no action required; logged July 18 (3 days)
+- **[Medium] Add Harness Design for Long-Running Apps to repos.md** — https://www.anthropic.com/engineering/harness-design-long-running-apps; carry-forward from July 20 (1 day)
+- **[Medium] Add Claude Agent SDK engineering post to repos.md** — https://www.anthropic.com/engineering/building-agents-with-the-claude-agent-sdk; carry-forward from July 20 (1 day)
+- **[Medium] Code Execution Tool SDK native support** — Add to repos.md; new today (July 21)
+
+---
+
 ## Latest Scan: 2026-07-20
 
 ### Summary
