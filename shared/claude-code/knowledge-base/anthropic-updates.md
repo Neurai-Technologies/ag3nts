@@ -1,5 +1,113 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-07-22
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 4
+- Actionable integrations: 3
+
+### Context
+
+One day since last scan (July 21). Four findings: (1) **agent-memory-2026-07-22 header IS NOW LIVE** — the carry-forward "TOMORROW" item is active today; `agent-memory-2026-07-22` replaces `managed-agents-2026-04-01` on memory store endpoints (sending both → 400); memory list behavior changes are live; `managed-agents-2026-04-01` adopts the new list behavior on July 22 too. (2) **Mid-conversation system messages GA — no beta header required** on Claude Fable 5, Mythos 5, and Opus 4.8 via API, Bedrock, and GCP; directly upgrades the 24-day-old "pilot mid-array system messages" carry-forward to actionable without any beta flags. (3) **Claude for Teachers** (July 14, missed by July 14 and 15 scans) — verified K-12 educators get free premium Claude + teaching Skills library + Learning Commons standards integration. Pattern-relevant: shows Anthropic's Skills system powering vertical AI deployments. (4) **AI for Science Rare Disease Grants** (July 20, missed by July 20 scan) — $50K Claude credits per grantee; applications close August 2 (11 days away). **CRITICAL: Opus 4.7 fast mode removal is NOW 2 DAYS AWAY (July 24)** — 22 consecutive days without action; if any config references `claude-opus-4-7` with `speed: "fast"`, it errors in 2 days. Carry-forward: all previous items advance by 1 day.
+
+---
+
+### Findings
+
+#### agent-memory-2026-07-22 Header Is Live — Memory API Breaking Change (July 22, 2026)
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: July 22, 2026 (live today)
+- **Category**: API
+- **What Changed**: The `agent-memory-2026-07-22` beta header is active as of today. Behavioral changes on memory list endpoint (GET `/v1/memory_stores/{id}/memories`): (1) results returned in stable, server-defined order; `order_by` and `order` params are now ignored; (2) `depth` accepts only `0`, `1`, or omitted — other values return 400; (3) `path_prefix` must end with `/` and matches whole path segments instead of substrings; (4) page cursors issued without the header are invalid with it — restart pagination from page 1 when adopting. On memory store endpoints, `agent-memory-2026-07-22` replaces `managed-agents-2026-04-01`; sending both returns a 400 error. Also on July 22: `managed-agents-2026-04-01` itself adopts the new list behavior.
+- **Impact on ag3nts**: The `anthropic` scan agent (this agent) runs in automated/scripted mode. If any ag3nts code or hook script uses the Managed Agents memory API with `managed-agents-2026-04-01`, the list behavior now changed as of today regardless of header. Pagination cursors issued before today may be invalidated. If memory stores are being used for cross-session state (e.g., scan history), code must restart pagination from page 1 and adopt the new header before sending both.
+- **Proposed Changes**:
+  - [ ] Audit `shared/claude-code/hooks/` and any scripts for `managed-agents-2026-04-01` memory store list calls — verify no pagination cursors are cached across the July 22 boundary
+  - [ ] If adopting `agent-memory-2026-07-22` header, do not send alongside `managed-agents-2026-04-01` (400 error)
+- **Priority**: High — live breaking change; pagination behavior and parameter validation changed today; affects any code that uses Managed Agents memory store list API
+
+#### Mid-Conversation System Messages GA — No Beta Header Required (July 2026)
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: July 2026
+- **Category**: API
+- **What Changed**: Mid-conversation (mid-array) system messages are now generally available without any beta header on Claude Fable 5, Claude Mythos 5, and Claude Opus 4.8 — on the Claude API, Amazon Bedrock, and Google Cloud. Placement rule: a system message with `"role": "system"` may appear after a user turn mid-conversation, but not as the first entry in `messages` (the top-level `system` field still handles initial instructions). No `anthropic-beta` header required on these three models.
+- **Impact on ag3nts**: Directly upgrades the 24-day carry-forward "Pilot mid-array system messages in code-reviewer dispatch." The code-reviewer agent dispatches 4 parallel specialists and could use mid-conversation system messages to inject specialist-specific instructions mid-flow without a separate system prompt per call. With GA status (no beta header), this is safe to adopt in production hooks. Relevant models in ag3nts: software-architect (Opus 4.8 = eligible), security-engineer (Opus 4.8 = eligible); code-reviewer, reality-checker, ux-architect (Sonnet — not yet eligible per the model list above).
+- **Proposed Changes**:
+  - [ ] Evaluate injecting specialist-role system messages mid-turn in `~/.claude/agents/code-reviewer.md` dispatch logic for the Opus 4.8 software-architect and security-engineer agents
+  - [ ] Update `shared/claude-code/knowledge-base/repos.md` with the API release notes entry confirming GA
+- **Priority**: Medium — 24-day carry-forward now actionable without beta flags; Opus 4.8 agents eligible immediately; Sonnet agents waiting for GA expansion
+
+#### Claude for Teachers — Vertical Skills Deployment Pattern (July 14, 2026)
+- **Source**: https://www.anthropic.com/news/claude-for-teachers
+- **Published**: July 14, 2026 (missed by July 14 and July 15 scans)
+- **Category**: Tooling / Agent Patterns
+- **What Changed**: Anthropic launched Claude for Teachers, giving verified US K-12 educators free access to premium Claude capabilities, a library of teaching-specific Skills, and a direct connection to Learning Commons — an integration with academic standards across all 50 states and trusted curricula (OpenSciEd, Illustrative Mathematics). Features: (1) teachers hand Claude a folder of student data (roster, diagnostics, attendance, notes) and it builds a per-student profile; (2) recurring automated tasks — e.g., "review each day's exit tickets at 4pm and adapt tomorrow's plan" — run on schedule without re-prompting.
+- **Impact on ag3nts**: Low direct impact on ag3nts code. High pattern value: (1) **Skills as vertical product layer** — confirms that Skills (the open standard in ag3nts repos.md) are the architecture Anthropic uses to build domain-specific Claude products; validates investing in ag3nts' own skill library; (2) **Recurring automated tasks** — the "runs every school day at 4pm" feature is exactly the cron-based automation ag3nts uses for this scan; validates that scheduled Claude tasks are a supported product feature, not just a DIY hack; (3) **Learning Commons integration** — pattern for connecting Claude agents to structured knowledge bases; parallels how ag3nts' repos.md serves as a knowledge base for this agent.
+- **Proposed Changes**:
+  - [ ] No code changes required; pattern-reference awareness item
+- **Priority**: Low — no direct integration surface; valuable as pattern confirmation
+
+#### AI for Science Rare Disease Research Grants — Time-Sensitive Opportunity (July 20, 2026)
+- **Source**: https://www.anthropic.com/news/rare-disease-research-grants
+- **Published**: July 20, 2026 (missed by July 20 scan)
+- **Category**: Research / Tooling
+- **What Changed**: Anthropic opened applications for the AI for Science rare disease research grant program. Selected grantees receive up to $50,000 in Claude API credits over six months. Deadline: August 2, 2026 at 11:59 PM PST (11 days away). Focus: using Claude to advance rare genetic disease research — drug repurposing, variant classification, regulatory filing analysis.
+- **Impact on ag3nts**: No direct ag3nts integration impact. Time-sensitive opportunity: if Rohan or collaborators have scientific computing or rare disease research projects, this is 11 days before the application closes.
+- **Proposed Changes**:
+  - [ ] No code changes required; awareness item — application deadline August 2, 2026
+- **Priority**: Low — no ag3nts code surface; awareness-only with a near-term deadline
+
+---
+
+### Recommendations
+
+Top 3 actions for July 22:
+
+1. **[CRITICAL — 2 days] Opus 4.7 fast mode removal July 24** — `grep -r "opus-4-7" ~/.claude/ shared/` — 2 days remain. **22 consecutive days without action.** After July 24, `claude-opus-4-7` with `speed: "fast"` returns errors in all environments. Migrate to `claude-opus-4-8`.
+
+2. **[CRITICAL — NOW] agent-memory-2026-07-22 behavioral changes are live** — audit any code using Managed Agents memory store list API. Old `managed-agents-2026-04-01` list behavior changed today too. Any cached pagination cursors from before today are invalid. Verify: `grep -r "managed-agents-2026-04-01\|memory_stores" shared/ ~/.claude/hooks/`.
+
+3. **[High] Upgrade Sonnet agents to claude-sonnet-5** — `grep -r "claude-sonnet-4-6" ~/.claude/agents/` — audit code-reviewer, accessibility-auditor, reality-checker, ux-architect, anthropic agent files. Sonnet 5 is more agentic, self-verifying, safer in automated contexts. Introductory pricing ($2/$10) through August 31.
+
+Carry-forward:
+- **[CRITICAL — NOW] claude-mythos-preview retired** — RETIRED July 21; `grep -r "claude-mythos-preview" ~/.claude/ shared/`; errors live NOW; 5 days without action
+- **[CRITICAL — 2 days] Opus 4.7 fast mode removal** — July 24; `grep -r "opus-4-7" ~/.claude/ shared/`; 22 consecutive days without action
+- **[CRITICAL — NOW] agent-memory-2026-07-22 live** — memory list behavior changed today; audit pagination + header usage in hooks; new today
+- **[Critical — 14 days] Opus 4.1 deprecation** — August 5; `grep -r "claude-opus-4-1"` audit pending
+- **[High] Upgrade Sonnet agents to claude-sonnet-5** — code-reviewer, accessibility-auditor, reality-checker, ux-architect, anthropic; introduced July 21
+- **[Medium] Mid-conversation system messages now GA (no beta header)** — Fable 5, Mythos 5, Opus 4.8 eligible now; evaluate for software-architect + security-engineer dispatch; new today
+- **[High] Update Claude Code** — `npm install -g @anthropic-ai/claude-code@latest`; 12 days overdue
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1; outstanding
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (26 days overdue)
+- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (26 days)
+- **[High] Advisor Tool evaluation** — max_tokens parameter documented; carry-forward since June 26 (26 days)
+- **[High] Memory for Managed Agents evaluation** — `agent-memory-2026-07-22` header is live TODAY; carry-forward from June 30 (now upgraded to Critical-Now)
+- **[High] Add `/rewind` checkpoints to ag3nts Commands table** — Carry-forward from June 28 (24 days)
+- **[Medium] Cache Diagnostics audit** — Add `cache-diagnosis-2026-04` beta header to scripted runs; carry-forward from June 28 (24 days)
+- **[Medium] Review BrowseComp design constraint** — Carry-forward from June 28 (25 days)
+- **[High] Demystifying evals — add eval spec to software-architect Stage 4 deliverables** — Carry-forward from July 5 (17 days)
+- **[High] Writing effective tools — audit code-reviewer + security-engineer tool descriptions** — Carry-forward from July 5 (17 days)
+- **[High] How We Contain Claude — review hooks for input-side injection guards on scripted/cron runs** — Carry-forward from July 5 (17 days)
+- **[High] Claude Platform on AWS — add to ag3nts.md Scripted / Automated Runs section** — Carry-forward from July 5 (17 days)
+- **[Medium] Claude for Government reference** — Add URL to repos.md; carry-forward from July 9 (13 days)
+- **[Medium] GRAM repos.md entry** — Add https://www.anthropic.com/research/off-switch-dual-use; carry-forward from July 10 (12 days)
+- **[Medium] Add Project Fetch Phase Two to repos.md** — https://www.anthropic.com/research/project-fetch-phase-two; carry-forward from July 14 (8 days)
+- **[Medium] Add values research to repos.md** — https://www.anthropic.com/research/claude-values-models-languages; carry-forward from July 14 (8 days)
+- **[Medium] Add Claude Science to repos.md** — https://www.anthropic.com/news/claude-science-ai-workbench; carry-forward from July 14 (8 days)
+- **[Medium] Add M365 write connector to repos.md** — https://claude.com/connectors/microsoft-365; carry-forward from July 15 (7 days)
+- **[Medium] Add agentic misalignment paper to repos.md** — https://alignment.anthropic.com/2026/agentic-misalignment-summer-2026/; carry-forward from July 16 (6 days)
+- **[Medium] Add Alberta cybersecurity case study to repos.md** — https://www.anthropic.com/news/alberta-government-claude-cybersecurity; carry-forward from July 16 (6 days)
+- **[Medium] Add Global Workspace paper to repos.md** — https://www.anthropic.com/research/global-workspace; carry-forward from July 16 (6 days)
+- **[Medium] Add Admin API docs to repos.md** — https://docs.anthropic.com/en/docs/administration/administration-api; carry-forward from July 16 (6 days)
+- **[Low] Ben Bernanke LTBT appointment** — awareness item; no action required; logged July 18 (4 days)
+- **[Medium] Add Harness Design for Long-Running Apps to repos.md** — https://www.anthropic.com/engineering/harness-design-long-running-apps; carry-forward from July 20 (2 days)
+- **[Medium] Add Claude Agent SDK engineering post to repos.md** — https://www.anthropic.com/engineering/building-agents-with-the-claude-agent-sdk; carry-forward from July 20 (2 days)
+- **[Medium] Code Execution Tool SDK native support** — Add to repos.md; carry-forward from July 21 (1 day)
+- **[Low] AI for Science rare disease grants** — Deadline August 2; awareness item; new today
+- **[Low] Claude for Teachers** — pattern reference; no code changes; new today
+
+---
+
 ## Latest Scan: 2026-07-21
 
 ### Summary
