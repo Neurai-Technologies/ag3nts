@@ -1,6 +1,106 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-07-22
+## Latest Scan: 2026-07-23
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 3
+- Actionable integrations: 2
+
+### Context
+
+One day since last scan (July 22). Three new findings: (1) **Anthropic Economic Index Connector** (July 22) — published the same day as yesterday's scan, likely after it ran; a native claude.ai connector that queries the Economic Index dataset directly; confirms the connector ecosystem expanding with official first-party data sources. (2) **Admin API Enterprise User Management** (July 13, missed by prior scans) — programmatic member, group, and invite management for Claude Enterprise orgs via `ce-user-management-2026-07-13` beta header; not relevant to ag3nts current config but worth tracking. (3) **Fable 5 Cyber Safeguards & Jailbreak Severity Framework** (July 2, missed by 21 days of prior scans) — Anthropic published the Cyber Jailbreak Severity (CJS) 0–4 framework co-developed with Amazon, Microsoft, Google, and Glasswing; HackerOne bug bounty live; directly relevant to the security-engineer agent's threat modeling output format. **CRITICAL: Opus 4.7 fast mode removal is TOMORROW (July 24)** — 24 consecutive days without action; any config with `claude-opus-4-7` + `speed: "fast"` WILL error tomorrow. This is the absolute last day to act. **CRITICAL: claude-mythos-preview has been retired for 7 days** — still no action logged. Carry-forward: all previous items advance by 1 day.
+
+---
+
+### Findings
+
+#### Anthropic Economic Index Connector — Native claude.ai Data Connector (July 22, 2026)
+- **Source**: https://www.anthropic.com/news/anthropic-economic-index-connector
+- **Published**: July 22, 2026 (missed by July 22 scan — published same day)
+- **Category**: Tooling
+- **What Changed**: Anthropic launched a first-party connector for claude.ai that allows any user to query the Anthropic Economic Index directly in conversation. Enabled via the claude.ai connectors menu (no install required), works with any Claude model. Users can ask questions like "Which occupations use AI the most?" and "How is AI use changing in Colorado?" and get answers grounded in Economic Index data — covering AI usage by US state and hundreds of occupations, augmentation vs. automation rates, and trending topics.
+- **Impact on ag3nts**: Low direct impact (ag3nts runs in CLI mode, not claude.ai connectors). Pattern significance: confirms Anthropic is building official first-party data connectors into the connector ecosystem — the same system ag3nts could leverage via MCP. Structured datasets exposed as MCP connectors are a validated integration pattern for data-grounded agent responses.
+- **Proposed Changes**:
+  - [ ] Add `https://www.anthropic.com/news/anthropic-economic-index-connector` to `shared/claude-code/knowledge-base/repos.md` as pattern reference
+- **Priority**: Low — no ag3nts code surface; pattern reference for connector ecosystem growth
+
+#### Admin API Enterprise User Management — New Beta (July 13, 2026, missed)
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: ~July 13, 2026 (missed by prior scans)
+- **Category**: API
+- **What Changed**: Anthropic added Claude Enterprise organization user management to the Admin API in beta. Capabilities: list members and look them up by email, change a member's role, remove members, send and withdraw invites, manage groups and their membership, read custom roles. Member and invite requests need no beta header; group and custom-role requests require `anthropic-beta: ce-user-management-2026-07-13`. Also added: API key expiration field (`expires_at`) in Admin API responses; email notification to key creator before expiration (for keys with ≥7 day lifetime).
+- **Impact on ag3nts**: No immediate impact — ag3nts runs on personal API key, not Claude Enterprise. The `expires_at` field and expiry email notification are directly relevant to the long-running WIF adoption carry-forward: even without WIF, key expiry is now visible in API responses, reducing surprise key rotation failures. If ag3nts scales to team or Enterprise, this API enables programmatic user onboarding/offboarding automation.
+- **Proposed Changes**:
+  - [ ] No code changes; awareness item for future Enterprise migration
+- **Priority**: Low — no current ag3nts surface; `expires_at` field useful when/if Enterprise or key management automation is added
+
+#### Fable 5 Cyber Safeguards & Cyber Jailbreak Severity Framework (July 2, 2026, missed)
+- **Source**: https://www.anthropic.com/news/fable-safeguards-jailbreak-framework
+- **Published**: July 2, 2026 (missed by 21 days of prior scans)
+- **Category**: Safety
+- **What Changed**: Anthropic published detailed cybersecurity safeguards for Fable 5 alongside an early draft of the Cyber Jailbreak Severity (CJS) framework — a 0–4 severity scale for AI jailbreaks, co-developed with Amazon, Microsoft, Google, and Glasswing partners. CJS-0 is informational; CJS-4 is critical (severity increases exponentially per tier). Safeguards include safety classifiers that detect and block dangerous cybersecurity task attempts in input and output. Launched a HackerOne bug bounty program for security researchers to submit cyber jailbreaks discovered in Fable 5.
+- **Impact on ag3nts**: Directly relevant to the `security-engineer` agent (Opus). Currently the agent uses OWASP severity levels (Critical/High/Medium/Low) for threat modeling and OWASP audit outputs. The CJS framework provides a complementary AI-specific severity taxonomy for jailbreak and prompt injection threat scenarios — applicable when security-engineer reviews agent hooks, scripted prompts, or any prompt injection attack surfaces in ag3nts pipelines. The HackerOne program is a useful reference for security research tasks.
+- **Proposed Changes**:
+  - [ ] Evaluate adding CJS framework reference to `~/.claude/agents/security-engineer.md` — add CJS-0 through CJS-4 as an additional output taxonomy for jailbreak/prompt injection findings alongside OWASP
+  - [ ] Add `https://www.anthropic.com/news/fable-safeguards-jailbreak-framework` to `shared/claude-code/knowledge-base/repos.md`
+- **Priority**: Medium — provides a standardized AI-specific threat severity vocabulary that upgrades security-engineer output quality for prompt injection and jailbreak threat categories; missed for 21 days
+
+---
+
+### Recommendations
+
+Top 3 actions for July 23:
+
+1. **[CRITICAL — TOMORROW] Opus 4.7 fast mode removal July 24** — `grep -r "opus-4-7" ~/.claude/ shared/` — removal happens **TOMORROW**. **24 consecutive days without action.** After July 24, any `claude-opus-4-7` with `speed: "fast"` returns errors in all environments. Migrate to `claude-opus-4-8` fast mode TODAY — this is the absolute last chance.
+
+2. **[CRITICAL — NOW] claude-mythos-preview RETIRED 7 days ago** — `grep -r "claude-mythos-preview" ~/.claude/ shared/` — any config referencing this model NOW errors. 7 days of inaction. Replace with `claude-mythos-5` immediately.
+
+3. **[Medium] Add Fable 5 CJS framework to security-engineer agent** — Update `~/.claude/agents/security-engineer.md` to reference the Cyber Jailbreak Severity (CJS-0 through CJS-4) taxonomy for prompt injection and jailbreak finding reports. Adds AI-specific severity vocabulary alongside OWASP. Add URL to `repos.md`. Missed for 21 days.
+
+Carry-forward:
+- **[CRITICAL — TOMORROW] Opus 4.7 fast mode removal** — July 24; `grep -r "opus-4-7" ~/.claude/ shared/`; 24 consecutive days without action; **ABSOLUTE LAST DAY**
+- **[CRITICAL — NOW] claude-mythos-preview retired** — RETIRED July 21 (7 days ago); `grep -r "claude-mythos-preview" ~/.claude/ shared/`; errors live NOW
+- **[CRITICAL — NOW] agent-memory-2026-07-22 live** — memory list behavior changed July 22; audit pagination + header usage in hooks; 2 days old
+- **[Critical — 13 days] Opus 4.1 deprecation** — August 5; `grep -r "claude-opus-4-1"` audit pending
+- **[High] Upgrade Sonnet agents to claude-sonnet-5** — code-reviewer, accessibility-auditor, reality-checker, ux-architect, anthropic; carry-forward from July 21 (2 days)
+- **[Medium] Mid-conversation system messages now GA (no beta header)** — Fable 5, Mythos 5, Opus 4.8 eligible; evaluate software-architect + security-engineer dispatch; carry-forward from July 22 (1 day)
+- **[High] Update Claude Code** — `npm install -g @anthropic-ai/claude-code@latest`; 13 days overdue
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1; outstanding
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (27 days overdue)
+- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (27 days)
+- **[High] Advisor Tool evaluation** — max_tokens parameter documented; carry-forward since June 26 (27 days)
+- **[High] Memory for Managed Agents evaluation** — `agent-memory-2026-07-22` header is live; carry-forward from June 30 (23 days)
+- **[High] Add `/rewind` checkpoints to ag3nts Commands table** — Carry-forward from June 28 (25 days)
+- **[Medium] Cache Diagnostics audit** — Add `cache-diagnosis-2026-04` beta header to scripted runs; carry-forward from June 28 (25 days)
+- **[Medium] Review BrowseComp design constraint** — Carry-forward from June 28 (25 days)
+- **[High] Demystifying evals — add eval spec to software-architect Stage 4 deliverables** — Carry-forward from July 5 (18 days)
+- **[High] Writing effective tools — audit code-reviewer + security-engineer tool descriptions** — Carry-forward from July 5 (18 days)
+- **[High] How We Contain Claude — review hooks for input-side injection guards on scripted/cron runs** — Carry-forward from July 5 (18 days)
+- **[High] Claude Platform on AWS — add to ag3nts.md Scripted / Automated Runs section** — Carry-forward from July 5 (18 days)
+- **[Medium] Claude for Government reference** — Add URL to repos.md; carry-forward from July 9 (14 days)
+- **[Medium] GRAM repos.md entry** — Add https://www.anthropic.com/research/off-switch-dual-use; carry-forward from July 10 (13 days)
+- **[Medium] Add Project Fetch Phase Two to repos.md** — https://www.anthropic.com/research/project-fetch-phase-two; carry-forward from July 14 (9 days)
+- **[Medium] Add values research to repos.md** — https://www.anthropic.com/research/claude-values-models-languages; carry-forward from July 14 (9 days)
+- **[Medium] Add Claude Science to repos.md** — https://www.anthropic.com/news/claude-science-ai-workbench; carry-forward from July 14 (9 days)
+- **[Medium] Add M365 write connector to repos.md** — https://claude.com/connectors/microsoft-365; carry-forward from July 15 (8 days)
+- **[Medium] Add agentic misalignment paper to repos.md** — https://alignment.anthropic.com/2026/agentic-misalignment-summer-2026/; carry-forward from July 16 (7 days)
+- **[Medium] Add Alberta cybersecurity case study to repos.md** — https://www.anthropic.com/news/alberta-government-claude-cybersecurity; carry-forward from July 16 (7 days)
+- **[Medium] Add Global Workspace paper to repos.md** — https://www.anthropic.com/research/global-workspace; carry-forward from July 16 (7 days)
+- **[Medium] Add Admin API docs to repos.md** — https://docs.anthropic.com/en/docs/administration/administration-api; carry-forward from July 16 (7 days)
+- **[Low] Ben Bernanke LTBT appointment** — awareness item; no action required; logged July 18 (5 days)
+- **[Medium] Add Harness Design for Long-Running Apps to repos.md** — https://www.anthropic.com/engineering/harness-design-long-running-apps; carry-forward from July 20 (3 days)
+- **[Medium] Add Claude Agent SDK engineering post to repos.md** — https://www.anthropic.com/engineering/building-agents-with-the-claude-agent-sdk; carry-forward from July 20 (3 days)
+- **[Medium] Code Execution Tool SDK native support** — Add to repos.md; carry-forward from July 21 (2 days)
+- **[Low] AI for Science rare disease grants** — Deadline August 2 (10 days away); awareness item; carry-forward from July 22 (1 day)
+- **[Low] Claude for Teachers** — pattern reference; no code changes; carry-forward from July 22 (1 day)
+- **[Medium] Fable 5 CJS framework to security-engineer + repos.md** — new today; `~/.claude/agents/security-engineer.md` + repos.md
+- **[Low] Admin API Enterprise User Management** — awareness item; no current ag3nts surface; new today
+- **[Low] Anthropic Economic Index Connector** — add to repos.md; new today
+
+---
+
+## Scan: 2026-07-22
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
