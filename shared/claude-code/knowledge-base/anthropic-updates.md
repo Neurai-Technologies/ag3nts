@@ -1,6 +1,108 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-07-23
+## Latest Scan: 2026-07-24
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 3
+- Actionable integrations: 2
+
+### Context
+
+One day since last scan (July 23). Three new findings: (1) **Opus 4.7 fast mode removal is NOW LIVE** — the removal flagged for 24 consecutive days took effect today (July 24); any config with `claude-opus-4-7` + `speed: "fast"` now returns errors in all environments. Still no action logged across 25 days of carry-forward. Immediate fix required. (2) **MCP Tunnels API endpoint moved** (missed by prior scans) — the tunnels management API moved from `/v1/organizations/tunnels` on the Admin API to `/v1/tunnels` on the Claude API, using `anthropic-beta: mcp-tunnels-2026-06-22`; any code hitting the old path returns 404. (3) **"How Anthropic teams use Claude Code"** (July 20, missed by July 20–23 scans) — engineering/news post covering code migration patterns and internal Claude Code automation at Anthropic; URL confirmed at anthropic.com/news/how-anthropic-teams-use-claude-code. Also from today's scan: verified GRAM (July 8), Claude robotics paper (July 9), and values paper (July 13) were all already in carry-forward from their respective dates (July 10, July 14). **CRITICAL: Opus 4.1 deprecation is 12 days away (August 5)** — audit for `claude-opus-4-1` in config. **CRITICAL: claude-mythos-preview has now been retired for 8 days** — no action. Carry-forward: all previous items advance by 1 day.
+
+---
+
+### Findings
+
+#### Opus 4.7 Fast Mode Removal — NOW LIVE (July 24, 2026)
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: July 24, 2026 (removal effective today)
+- **Category**: Model
+- **What Changed**: Fast mode for `claude-opus-4-7` has been removed as of today. Requests to `claude-opus-4-7` with `speed: "fast"` now return an error. Users must migrate to `claude-opus-4-8` fast mode. This was flagged CRITICAL for 24 consecutive days in this scan log with no action taken.
+- **Impact on ag3nts**: If any agent definition, hook script, settings.json, or API call in ag3nts uses `claude-opus-4-7` with `speed: "fast"`, it is NOW erroring. `grep -r "opus-4-7" ~/.claude/ shared/` to identify affected files. Migrate model identifier to `claude-opus-4-8` and confirm fast mode is supported on 4.8.
+- **Proposed Changes**:
+  - [ ] Run `grep -r "opus-4-7" ~/.claude/ shared/` — replace any hits with `claude-opus-4-8`
+  - [ ] Verify `speed: "fast"` is supported on `claude-opus-4-8` in relevant configs
+- **Priority**: Critical — removal is LIVE NOW; any affected config is actively erroring
+
+#### MCP Tunnels API Endpoint Moved (Prior to July 24, 2026, missed)
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: ~June–July 2026 (exact date in release notes; missed by prior scans)
+- **Category**: API
+- **What Changed**: The MCP tunnels management API moved from `/v1/organizations/tunnels` on the Admin API to `/v1/tunnels` on the Claude API. Requests must use the `anthropic-beta: mcp-tunnels-2026-06-22` header. The old `/v1/organizations/tunnels` path no longer exists.
+- **Impact on ag3nts**: Low unless ag3nts actively uses the MCP Tunnels management API (not the tunnels themselves). Prior carry-forward items noted MCP Tunnels as a research preview feature to evaluate for CI/CD access. If any scripts or hooks call `/v1/organizations/tunnels`, they now return 404. Check `shared/claude-code/hooks/` and any scripts for the old path.
+- **Proposed Changes**:
+  - [ ] `grep -r "organizations/tunnels" shared/ ~/.claude/` — update any hits to `/v1/tunnels` with `mcp-tunnels-2026-06-22` header
+- **Priority**: Medium — breaking endpoint change; low chance of current ag3nts usage but easy to verify
+
+#### "How Anthropic Teams Use Claude Code" (July 20, 2026, missed)
+- **Source**: https://www.anthropic.com/news/how-anthropic-teams-use-claude-code
+- **Published**: July 20, 2026 (missed by July 20–23 scans)
+- **Category**: Agent
+- **What Changed**: Anthropic published an internal case study showing how their own teams use Claude Code, covering code migration workflows (Opus 4.6 handled a multi-million-line codebase migration like a senior engineer), debugging production issues, navigating unfamiliar codebases, and building custom automation. Demonstrates codebase-scale migration with existing test suite as the acceptance bar.
+- **Impact on ag3nts**: Validates ag3nts' "humans plan, agent executes" architecture from the claude-code-expertise research. The code migration patterns — plan up front, adapt as you learn, use existing tests as bar — are directly applicable to how ag3nts should orchestrate large refactoring or migration tasks. Add to repos.md as a reference for orchestration design.
+- **Proposed Changes**:
+  - [ ] Add `https://www.anthropic.com/news/how-anthropic-teams-use-claude-code` to `shared/claude-code/knowledge-base/repos.md`
+- **Priority**: Medium — orchestration pattern reference; validates existing design; no breaking changes
+
+---
+
+### Recommendations
+
+Top 3 actions for July 24:
+
+1. **[CRITICAL — NOW] Opus 4.7 fast mode is LIVE and erroring** — `grep -r "opus-4-7" ~/.claude/ shared/` and replace all hits with `claude-opus-4-8`. This removal took effect TODAY. Any config referencing `claude-opus-4-7` with `speed: "fast"` is NOW returning errors. 25 consecutive days without action. Fix immediately.
+
+2. **[CRITICAL — NOW] claude-mythos-preview RETIRED 8 days ago** — `grep -r "claude-mythos-preview" ~/.claude/ shared/` — any config referencing this model has been erroring for 8 days. Replace with `claude-mythos-5`. 8 days without action.
+
+3. **[Critical — 12 days] Opus 4.1 deprecation approaching August 5** — `grep -r "claude-opus-4-1" ~/.claude/ shared/` — 12 days until deprecation. Audit and migrate any hits to a current model before August 5.
+
+Carry-forward:
+- **[CRITICAL — NOW — LIVE] Opus 4.7 fast mode REMOVED** — removed TODAY July 24; errors live NOW; `grep -r "opus-4-7" ~/.claude/ shared/`; 25 consecutive days without action
+- **[CRITICAL — NOW] claude-mythos-preview retired** — RETIRED July 21 (8 days ago); `grep -r "claude-mythos-preview" ~/.claude/ shared/`; errors live NOW
+- **[CRITICAL — NOW] agent-memory-2026-07-22 live** — memory list behavior changed July 22; audit pagination + header usage in hooks; 3 days old
+- **[Critical — 12 days] Opus 4.1 deprecation** — August 5; `grep -r "claude-opus-4-1"` audit pending; 12 days remaining
+- **[High] Upgrade Sonnet agents to claude-sonnet-5** — code-reviewer, accessibility-auditor, reality-checker, ux-architect, anthropic; carry-forward from July 21 (3 days)
+- **[Medium] Mid-conversation system messages now GA (no beta header)** — Fable 5, Mythos 5, Opus 4.8 eligible; evaluate software-architect + security-engineer dispatch; carry-forward from July 22 (2 days)
+- **[High] Update Claude Code** — `npm install -g @anthropic-ai/claude-code@latest`; 14 days overdue
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1; 24 days outstanding
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (28 days overdue)
+- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (28 days)
+- **[High] Advisor Tool evaluation** — max_tokens parameter documented; carry-forward since June 26 (28 days)
+- **[High] Memory for Managed Agents evaluation** — `agent-memory-2026-07-22` header is live; carry-forward from June 30 (24 days)
+- **[High] Add `/rewind` checkpoints to ag3nts Commands table** — Carry-forward from June 28 (26 days)
+- **[Medium] Cache Diagnostics audit** — Add `cache-diagnosis-2026-04` beta header to scripted runs; carry-forward from June 28 (26 days)
+- **[Medium] Review BrowseComp design constraint** — Carry-forward from June 28 (26 days)
+- **[High] Demystifying evals — add eval spec to software-architect Stage 4 deliverables** — Carry-forward from July 5 (19 days)
+- **[High] Writing effective tools — audit code-reviewer + security-engineer tool descriptions** — Carry-forward from July 5 (19 days)
+- **[High] How We Contain Claude — review hooks for input-side injection guards on scripted/cron runs** — Carry-forward from July 5 (19 days)
+- **[High] Claude Platform on AWS — add to ag3nts.md Scripted / Automated Runs section** — Carry-forward from July 5 (19 days)
+- **[Medium] Claude for Government reference** — Add URL to repos.md; carry-forward from July 9 (15 days)
+- **[Medium] GRAM repos.md entry** — Add https://www.anthropic.com/research/off-switch-dual-use; carry-forward from July 10 (14 days)
+- **[Medium] Add Project Fetch Phase Two to repos.md** — https://www.anthropic.com/research/project-fetch-phase-two; carry-forward from July 14 (10 days)
+- **[Medium] Add values research to repos.md** — https://www.anthropic.com/research/claude-values-models-languages; carry-forward from July 14 (10 days)
+- **[Medium] Add Claude Science to repos.md** — https://www.anthropic.com/news/claude-science-ai-workbench; carry-forward from July 14 (10 days)
+- **[Medium] Add M365 write connector to repos.md** — https://claude.com/connectors/microsoft-365; carry-forward from July 15 (9 days)
+- **[Medium] Add agentic misalignment paper to repos.md** — https://alignment.anthropic.com/2026/agentic-misalignment-summer-2026/; carry-forward from July 16 (8 days)
+- **[Medium] Add Alberta cybersecurity case study to repos.md** — https://www.anthropic.com/news/alberta-government-claude-cybersecurity; carry-forward from July 16 (8 days)
+- **[Medium] Add Global Workspace paper to repos.md** — https://www.anthropic.com/research/global-workspace; carry-forward from July 16 (8 days)
+- **[Medium] Add Admin API docs to repos.md** — https://docs.anthropic.com/en/docs/administration/administration-api; carry-forward from July 16 (8 days)
+- **[Low] Ben Bernanke LTBT appointment** — awareness item; no action required; logged July 18 (6 days)
+- **[Medium] Add Harness Design for Long-Running Apps to repos.md** — https://www.anthropic.com/engineering/harness-design-long-running-apps; carry-forward from July 20 (4 days)
+- **[Medium] Add Claude Agent SDK engineering post to repos.md** — https://www.anthropic.com/engineering/building-agents-with-the-claude-agent-sdk; carry-forward from July 20 (4 days)
+- **[Medium] Code Execution Tool SDK native support** — Add to repos.md; carry-forward from July 21 (3 days)
+- **[Low] AI for Science rare disease grants** — Deadline August 2 (9 days away); awareness item; carry-forward from July 22 (2 days)
+- **[Low] Claude for Teachers** — pattern reference; no code changes; carry-forward from July 22 (2 days)
+- **[Medium] Fable 5 CJS framework to security-engineer + repos.md** — `~/.claude/agents/security-engineer.md` + repos.md; carry-forward from July 23 (1 day)
+- **[Low] Admin API Enterprise User Management** — awareness item; no current ag3nts surface; carry-forward from July 23 (1 day)
+- **[Low] Anthropic Economic Index Connector** — add to repos.md; carry-forward from July 23 (1 day)
+- **[Medium] MCP Tunnels API endpoint moved** — /v1/organizations/tunnels → /v1/tunnels; verify no ag3nts hooks use old path; new today
+- **[Medium] Add "How Anthropic teams use Claude Code" to repos.md** — https://www.anthropic.com/news/how-anthropic-teams-use-claude-code; code migration orchestration patterns; new today
+
+---
+
+## Scan: 2026-07-23
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
