@@ -1,5 +1,82 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-07-25
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 2
+- Actionable integrations: 2
+
+### Context
+
+One day since last scan (July 24). Two new findings: (1) **Claude Opus 5 released July 24** — missed by yesterday's scan (likely published the same day after the scan ran). This is a high-priority model upgrade for ag3nts `software-architect` and `security-engineer` agents (both defined as "Opus" in ag3nts.md). Model ID is `claude-opus-5`, priced at $5/M input / $25/M output (same as Opus 4.8), 1M token context window, `effort` defaults to `high`. (2) **Claude Science AI workbench** — new product (beta) for scientific research workflows; low direct impact on ag3nts but demonstrates multi-specialist parallel dispatch architecture in a new domain.
+
+Carry-forward: **CRITICAL — Opus 4.7 fast mode LIVE and erroring (26 consecutive days without action)**. **CRITICAL — claude-mythos-preview RETIRED 9 days ago, errors live**. **Critical — Opus 4.1 deprecation 11 days away (August 5)**. Sonnet agent upgrade now 4 days outstanding. All other carry-forward items advanced by 1 day.
+
+---
+
+### Findings
+
+#### Claude Opus 5 — New Model Release (July 24, 2026)
+- **Source**: https://www.anthropic.com/news/claude-opus-5
+- **Published**: July 24, 2026 (missed by July 24 scan — likely published same day after scan ran)
+- **Category**: Model
+- **What Changed**: Anthropic released Claude Opus 5 (`claude-opus-5`). Priced at $5/M input / $25/M output — same as Opus 4.8. 1M token context window. The `effort` parameter defaults to `high` on the API and Claude Code (unlike prior Opus versions). Supports up to 300k output tokens via `output-300k-2026-03-24` beta header. Top of Frontier-Bench v0.1 and ARC-AGI 3 (3× better than next-best on ARC-AGI 3). New default model on Claude Max; strongest on Claude Pro. System card published with cyber eval results: ExploitBench, OSS-Fuzz, Firefox 147, CyScenarioBench, ExploitGym.
+- **Impact on ag3nts**: The `software-architect` (Opus) and `security-engineer` (Opus) agents in ag3nts.md should be upgraded to `claude-opus-5`. The default `effort: high` behavior is ideal for these complex agentic roles (threat modeling, architecture reviews). System card cyber eval coverage is directly relevant to `security-engineer` agent's threat model scope. Opus 5 also replaces `claude-opus-4-8` as the recommended fast-mode migration target from Opus 4.7.
+- **Proposed Changes**:
+  - [ ] `grep -r "claude-opus" ~/.claude/agents/ shared/` — identify current opus model IDs in agent definition files
+  - [ ] Update `software-architect` agent definition to `model: claude-opus-5`
+  - [ ] Update `security-engineer` agent definition to `model: claude-opus-5`
+  - [ ] Add `https://www.anthropic.com/news/claude-opus-5` to `shared/claude-code/knowledge-base/repos.md`
+- **Priority**: High — best-in-class Opus model at same price point; direct no-cost upgrade for two ag3nts agents
+
+#### Claude Science AI Workbench (July 2026)
+- **Source**: https://www.anthropic.com/news/claude-science-ai-workbench
+- **Published**: July 2026 (exact date unclear; not in prior scans)
+- **Category**: Agent
+- **What Changed**: Anthropic launched Claude Science in beta — an AI workbench for scientists that integrates research tools/packages, produces auditable artifacts, and provides flexible compute access. Specialist agents query and synthesize across sources in parallel. Integrates NVIDIA BioNeMo Agent Toolkit for life sciences. Available on macOS/Linux for Pro/Max/Team/Enterprise plans.
+- **Impact on ag3nts**: Product launch, no API changes. The multi-specialist parallel agent dispatch model (each agent queries one source domain, results synthesized) is a pattern validation for ag3nts' code-reviewer multi-specialist dispatch. "Auditable artifacts" output model is worth evaluating for structured deliverables from software-architect and reality-checker agents.
+- **Proposed Changes**:
+  - [ ] Add `https://www.anthropic.com/news/claude-science-ai-workbench` to `shared/claude-code/knowledge-base/repos.md` as architecture pattern reference
+- **Priority**: Low — product launch; no breaking changes; pattern reference
+
+---
+
+### Recommendations
+
+Top 3 actions for July 25:
+
+1. **[CRITICAL — NOW] Opus 4.7 fast mode is LIVE and erroring** — `grep -r "opus-4-7" ~/.claude/ shared/` and replace all hits with `claude-opus-4-8` (or now `claude-opus-5`). 26 consecutive days without action; errors live NOW.
+
+2. **[CRITICAL — NOW] claude-mythos-preview RETIRED 9 days ago** — `grep -r "claude-mythos-preview" ~/.claude/ shared/` and replace with `claude-mythos-5`. Errors live for 9 days.
+
+3. **[High] Upgrade Opus agents to claude-opus-5** — `grep -r "claude-opus" ~/.claude/agents/` — update `software-architect` and `security-engineer` to `claude-opus-5`. Same price as Opus 4.8, significant performance gains on Frontier-Bench and ARC-AGI 3.
+
+Carry-forward:
+- **[CRITICAL — NOW — LIVE] Opus 4.7 fast mode REMOVED** — removed July 24; errors live NOW; `grep -r "opus-4-7" ~/.claude/ shared/`; 26 consecutive days without action
+- **[CRITICAL — NOW] claude-mythos-preview retired** — RETIRED July 21 (9 days ago); `grep -r "claude-mythos-preview" ~/.claude/ shared/`; errors live NOW
+- **[CRITICAL — NOW] agent-memory-2026-07-22 live** — memory list behavior changed July 22; audit pagination + header usage in hooks; 4 days old
+- **[Critical — 11 days] Opus 4.1 deprecation** — August 5; `grep -r "claude-opus-4-1"` audit pending; 11 days remaining
+- **[High] Upgrade Sonnet agents to claude-sonnet-5** — code-reviewer, accessibility-auditor, reality-checker, ux-architect, anthropic; carry-forward from July 21 (4 days)
+- **[High] Upgrade Opus agents to claude-opus-5** — software-architect, security-engineer; new today July 25
+- **[Medium] Mid-conversation system messages now GA (no beta header)** — Fable 5, Mythos 5, Opus 4.8 eligible; evaluate software-architect + security-engineer dispatch; carry-forward from July 22 (3 days)
+- **[High] Update Claude Code** — `npm install -g @anthropic-ai/claude-code@latest`; 15 days overdue
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1; 25 days outstanding
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (29 days overdue)
+- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (29 days)
+- **[High] Advisor Tool evaluation** — max_tokens parameter documented; carry-forward since June 26 (29 days)
+- **[High] Memory for Managed Agents evaluation** — `agent-memory-2026-07-22` header is live; carry-forward from June 30 (25 days)
+- **[High] Add `/rewind` checkpoints to ag3nts Commands table** — Carry-forward from June 28 (27 days)
+- **[Medium] Cache Diagnostics audit** — Add `cache-diagnosis-2026-04` beta header to scripted runs; carry-forward from June 28 (27 days)
+- **[Medium] Review BrowseComp design constraint** — Carry-forward from June 28 (27 days)
+- **[High] Demystifying evals — add eval spec to software-architect Stage 4 deliverables** — Carry-forward from July 5 (20 days)
+- **[High] Writing effective tools — audit code-reviewer + security-engineer tool descriptions** — Carry-forward from July 5 (20 days)
+- **[High] How We Contain Claude — review hooks for input-side injection guards on scripted/cron runs** — Carry-forward from July 5 (20 days)
+- **[High] Claude Platform on AWS — add to ag3nts.md Scripted / Automated Runs section** — Carry-forward from July 5 (20 days)
+- **[Medium] Add how-anthropic-teams-use-claude-code to repos.md** — Carry-forward from July 24 (1 day)
+- **[Medium] MCP Tunnels API endpoint moved** — verify `grep -r "organizations/tunnels" shared/ ~/.claude/`; carry-forward from July 24 (1 day)
+
+
 ## Latest Scan: 2026-07-24
 
 ### Summary
