@@ -1,108 +1,83 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-07-27
+## Latest Scan: 2026-07-28
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
-- New findings: 4
-- Actionable integrations: 3
+- New findings: 1
+- Actionable integrations: 1
 
 ### Context
 
-One day since last scan (July 26). Four new findings, all from API docs and research pages not captured in prior scans: (1) **Mid-conversation tool changes beta** (`mid-conversation-tool-changes-2026-07-01`) — distinct from "mid-conversation system messages GA" (already in carry-forward); allows adding/removing tools between turns while preserving prompt cache; directly relevant to RepairBoss stage transitions. (2) **Server-side fallback for refusals** (`server-side-fallback-2026-07-01`) — `fallbacks: "default"` applies Anthropic-recommended fallback models by refusal category; relevant for scripted/cron runs that must not stall on refusals. (3) **API key expiration management** — set expiry on API and Admin API keys in Claude Console; direct security hardening for `ANTHROPIC_API_KEY` in ag3nts scripted runs. (4) **Off-switch for dual-use knowledge / GRAM** (July 8) — AE Studio + Anthropic research introducing Gradient-Routed Auxiliary Modules; not in production but expands security-engineer threat taxonomy for model knowledge compartmentalization. No new engineering blog posts (last: April 23 postmortem). No new findings from July 27 specifically — most recent Anthropic announcement is Claude Opus 5 (July 24), already captured in July 25 scan.
+One day since last scan (July 27). One new finding from API release notes: **Experimental Prompt APIs + Workbench retiring August 17, 2026** — three API endpoints (`/v1/experimental/generate_prompt`, `/v1/experimental/improve_prompt`, `/v1/experimental/templatize_prompt`) and the Workbench UI are being retired in 20 days; after that date requests return errors. No new research posts (last was Project Pilot, July 24). No new engineering blog posts (last: April 23, 2026 postmortem). No new news announcements since Claude Opus 5 (July 24). Nothing published on July 28 specifically.
 
-Carry-forward: **CRITICAL — Opus 4.7 fast mode REMOVED and erroring (28 consecutive days without action)**. **CRITICAL — claude-mythos-preview RETIRED 11 days ago**. **Critical — Opus 4.1 deprecation 9 days away (August 5)**. All other carry-forward items advanced by 1 day.
+Carry-forward: **CRITICAL — Opus 4.7 fast mode REMOVED and erroring (29 consecutive days without action)**. **CRITICAL — claude-mythos-preview RETIRED 12 days ago**. **Critical — Opus 4.1 deprecation 8 days away (August 5)**. **Critical — Experimental Prompt APIs retiring 20 days away (August 17)**. All other carry-forward items advanced by 1 day.
 
 ---
 
 ### Findings
 
-#### Mid-Conversation Tool Changes Beta (July 1, 2026)
+#### Experimental Prompt APIs + Workbench Retiring August 17, 2026
 - **Source**: https://docs.anthropic.com/en/release-notes/api
-- **Published**: July 1, 2026 (missed by prior scans — distinct from "mid-conversation system messages" captured July 22)
-- **Category**: API
-- **What Changed**: New beta feature (`anthropic-beta: mid-conversation-tool-changes-2026-07-01`) available on Claude Fable 5, Mythos 5, Opus 4.8, and Opus 5. Allows adding or removing tools between turns of a multi-turn conversation while preserving the prompt cache. Previously, changing the tool list mid-conversation invalidated the cache.
-- **Impact on ag3nts**: RepairBoss stage transitions (e.g., Stage 4 → Stage 6 switching from `software-architect` to `security-engineer`) could benefit: different specialists need different tool sets. With this beta, tools can be swapped between stages without cache busting, reducing token cost and latency in multi-stage pipelines. Also relevant to `code-reviewer`'s 4-parallel-specialist dispatch if specialists require different tools.
+- **Published**: Late July 2026 (exact date unconfirmed; discovered today)
+- **Category**: API / Tooling
+- **What Changed**: Three experimental prompt-generation API endpoints and the Workbench UI are being retired on August 17, 2026. After that date, requests to these endpoints return an error. Affected endpoints:
+  - `/v1/experimental/generate_prompt`
+  - `/v1/experimental/improve_prompt`
+  - `/v1/experimental/templatize_prompt`
+- **Impact on ag3nts**: ag3nts uses `claude --bare -p` for scripted runs, not direct REST API calls to these endpoints. However, any Python scripts, CI/CD automation, or prompt-engineering utilities in the ag3nts stack that call these experimental endpoints will break on August 17. Impact is Low if none are in use, High if any scripts depend on them. Requires an immediate grep audit to confirm.
 - **Proposed Changes**:
-  - [ ] Evaluate enabling `mid-conversation-tool-changes-2026-07-01` header in RepairBoss orchestration scripts that transition between specialist agents
-  - [ ] Add beta header to `shared/claude-code/knowledge-base/repos.md` for reference
-- **Priority**: Medium — directly applicable to multi-stage pipeline optimization; no breaking changes required
-
-#### Server-Side Fallback for Refusals (July 2026)
-- **Source**: https://docs.anthropic.com/en/release-notes/api
-- **Published**: July 2026 (beta header: `server-side-fallback-2026-07-01`)
-- **Category**: API
-- **What Changed**: New beta feature: `fallbacks` parameter now supports `"default"` mode, which applies Anthropic's recommended fallback models by refusal category. When the primary model refuses a request, the server automatically retries with an appropriate fallback model rather than returning an error. Requires `anthropic-beta: server-side-fallback-2026-07-01` header.
-- **Impact on ag3nts**: Scripted and cron runs (e.g., this `anthropic` agent, the daily scan) currently fail silently or halt if a model refuses a task. Server-side fallback would allow these runs to gracefully recover. Also relevant for `reality-checker` and `security-engineer` auto-invoke flows where a refusal would block a commit gate.
-- **Proposed Changes**:
-  - [ ] Add `fallbacks: "default"` + beta header to `--bare -p` scripted run guidance in `shared/ag3nts.md` Scripted / Automated Runs section
-  - [ ] Evaluate enabling in pre-commit hook invocations (`pre-commit-secrets-scan.sh`, `pre-commit-review-gate.sh`) for refusal resilience
-- **Priority**: Medium — improves reliability of automated runs without code changes; worth enabling in scripted contexts
-
-#### API Key Expiration Management (July 2026)
-- **Source**: https://docs.anthropic.com/en/release-notes/api
-- **Published**: July 2026 (exact date unclear from search results)
-- **Category**: API
-- **What Changed**: Claude Console now allows setting an expiration on API keys and Admin API keys at creation time (preset duration, custom duration, or Never). For keys with a lifetime ≥ 7 days, Anthropic emails the key creator before expiration.
-- **Impact on ag3nts**: The `ANTHROPIC_API_KEY` used in scripted/automated runs and CI/CD is a long-lived credential (noted in ag3nts.md WIF carry-forward as a security concern for 30+ days). Key expiration is a direct mitigation: rotate keys on a schedule with an automated reminder, reducing blast radius if a key is compromised. Pairs well with the WIF (Workload Identity Federation) carry-forward.
-- **Proposed Changes**:
-  - [ ] Set expiration on current `ANTHROPIC_API_KEY` used in ag3nts automated runs (90-day rotation suggested)
-  - [ ] Document key rotation procedure in `shared/ag3nts.md` Auth section or `shared/claude-code/knowledge-base/repos.md`
-- **Priority**: Medium — security hardening; direct mitigation for the 30-day-old WIF carry-forward risk
-
-#### Off-Switch for Dual-Use Knowledge: GRAM (July 8, 2026)
-- **Source**: https://www.anthropic.com/research/off-switch-dual-use
-- **Published**: July 8, 2026 (AE Studio + Anthropic collaboration; missed by prior scans)
-- **Category**: Safety / Model
-- **What Changed**: Anthropic published research on GRAM (Gradient-Routed Auxiliary Modules) — a method for compartmentalizing dual-use knowledge in AI models. GRAM gives a model dedicated, removable modules for each category of dual-use knowledge (e.g., cybersecurity, virology) that can be independently filtered without retraining. Results are preliminary: GRAM has not been applied to any production model and has not been tested at frontier scale.
-- **Impact on ag3nts**: No direct API or config changes (GRAM is not in production). Relevant as threat-modeling context for `security-engineer` agent: when auditing agentic pipelines that process dual-use content, the agent should recognize that current production models (Sonnet 5, Opus 5) do NOT have GRAM compartmentalization — all model knowledge is accessible. The research also expands the agentic misalignment taxonomy (from July 13 finding) by adding "model knowledge extraction" as a threat vector.
-- **Proposed Changes**:
-  - [ ] Add `https://www.anthropic.com/research/off-switch-dual-use` to `shared/claude-code/knowledge-base/repos.md` as safety research reference
-  - [ ] Note in `security-engineer` agent context: GRAM is not in production; do not assume dual-use knowledge compartmentalization in current models
-- **Priority**: Low — preliminary research; no breaking changes; threat modeling reference only
+  - [ ] `grep -r "generate_prompt\|improve_prompt\|templatize_prompt\|experimental" shared/ ~/.claude/` — confirm whether ag3nts uses these endpoints
+  - [ ] If found: migrate to manually crafting prompts or using a current-generation approach before August 17
+- **Priority**: High — 20-day deadline; breaking change on retirement; trivial to audit now
 
 ---
 
 ### Recommendations
 
-Top 3 actions for July 27:
+Top 3 actions for July 28:
 
-1. **[CRITICAL — NOW] Opus 4.7 fast mode REMOVED — 28 days without action** — `grep -r "opus-4-7" ~/.claude/ shared/`; replace all hits with `claude-opus-5`. Live errors for 28 days.
+1. **[CRITICAL — NOW] Opus 4.7 fast mode REMOVED — 29 days without action** — `grep -r "opus-4-7" ~/.claude/ shared/`; replace all hits with `claude-opus-5`. Live errors for 29 days.
 
-2. **[CRITICAL — NOW] claude-mythos-preview RETIRED July 21 (11 days ago)** — `grep -r "claude-mythos-preview" ~/.claude/ shared/`; replace with `claude-mythos-5`. Live errors.
+2. **[Critical — 8 days] Opus 4.1 deprecation August 5** — `grep -r "claude-opus-4-1" ~/.claude/ shared/`; audit and replace before August 5.
 
-3. **[Critical — 9 days] Opus 4.1 deprecation August 5** — `grep -r "claude-opus-4-1" ~/.claude/ shared/`; audit and replace before August 5.
+3. **[High — 20 days] Experimental Prompt APIs retiring August 17** — `grep -r "generate_prompt\|improve_prompt\|templatize_prompt" shared/ ~/.claude/`; confirm no usage; migrate if found.
 
 Carry-forward:
-- **[CRITICAL — NOW — LIVE] Opus 4.7 fast mode REMOVED** — removed July 24; errors live NOW; `grep -r "opus-4-7" ~/.claude/ shared/`; 28 consecutive days without action
-- **[CRITICAL — NOW] claude-mythos-preview retired** — RETIRED July 21 (11 days ago); `grep -r "claude-mythos-preview" ~/.claude/ shared/`; errors live NOW
-- **[CRITICAL — NOW] agent-memory-2026-07-22 live** — memory list behavior changed July 22; audit pagination + header usage in hooks; 6 days old
-- **[Critical — 9 days] Opus 4.1 deprecation** — August 5; `grep -r "claude-opus-4-1"` audit pending; 9 days remaining
-- **[High] Agentic Misalignment threat taxonomy** — Add July 13 failure modes to security-engineer prompt; 1 day outstanding
-- **[High] Upgrade Sonnet agents to claude-sonnet-5** — code-reviewer, accessibility-auditor, reality-checker, ux-architect, anthropic; 6 days outstanding
-- **[High] Upgrade Opus agents to claude-opus-5** — software-architect, security-engineer; 2 days outstanding
-- **[Medium] Mid-conversation system messages now GA (no beta header)** — Fable 5, Mythos 5, Opus 4.8, Opus 5 eligible; evaluate software-architect + security-engineer dispatch; 5 days outstanding
-- **[Medium] Mid-conversation tool changes beta** — `mid-conversation-tool-changes-2026-07-01`; evaluate for RepairBoss stage transitions; new today July 27
-- **[Medium] Server-side fallback for refusals** — `server-side-fallback-2026-07-01`; add to scripted run guidance; new today July 27
-- **[Medium] API key expiration — set rotation schedule** — 90-day rotation for `ANTHROPIC_API_KEY`; new today July 27
-- **[High] Update Claude Code** — `npm install -g @anthropic-ai/claude-code@latest`; 17 days overdue
-- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1; 26 days outstanding
-- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (31 days overdue)
-- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (31 days)
-- **[High] Advisor Tool evaluation** — max_tokens parameter documented; carry-forward since June 26 (31 days)
-- **[High] Memory for Managed Agents evaluation** — `agent-memory-2026-07-22` header is live; carry-forward from June 30 (27 days)
-- **[High] Add `/rewind` checkpoints to ag3nts Commands table** — Carry-forward from June 28 (29 days)
-- **[Medium] Cache Diagnostics audit** — Add `cache-diagnosis-2026-04` beta header to scripted runs; carry-forward from June 28 (29 days)
-- **[Medium] Review BrowseComp design constraint** — Carry-forward from June 28 (29 days)
-- **[High] Demystifying evals — add eval spec to software-architect Stage 4 deliverables** — Carry-forward from July 5 (22 days)
-- **[High] Writing effective tools — audit code-reviewer + security-engineer tool descriptions** — Carry-forward from July 5 (22 days)
-- **[High] How We Contain Claude — review hooks for input-side injection guards on scripted/cron runs** — Carry-forward from July 5 (22 days)
-- **[High] Claude Platform on AWS — add to ag3nts.md Scripted / Automated Runs section** — Carry-forward from July 5 (22 days)
-- **[Medium] Add how-anthropic-teams-use-claude-code to repos.md** — Carry-forward from July 24 (3 days)
-- **[Medium] MCP Tunnels API endpoint moved** — verify `grep -r "organizations/tunnels" shared/ ~/.claude/`; carry-forward from July 24 (3 days)
-- **[Medium] Rate limit tier consolidation (Start/Build/Scale)** — verify model selection rationale in docs; carry-forward from July 26 (1 day)
-- **[Low] Project Pilot: drone benchmark** — Add to repos.md as Frontier Red Team reference; carry-forward from July 26 (1 day)
-- **[Low] Off-switch for dual-use knowledge (GRAM)** — Add to repos.md as safety research reference; new today July 27
+- **[CRITICAL — NOW — LIVE] Opus 4.7 fast mode REMOVED** — removed July 24; errors live NOW; `grep -r "opus-4-7" ~/.claude/ shared/`; 29 consecutive days without action
+- **[CRITICAL — NOW] claude-mythos-preview retired** — RETIRED July 21 (12 days ago); `grep -r "claude-mythos-preview" ~/.claude/ shared/`; errors live NOW
+- **[CRITICAL — NOW] agent-memory-2026-07-22 live** — memory list behavior changed July 22; audit pagination + header usage in hooks; 7 days old
+- **[Critical — 8 days] Opus 4.1 deprecation** — August 5; `grep -r "claude-opus-4-1"` audit pending; 8 days remaining
+- **[High — 20 days] Experimental Prompt APIs retiring August 17** — `/v1/experimental/generate_prompt` and siblings; grep audit + migrate if found; new today July 28
+- **[High] Agentic Misalignment threat taxonomy** — Add July 13 failure modes to security-engineer prompt; 2 days outstanding
+- **[High] Upgrade Sonnet agents to claude-sonnet-5** — code-reviewer, accessibility-auditor, reality-checker, ux-architect, anthropic; 7 days outstanding
+- **[High] Upgrade Opus agents to claude-opus-5** — software-architect, security-engineer; 3 days outstanding
+- **[Medium] Mid-conversation system messages now GA (no beta header)** — Fable 5, Mythos 5, Opus 4.8, Opus 5 eligible; evaluate software-architect + security-engineer dispatch; 6 days outstanding
+- **[Medium] Mid-conversation tool changes beta** — `mid-conversation-tool-changes-2026-07-01`; evaluate for RepairBoss stage transitions; 1 day outstanding
+- **[Medium] Server-side fallback for refusals** — `server-side-fallback-2026-07-01`; add to scripted run guidance; 1 day outstanding
+- **[Medium] API key expiration — set rotation schedule** — 90-day rotation for `ANTHROPIC_API_KEY`; 1 day outstanding
+- **[High] Update Claude Code** — `npm install -g @anthropic-ai/claude-code@latest`; 18 days overdue
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1; 27 days outstanding
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (32 days overdue)
+- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (32 days)
+- **[High] Advisor Tool evaluation** — max_tokens parameter documented; carry-forward since June 26 (32 days)
+- **[High] Memory for Managed Agents evaluation** — `agent-memory-2026-07-22` header is live; carry-forward from June 30 (28 days)
+- **[High] Add `/rewind` checkpoints to ag3nts Commands table** — Carry-forward from June 28 (30 days)
+- **[Medium] Cache Diagnostics audit** — Add `cache-diagnosis-2026-04` beta header to scripted runs; carry-forward from June 28 (30 days)
+- **[Medium] Review BrowseComp design constraint** — Carry-forward from June 28 (30 days)
+- **[High] Demystifying evals — add eval spec to software-architect Stage 4 deliverables** — Carry-forward from July 5 (23 days)
+- **[High] Writing effective tools — audit code-reviewer + security-engineer tool descriptions** — Carry-forward from July 5 (23 days)
+- **[High] How We Contain Claude — review hooks for input-side injection guards on scripted/cron runs** — Carry-forward from July 5 (23 days)
+- **[High] Claude Platform on AWS — add to ag3nts.md Scripted / Automated Runs section** — Carry-forward from July 5 (23 days)
+- **[Medium] Add how-anthropic-teams-use-claude-code to repos.md** — Carry-forward from July 24 (4 days)
+- **[Medium] MCP Tunnels API endpoint moved** — verify `grep -r "organizations/tunnels" shared/ ~/.claude/`; carry-forward from July 24 (4 days)
+- **[Medium] Rate limit tier consolidation (Start/Build/Scale)** — verify model selection rationale in docs; carry-forward from July 26 (2 days)
+- **[Low] Project Pilot: drone benchmark** — Add to repos.md as Frontier Red Team reference; carry-forward from July 26 (2 days)
+- **[Low] Off-switch for dual-use knowledge (GRAM)** — Add to repos.md as safety research reference; carry-forward from July 27 (1 day)
+
+---
+
+## Latest Scan: 2026-07-27
 
 ---
 
