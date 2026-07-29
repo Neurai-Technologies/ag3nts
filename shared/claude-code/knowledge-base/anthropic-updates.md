@@ -1,5 +1,103 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-07-29
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 3
+- Actionable integrations: 3
+
+### Context
+
+One day since last scan (July 28). Three new findings: (1) **"Discovering Cryptographic Weaknesses with Claude"** (July 28, 2026) — missed by yesterday's scan; Anthropic Frontier Red Team used Claude Mythos Preview to autonomously discover attacks on HAWK (post-quantum) and round-reduced AES; directly expands security-engineer threat scope. (2) **Enterprise Admin API User Management beta** (`ce-user-management-2026-07-13`) — published July 13, missed by 15 days of scans; programmatic member management for Claude Enterprise orgs. (3) **Fable 5 Cyber Jailbreak Severity (CJS) Framework** (July 2) — missed by 27 days of scans; severity taxonomy CJS-0 to CJS-4; relevant for security-engineer jailbreak/prompt-injection risk classification. No new engineering blog posts (still April 23 as latest). No new news or API release notes items beyond yesterday's scan.
+
+Carry-forward: **CRITICAL — Opus 4.7 fast mode REMOVED and erroring (30 consecutive days without action)**. **CRITICAL — claude-mythos-preview RETIRED 13 days ago**. **Critical — Opus 4.1 deprecation 7 days away (August 5)**. **High — Experimental Prompt APIs retiring 19 days away (August 17)**. All other carry-forward items advanced by 1 day.
+
+---
+
+### Findings
+
+#### Discovering Cryptographic Weaknesses with Claude
+- **Source**: https://www.anthropic.com/research/discovering-cryptographic-weaknesses
+- **Published**: July 28, 2026 (missed by July 28 scan)
+- **Category**: Research / Security
+- **What Changed**: Claude Mythos Preview autonomously discovered two real cryptographic attacks: (1) a new attack on HAWK, a post-quantum digital signature scheme, and (2) a new attack on round-reduced AES. Over the course of a week, one researcher worked with Claude on the HAWK attack; a scaffold allowed Claude to discover the AES attack fully autonomously. Neither result currently affects production systems — this is stress-testing that strengthens long-term security.
+- **Impact on ag3nts**: Directly relevant to `security-engineer` agent. Establishes AI-assisted cryptographic attack discovery as a real threat class to include in threat models. The security-engineer prompt should add this to its coverage checklist when auditing systems using post-quantum or AES cryptography.
+- **Proposed Changes**:
+  - [ ] Add https://www.anthropic.com/research/discovering-cryptographic-weaknesses to `shared/claude-code/knowledge-base/repos.md`
+  - [ ] Update `~/.claude/agents/security-engineer.md` to include AI-assisted cryptographic attack discovery as a threat category in threat modeling
+- **Priority**: High — first live demonstration of AI autonomously discovering real cryptographic vulnerabilities; immediate threat modeling implications
+
+#### Enterprise Admin API — User Management Beta
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: July 13, 2026 (missed by 15 days of scans)
+- **Category**: API / Tooling
+- **What Changed**: Claude Enterprise orgs can now programmatically manage members via the Admin API with the `ce-user-management-2026-07-13` beta header: list/look up members by email, change roles, remove members, send/withdraw invites, manage groups and membership, read custom roles.
+- **Impact on ag3nts**: Low for personal dev setup. If ag3nts is ever deployed in a team or Enterprise environment, scripted member lifecycle management is now available. No immediate changes needed to current config.
+- **Proposed Changes**:
+  - [ ] Note `ce-user-management-2026-07-13` beta header in `shared/claude-code/knowledge-base/repos.md` alongside the Admin API docs link
+- **Priority**: Low (personal setup) / Medium (Enterprise environment) — 15 days overdue
+
+#### Fable 5 Cyber Jailbreak Severity (CJS) Framework
+- **Source**: https://www.anthropic.com/news/fable-safeguards-jailbreak-framework
+- **Published**: July 2, 2026 (missed by 27 days of scans)
+- **Category**: Safety / Security
+- **What Changed**: Anthropic published the Cyber Jailbreak Severity (CJS) framework — an early-draft severity taxonomy developed with Glasswing partners. Severity ranges from CJS-0 (informational, minor undesirable behavior) to CJS-4 (critical, wide range of harmful outputs). Also launched a HackerOne program for Fable 5 jailbreak research and published detailed cybersecurity safeguards (safety classifiers) for Fable 5.
+- **Impact on ag3nts**: Relevant to `security-engineer` agent. CJS levels provide a standardized vocabulary for classifying prompt-injection and jailbreak risks in deployed agent systems. The security-engineer prompt can reference CJS-0 to CJS-4 when scoring jailbreak risk for hooks, tool inputs, and multi-agent trust boundaries.
+- **Proposed Changes**:
+  - [ ] Add https://www.anthropic.com/news/fable-safeguards-jailbreak-framework to `shared/claude-code/knowledge-base/repos.md`
+  - [ ] Update `~/.claude/agents/security-engineer.md` to reference CJS severity levels for prompt-injection / jailbreak risk classification
+- **Priority**: Medium — 27 days outstanding; provides useful standardized taxonomy for security-engineer; no breaking change
+
+---
+
+### Recommendations
+
+Top 3 actions for July 29:
+
+1. **[CRITICAL — NOW] Opus 4.7 fast mode REMOVED — 30 days without action** — `grep -r "opus-4-7" ~/.claude/ shared/`; replace all hits with `claude-opus-5`. Live errors for 30 days.
+
+2. **[Critical — 7 days] Opus 4.1 deprecation August 5** — `grep -r "claude-opus-4-1" ~/.claude/ shared/`; audit and replace before August 5. One week remaining.
+
+3. **[High — new today] AI-discovered cryptographic attacks** — Add https://www.anthropic.com/research/discovering-cryptographic-weaknesses to repos.md; update security-engineer agent to cover AI-assisted cryptographic vulnerability discovery in threat models.
+
+Carry-forward:
+- **[CRITICAL — NOW — LIVE] Opus 4.7 fast mode REMOVED** — removed July 24; errors live NOW; `grep -r "opus-4-7" ~/.claude/ shared/`; 30 consecutive days without action
+- **[CRITICAL — NOW] claude-mythos-preview retired** — RETIRED July 21 (13 days ago); `grep -r "claude-mythos-preview" ~/.claude/ shared/`; errors live NOW
+- **[CRITICAL — NOW] agent-memory-2026-07-22 live** — memory list behavior changed July 22; audit pagination + header usage in hooks; 8 days old
+- **[Critical — 7 days] Opus 4.1 deprecation** — August 5; `grep -r "claude-opus-4-1"` audit pending; 7 days remaining
+- **[High — 19 days] Experimental Prompt APIs retiring August 17** — `/v1/experimental/generate_prompt` and siblings; grep audit + migrate if found; 1 day old
+- **[High — new today] AI-discovered cryptographic attacks** — Add https://www.anthropic.com/research/discovering-cryptographic-weaknesses to repos.md; update security-engineer agent threat taxonomy
+- **[Medium — new today] CJS Framework (Fable 5 jailbreak severity)** — Add to repos.md; update security-engineer agent with CJS-0 to CJS-4 vocabulary; 27 days overdue
+- **[Low — new today] Enterprise Admin API user management** — `ce-user-management-2026-07-13` beta; note in repos.md; 15 days overdue
+- **[High] Agentic Misalignment threat taxonomy** — Add July 13 failure modes to security-engineer prompt; 3 days outstanding
+- **[High] Upgrade Sonnet agents to claude-sonnet-5** — code-reviewer, accessibility-auditor, reality-checker, ux-architect, anthropic; 8 days outstanding
+- **[High] Upgrade Opus agents to claude-opus-5** — software-architect, security-engineer; 4 days outstanding
+- **[Medium] Mid-conversation system messages now GA (no beta header)** — Fable 5, Mythos 5, Opus 4.8, Opus 5 eligible; evaluate software-architect + security-engineer dispatch; 7 days outstanding
+- **[Medium] Mid-conversation tool changes beta** — `mid-conversation-tool-changes-2026-07-01`; evaluate for RepairBoss stage transitions; 2 days outstanding
+- **[Medium] Server-side fallback for refusals** — `server-side-fallback-2026-07-01`; add to scripted run guidance; 2 days outstanding
+- **[Medium] API key expiration — set rotation schedule** — 90-day rotation for `ANTHROPIC_API_KEY`; 2 days outstanding
+- **[High] Update Claude Code** — `npm install -g @anthropic-ai/claude-code@latest`; 19 days overdue
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1; 28 days outstanding
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (33 days overdue)
+- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (33 days)
+- **[High] Advisor Tool evaluation** — max_tokens parameter documented; carry-forward since June 26 (33 days)
+- **[High] Memory for Managed Agents evaluation** — `agent-memory-2026-07-22` header is live; carry-forward from June 30 (29 days)
+- **[High] Add `/rewind` checkpoints to ag3nts Commands table** — Carry-forward from June 28 (31 days)
+- **[Medium] Cache Diagnostics audit** — Add `cache-diagnosis-2026-04` beta header to scripted runs; carry-forward from June 28 (31 days)
+- **[Medium] Review BrowseComp design constraint** — Carry-forward from June 28 (31 days)
+- **[High] Demystifying evals — add eval spec to software-architect Stage 4 deliverables** — Carry-forward from July 5 (24 days)
+- **[High] Writing effective tools — audit code-reviewer + security-engineer tool descriptions** — Carry-forward from July 5 (24 days)
+- **[High] How We Contain Claude — review hooks for input-side injection guards on scripted/cron runs** — Carry-forward from July 5 (24 days)
+- **[High] Claude Platform on AWS — add to ag3nts.md Scripted / Automated Runs section** — Carry-forward from July 5 (24 days)
+- **[Medium] Add how-anthropic-teams-use-claude-code to repos.md** — Carry-forward from July 24 (5 days)
+- **[Medium] MCP Tunnels API endpoint moved** — verify `grep -r "organizations/tunnels" shared/ ~/.claude/`; carry-forward from July 24 (5 days)
+- **[Medium] Rate limit tier consolidation (Start/Build/Scale)** — verify model selection rationale in docs; carry-forward from July 26 (3 days)
+- **[Low] Project Pilot: drone benchmark** — Add to repos.md as Frontier Red Team reference; carry-forward from July 26 (3 days)
+- **[Low] Off-switch for dual-use knowledge (GRAM)** — Add to repos.md as safety research reference; carry-forward from July 27 (2 days)
+
+---
+
 ## Latest Scan: 2026-07-28
 
 ### Summary
