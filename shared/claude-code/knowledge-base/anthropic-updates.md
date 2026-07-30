@@ -1,5 +1,101 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-07-30
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 4
+- Actionable integrations: 2
+
+### Context
+
+One day since last scan (July 29). Four findings not captured by yesterday's scan: (1) **"Making Claude Code More Secure and Autonomous with Sandboxing"** (engineering post, ~July 2026) — OS-level filesystem + network isolation using bubblewrap/seatbelt, reduces permission prompts 84%; critical for ag3nts auto-mode and hooks design. (2) **"An Off Switch for Dual-Use Knowledge in AI Models"** (July 8, 2026, missed by 22 days) — AE Studio + Anthropic research on isolating dangerous knowledge to modular switches; expands security-engineer threat modeling scope. (3) **"Our Position on Open-Weights Models"** (July 27, 2026, missed by 2 days) — Dario Amodei clarifies Anthropic never advocated banning open-weights models; safety concern limited to models with dangerous capabilities; low ag3nts impact. (4) **"Project Pilot: Can AI Models Fly Drones?"** (July 24, 2026, missed by 5 days) — Fable 5 drone locate-and-follow benchmark; dual-use aerial surveillance assessment; low direct ag3nts impact but validates safety-first frontier capability research.
+
+No new engineering blog posts dated after April 23 (confirmed again); the sandboxing post appears in July 2026 search results but date unconfirmed — flagged as likely July 2026 given it references Claude Code on the web. No new API release notes items beyond previous scans.
+
+Carry-forward: **CRITICAL — Opus 4.7 fast mode REMOVED and erroring (31 consecutive days without action)**. **CRITICAL — claude-mythos-preview RETIRED 14 days ago**. **Critical — Opus 4.1 deprecation 6 days away (August 5)**. **High — Experimental Prompt APIs retiring 18 days away (August 17)**. All other carry-forward items advanced by 1 day.
+
+---
+
+### Findings
+
+#### Making Claude Code More Secure and Autonomous with Sandboxing
+- **Source**: https://www.anthropic.com/engineering/claude-code-sandboxing
+- **Published**: July 2026 (exact date unconfirmed; appears in July 2026 search; references Claude Code on the web which launched mid-2026)
+- **Category**: Tooling / Agent
+- **What Changed**: Claude Code now supports OS-level sandboxing via Linux bubblewrap and macOS seatbelt. The sandbox enforces two boundaries: filesystem isolation (Claude can only access/modify specific directories) and network isolation (Claude can only reach approved servers). In Anthropic's internal usage, sandboxing reduces permission prompts by 84%. New sandboxed bash tool + Claude Code on the web are built on top of this.
+- **Impact on ag3nts**: Directly relevant to the ag3nts permissions model. The current setup uses `permissions.defaultMode: "auto"` with a two-stage AI classifier. OS-level sandboxing is a complementary layer — classifier handles WHAT Claude can do, sandbox enforces WHERE it can read/write and WHO it can call. The 84% prompt reduction validates the auto-mode design direction. The sandboxed bash tool could replace or augment the current hooks-based pre-commit gate if Claude Code on the web sessions are enabled.
+- **Proposed Changes**:
+  - [ ] Add https://www.anthropic.com/engineering/claude-code-sandboxing to `shared/claude-code/knowledge-base/repos.md`
+  - [ ] Evaluate enabling sandboxed bash tool in `shared/claude-code/` config — sets filesystem + network boundaries complementary to existing auto mode
+  - [ ] Update `shared/ag3nts.md` Permission Mode section to note OS-level sandboxing as an available additional layer
+- **Priority**: High — directly relevant to ag3nts permissions architecture; 84% prompt reduction validates and extends current design
+
+#### An Off Switch for Dual-Use Knowledge in AI Models
+- **Source**: https://www.anthropic.com/research/off-switch-dual-use
+- **Published**: July 8, 2026 (missed by 22 days of scans)
+- **Category**: Safety / Research
+- **What Changed**: AE Studio + Anthropic research demonstrates isolating dual-use knowledge (cybersecurity, virology, etc.) to specific model modules that can be switched on or off. One model can behave like multiple separately filtered models. The method isolates dangerous knowledge at the module level rather than removing it globally.
+- **Impact on ag3nts**: Relevant to `security-engineer` agent. Establishes modular dual-use knowledge isolation as a concrete AI safety technique. The security-engineer agent's threat models should account for this when assessing deployed agents — particularly relevant for evaluating whether agent tool access creates exploitable dual-use knowledge paths.
+- **Proposed Changes**:
+  - [ ] Add https://www.anthropic.com/research/off-switch-dual-use to `shared/claude-code/knowledge-base/repos.md`
+  - [ ] Update `~/.claude/agents/security-engineer.md` to include dual-use knowledge module exploitation as a threat category (alongside AI-assisted cryptographic attack discovery added yesterday)
+- **Priority**: Medium — 22 days outstanding; theoretical but architecturally relevant to agent security threat modeling
+
+#### Our Position on Open-Weights Models
+- **Source**: https://www.anthropic.com/news/position-open-weights-models
+- **Published**: July 27, 2026 (missed by 2 days)
+- **Category**: Safety / Policy
+- **What Changed**: Dario Amodei (CEO) clarifies Anthropic's position: (1) Anthropic has never advocated for a ban on open-weights models. (2) Open-weights models without dangerous capabilities are a public good. (3) Primary concern is authoritarian AI superiority, not open vs. closed weights per se. (4) For models with dangerous capabilities, open-weight release creates persistent/irreversible misuse risk since safeguards can be removed.
+- **Impact on ag3nts**: No direct changes needed. Policy context for understanding why Anthropic model choices emphasize safety guardrails. Minimal technical impact on current ag3nts configuration.
+- **Proposed Changes**:
+  - [ ] No changes required — awareness only
+- **Priority**: Low — policy post, no ag3nts config impact
+
+#### Project Pilot: Can AI Models Fly Drones?
+- **Source**: https://www.anthropic.com/research/project-pilot
+- **Published**: July 24, 2026 (missed by 5 days)
+- **Category**: Research / Safety
+- **What Changed**: Anthropic partnered with Andon Labs on Drone-Bench — a benchmark testing whether AI models can autonomously fly a drone to locate and follow a person (aerial surveillance task). Fable 5's average performance reached where earlier models' best performance stood at start of 2026. Frontier capability leads consistent capability by ~6 months. Research flagged as dual-use (aerial surveillance); conducted with safety-first framing.
+- **Impact on ag3nts**: No direct technical impact on ag3nts. Validates the principle that frontier capability research informs threat modeling — the security-engineer agent can note AI-directed drone/physical-system control as an emerging threat class in its threat taxonomy.
+- **Proposed Changes**:
+  - [ ] No changes required — research awareness only
+- **Priority**: Low — no immediate ag3nts config changes needed
+
+---
+
+### Recommendations
+
+Top 3 actions for July 30:
+
+1. **[CRITICAL — NOW] Opus 4.7 fast mode REMOVED — 31 days without action** — `grep -r "opus-4-7" ~/.claude/ shared/`; replace all hits with `claude-opus-5`. Live errors for 31 days.
+
+2. **[Critical — 6 days] Opus 4.1 deprecation August 5** — `grep -r "claude-opus-4-1" ~/.claude/ shared/`; audit and replace before August 5. Six days remaining.
+
+3. **[High — new today] Claude Code sandboxing** — Add https://www.anthropic.com/engineering/claude-code-sandboxing to repos.md; evaluate sandboxed bash tool as complement to ag3nts auto-mode permissions; update ag3nts.md Permission Mode section.
+
+Carry-forward:
+- **[CRITICAL — NOW — LIVE] Opus 4.7 fast mode REMOVED** — removed July 24; errors live NOW; `grep -r "opus-4-7" ~/.claude/ shared/`; 31 consecutive days without action
+- **[CRITICAL — NOW] claude-mythos-preview retired** — RETIRED July 21 (14 days ago); `grep -r "claude-mythos-preview" ~/.claude/ shared/`; errors live NOW
+- **[CRITICAL — NOW] agent-memory-2026-07-22 live** — memory list behavior changed July 22; audit pagination + header usage in hooks; 9 days old
+- **[Critical — 6 days] Opus 4.1 deprecation** — August 5; `grep -r "claude-opus-4-1"` audit pending; 6 days remaining
+- **[High — 18 days] Experimental Prompt APIs retiring August 17** — `/v1/experimental/generate_prompt` and siblings; grep audit + migrate if found; 2 days old
+- **[High — new today] Claude Code sandboxing** — Add to repos.md; evaluate sandboxed bash tool for ag3nts; update ag3nts.md Permission Mode section
+- **[Medium — new today] Off switch for dual-use knowledge** — Add to repos.md; update security-engineer agent with dual-use module exploitation threat category; 22 days overdue
+- **[High] AI-discovered cryptographic attacks** — Add https://www.anthropic.com/research/discovering-cryptographic-weaknesses to repos.md; update security-engineer agent; 1 day outstanding
+- **[Medium] CJS Framework (Fable 5 jailbreak severity)** — Add https://www.anthropic.com/news/fable-safeguards-jailbreak-framework to repos.md; update security-engineer with CJS-0 to CJS-4; 28 days overdue
+- **[Low] Enterprise Admin API user management** — `ce-user-management-2026-07-13` beta; note in repos.md; 16 days overdue
+- **[High] Agentic Misalignment threat taxonomy** — Add July 13 failure modes to security-engineer prompt; 4 days outstanding
+- **[High] Upgrade Sonnet agents to claude-sonnet-5** — code-reviewer, accessibility-auditor, reality-checker, ux-architect, anthropic; 9 days outstanding
+- **[High] Upgrade Opus agents to claude-opus-5** — software-architect, security-engineer; 5 days outstanding
+- **[Medium] Mid-conversation system messages now GA** — Fable 5, Mythos 5, Opus 4.8, Opus 5 eligible; evaluate software-architect + security-engineer dispatch; 8 days outstanding
+- **[Medium] Mid-conversation tool changes beta** — `mid-conversation-tool-changes-2026-07-01`; evaluate for RepairBoss stage transitions; 3 days outstanding
+- **[Medium] Server-side fallback for refusals** — `server-side-fallback-2026-07-01`; add to scripted run guidance; 3 days outstanding
+- **[Medium] API key expiration — set rotation schedule** — 90-day rotation for `ANTHROPIC_API_KEY`; 3 days outstanding
+- **[High] Update Claude Code** — `npm install -g @anthropic-ai/claude-code@latest`; 20 days overdue
+
+---
+
 ## Latest Scan: 2026-07-29
 
 ### Summary
