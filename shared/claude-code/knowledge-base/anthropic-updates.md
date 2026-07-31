@@ -1,5 +1,83 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-07-31
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 2
+- Actionable integrations: 2
+
+### Context
+
+One day since last scan (July 30). Two new engineering blog posts appeared that were absent from yesterday's scan (July 30 confirmed no engineering posts after April 23; both are now live): (1) **"Writing effective tools for AI agents — using AI agents"** — evaluation-driven tool description engineering; directly applicable to ag3nts agent tool design. (2) **"Building agents with the Claude Agent SDK"** — Anthropic renamed the Claude Code SDK to "Claude Agent SDK"; engineering best practices for the harness-based agent architecture that ag3nts uses. No new research, news, or API release notes items beyond the July 30 scan.
+
+Carry-forward: **CRITICAL — Opus 4.7 fast mode REMOVED and erroring (32 consecutive days without action)**. **CRITICAL — claude-mythos-preview RETIRED 15 days ago**. **CRITICAL — agent-memory-2026-07-22 live (10 days old)**. **Critical — Opus 4.1 deprecation 5 days away (August 5)**. **High — Experimental Prompt APIs retiring 17 days away (August 17)**. All other carry-forward items advanced by 1 day.
+
+---
+
+### Findings
+
+#### Writing Effective Tools for AI Agents — Using AI Agents
+- **Source**: https://www.anthropic.com/engineering/writing-tools-for-agents
+- **Published**: ~July 31, 2026 (exact date unconfirmed; absent from July 30 scan; appeared in July 31 search)
+- **Category**: Tooling / Agent
+- **What Changed**: Engineering post by Ken Aizawa (Anthropic). Describes an evaluation-driven approach to tool description engineering: tool descriptions and specs loaded into agent context steer behavior; even small refinements yield dramatic improvements. AI agents used iteratively to write and refine the tools used by AI agents — a closed-loop improvement cycle.
+- **Impact on ag3nts**: Directly applicable to all agents with custom tool definitions. The code-reviewer, security-engineer, software-architect, and anthropic agents all have tool descriptions in their system prompts. An eval-driven refinement cycle — running agents, observing failures, iterating descriptions — could significantly improve specialist agent effectiveness.
+- **Proposed Changes**:
+  - [ ] Add https://www.anthropic.com/engineering/writing-tools-for-agents to `shared/claude-code/knowledge-base/repos.md`
+  - [ ] Apply eval-driven tool description review to `~/.claude/agents/code-reviewer.md` and `~/.claude/agents/security-engineer.md` — the two highest-frequency agents with complex tool dispatch
+- **Priority**: High — architectural best practice directly applicable to existing ag3nts agent tool definitions
+
+#### Building Agents with the Claude Agent SDK
+- **Source**: https://www.anthropic.com/engineering/building-agents-with-the-claude-agent-sdk
+- **Published**: ~July 31, 2026 (exact date unconfirmed; absent from July 30 scan; appeared in July 31 search)
+- **Category**: Tooling / Agent
+- **What Changed**: Anthropic renamed the Claude Code SDK to the "Claude Agent SDK," signaling broader positioning beyond coding. Engineering post describes how the same harness powers deep research, video creation, note-taking, and other non-coding agents alongside coding. Documents best practices from Anthropic's own deployments: session isolation, state management, parallel dispatch, and harness composition patterns.
+- **Impact on ag3nts**: High architectural relevance. The ag3nts system IS this harness pattern — Claude Code CLI orchestrating specialized sub-agents (code-reviewer, security-engineer, software-architect). The rename to "Claude Agent SDK" and published best practices provide a reference architecture to validate and improve current design. Key: ag3nts.md's `claude --bare -p` scripted run guidance maps directly to the "isolated execution" pattern Anthropic documents.
+- **Proposed Changes**:
+  - [ ] Add https://www.anthropic.com/engineering/building-agents-with-the-claude-agent-sdk to `shared/claude-code/knowledge-base/repos.md`
+  - [ ] Review documented best practices against current `shared/ag3nts.md` orchestration patterns; identify gaps in session isolation and state management
+- **Priority**: High — directly validates and extends the ag3nts harness architecture; Anthropic's reference implementation for the exact pattern ag3nts uses
+
+---
+
+### Recommendations
+
+Top 3 actions for July 31:
+
+1. **[CRITICAL — NOW] Opus 4.7 fast mode REMOVED — 32 days without action** — `grep -r "opus-4-7" ~/.claude/ shared/`; replace all hits with `claude-opus-5`. Live errors for 32 days.
+
+2. **[Critical — 5 days] Opus 4.1 deprecation August 5** — `grep -r "claude-opus-4-1" ~/.claude/ shared/`; audit and replace before August 5. Five days remaining.
+
+3. **[High — new today] Claude Agent SDK engineering post** — Add https://www.anthropic.com/engineering/building-agents-with-the-claude-agent-sdk to repos.md; review best practices against ag3nts harness architecture in ag3nts.md.
+
+Carry-forward:
+- **[CRITICAL — NOW — LIVE] Opus 4.7 fast mode REMOVED** — removed July 24; errors live NOW; `grep -r "opus-4-7" ~/.claude/ shared/`; 32 consecutive days without action
+- **[CRITICAL — NOW] claude-mythos-preview retired** — RETIRED July 21 (15 days ago); `grep -r "claude-mythos-preview" ~/.claude/ shared/`; errors live NOW
+- **[CRITICAL — NOW] agent-memory-2026-07-22 live** — memory list behavior changed July 22; audit pagination + header usage in hooks; 10 days old
+- **[Critical — 5 days] Opus 4.1 deprecation** — August 5; `grep -r "claude-opus-4-1"` audit pending; 5 days remaining
+- **[High — 17 days] Experimental Prompt APIs retiring August 17** — `/v1/experimental/generate_prompt` and siblings; grep audit + migrate if found; 3 days old
+- **[High — new today] Writing effective tools for AI agents** — Add to repos.md; apply eval-driven tool description review to code-reviewer and security-engineer agent definitions
+- **[High — new today] Claude Agent SDK engineering post** — Add to repos.md; review best practices against ag3nts harness architecture
+- **[High] Claude Code sandboxing** — Add to repos.md; evaluate sandboxed bash tool; update ag3nts.md Permission Mode section; 1 day outstanding
+- **[Medium] Off switch for dual-use knowledge** — Add to repos.md; update security-engineer agent; 1 day outstanding
+- **[High] AI-discovered cryptographic attacks** — Add to repos.md; update security-engineer threat taxonomy; 2 days outstanding
+- **[Medium] CJS Framework (Fable 5 jailbreak severity)** — Add to repos.md; update security-engineer with CJS-0 to CJS-4; 29 days overdue
+- **[Low] Enterprise Admin API user management** — `ce-user-management-2026-07-13` beta; note in repos.md; 17 days overdue
+- **[High] Agentic Misalignment threat taxonomy** — Add July 13 failure modes to security-engineer prompt; 5 days outstanding
+- **[High] Upgrade Sonnet agents to claude-sonnet-5** — code-reviewer, accessibility-auditor, reality-checker, ux-architect, anthropic; 10 days outstanding
+- **[High] Upgrade Opus agents to claude-opus-5** — software-architect, security-engineer; 6 days outstanding
+- **[Medium] Mid-conversation system messages now GA** — Fable 5, Mythos 5, Opus 4.8, Opus 5 eligible; evaluate software-architect + security-engineer dispatch; 9 days outstanding
+- **[Medium] Mid-conversation tool changes beta** — `mid-conversation-tool-changes-2026-07-01`; evaluate for RepairBoss stage transitions; 4 days outstanding
+- **[Medium] Server-side fallback for refusals** — `server-side-fallback-2026-07-01`; add to scripted run guidance; 4 days outstanding
+- **[Medium] API key expiration — set rotation schedule** — 90-day rotation for `ANTHROPIC_API_KEY`; 4 days outstanding
+- **[High] Update Claude Code** — `npm install -g @anthropic-ai/claude-code@latest`; 21 days overdue
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1; 29 days outstanding
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (34 days overdue)
+- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (34 days)
+
+---
+
 ## Latest Scan: 2026-07-30
 
 ### Summary
