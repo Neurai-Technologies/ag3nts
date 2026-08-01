@@ -1,5 +1,91 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-08-01
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 2
+- Actionable integrations: 2
+
+### Context
+
+One day since last scan (July 31). Two new findings not in yesterday's scan: (1) **Claude Opus 5 full announcement** (July 24) — 22% better on agentic coding tasks vs Opus 4.7, lowest deceptive behavior rates to date; escalates existing "upgrade Opus agents" carry-forward with concrete performance justification. (2) **Sonnet 5 introductory pricing ends August 31** — 30-day deadline to upgrade all Sonnet-tier agents before price increases.
+
+One unverified URL found: `https://www.anthropic.com/engineering/a-postmortem-of-three-recent-issues` appeared in today's engineering search; search summary describes infrastructure incidents on August 5, 25, and 26 — all dates are in the future from today (August 1); content cannot be verified and is excluded from findings. Will re-check in upcoming scans once those dates pass.
+
+No new research papers from August 1. Research page shows July 6 interpretability paper (emergent mental workspace) and June 26 Economic Index as most recent — both pre-date the 30-day window limit.
+
+Carry-forward: **CRITICAL — Opus 4.7 fast mode REMOVED and erroring (33 consecutive days without action)**. **CRITICAL — claude-mythos-preview RETIRED 16 days ago**. **CRITICAL — agent-memory-2026-07-22 live (11 days old)**. **Critical — Opus 4.1 deprecation 4 days away (August 5)**. **High — Experimental Prompt APIs retiring 16 days away (August 17)**. **High — Sonnet 5 introductory pricing ends 30 days away (August 31)**. All other carry-forward items advanced by 1 day.
+
+---
+
+### Findings
+
+#### Claude Opus 5 — Full Announcement Details
+- **Source**: https://www.anthropic.com/news/claude-opus-5
+- **Published**: July 24, 2026 (system card dated July 24, 2026)
+- **Category**: Model
+- **What Changed**: Claude Opus 5 is Anthropic's flagship model for long-running agents: 22% better on agentic coding tasks vs Opus 4.7 with far lower run-to-run variance. System card (July 24) documents it as the most aligned model to date per automated behavioral audit — lowest rates of deceptive behavior. "The biggest leap in the Opus family since 4.5." Best performance in front-end animations, 3D work, and scientific reasoning (cross-checking results by independent methods, reaching for correct statistical tests).
+- **Impact on ag3nts**: The `software-architect` and `security-engineer` agents are Opus-tier. The 22% coding improvement and lower variance directly benefit RepairBoss pipeline stages these agents run. Alignment improvements reduce jailbreak/prompt-injection risk in security-sensitive agent contexts. The carry-forward to upgrade these agents has been outstanding 6+ days; this announcement provides the concrete performance data to justify the change now.
+- **Proposed Changes**:
+  - [ ] Update `~/.claude/agents/software-architect.md` model config to `claude-opus-5`
+  - [ ] Update `~/.claude/agents/security-engineer.md` model config to `claude-opus-5`
+- **Priority**: High — 22% agentic coding improvement + best alignment to date; carry-forward already 7 days outstanding
+
+#### Sonnet 5 Introductory Pricing Deadline: August 31
+- **Source**: https://docs.anthropic.com/en/release-notes/overview
+- **Published**: (Confirmed in August 1 API release notes scan; exact posting date unconfirmed)
+- **Category**: API
+- **What Changed**: Claude Sonnet 5 is available at introductory pricing through August 31, 2026. After August 31, Sonnet 5 moves to standard (higher) pricing. Any agents upgraded to `claude-sonnet-5` by August 31 benefit from the introductory rate for the full window; upgrading after increases per-token cost.
+- **Impact on ag3nts**: Creates a concrete 30-day deadline on the existing carry-forward to upgrade Sonnet-tier agents (`code-reviewer`, `accessibility-auditor`, `reality-checker`, `ux-architect`, `anthropic`) to `claude-sonnet-5`. The introductory window has already been running since Sonnet 5 launched (~July 22, 10 days ago).
+- **Proposed Changes**:
+  - [ ] Update `~/.claude/agents/code-reviewer.md` model to `claude-sonnet-5`
+  - [ ] Update `~/.claude/agents/accessibility-auditor.md` model to `claude-sonnet-5`
+  - [ ] Update `~/.claude/agents/reality-checker.md` model to `claude-sonnet-5`
+  - [ ] Update `~/.claude/agents/ux-architect.md` model to `claude-sonnet-5`
+  - [ ] Update `~/.claude/agents/anthropic.md` model to `claude-sonnet-5`
+- **Priority**: High — 30-day hard deadline; introductory window already 10 days consumed; 11 days outstanding on carry-forward
+
+---
+
+### Recommendations
+
+Top 3 actions for August 1:
+
+1. **[CRITICAL — NOW — LIVE] Opus 4.7 fast mode REMOVED — 33 days without action** — `grep -r "opus-4-7" ~/.claude/ shared/`; replace all hits with `claude-opus-5`. Live errors for 33 days.
+
+2. **[Critical — 4 days] Opus 4.1 deprecation August 5** — `grep -r "claude-opus-4-1" ~/.claude/ shared/`; audit and replace before August 5. Four days remaining.
+
+3. **[High — 30 days] Sonnet 5 introductory pricing ends August 31** — Upgrade `code-reviewer`, `accessibility-auditor`, `reality-checker`, `ux-architect`, `anthropic` agents to `claude-sonnet-5` before standard pricing kicks in. 30-day window.
+
+Carry-forward:
+- **[CRITICAL — NOW — LIVE] Opus 4.7 fast mode REMOVED** — removed July 24; errors live NOW; `grep -r "opus-4-7" ~/.claude/ shared/`; 33 consecutive days without action
+- **[CRITICAL — NOW] claude-mythos-preview retired** — RETIRED July 21 (16 days ago); `grep -r "claude-mythos-preview" ~/.claude/ shared/`; errors live NOW
+- **[CRITICAL — NOW] agent-memory-2026-07-22 live** — memory list behavior changed July 22; audit pagination + header usage in hooks; 11 days old
+- **[Critical — 4 days] Opus 4.1 deprecation** — August 5; `grep -r "claude-opus-4-1"` audit pending; 4 days remaining
+- **[High — 16 days] Experimental Prompt APIs retiring August 17** — `/v1/experimental/generate_prompt` and siblings; grep audit + migrate if found; 4 days old
+- **[High — 30 days] Sonnet 5 introductory pricing ends August 31** — NEW TODAY; upgrade all Sonnet-tier agents before pricing increases
+- **[High] Upgrade Sonnet agents to claude-sonnet-5** — code-reviewer, accessibility-auditor, reality-checker, ux-architect, anthropic; 11 days outstanding; now has hard August 31 deadline
+- **[High] Upgrade Opus agents to claude-opus-5** — software-architect, security-engineer; 7 days outstanding; now confirmed with 22% coding improvement + best alignment data
+- **[High] Writing effective tools for AI agents** — Add to repos.md; apply eval-driven tool description review to code-reviewer and security-engineer; 1 day outstanding
+- **[High] Claude Agent SDK engineering post** — Add to repos.md; review best practices against ag3nts harness architecture; 1 day outstanding
+- **[High] Claude Code sandboxing** — Add to repos.md; evaluate sandboxed bash tool; update ag3nts.md Permission Mode section; 2 days outstanding
+- **[Medium] Off switch for dual-use knowledge** — Add to repos.md; update security-engineer agent; 2 days outstanding
+- **[High] AI-discovered cryptographic attacks** — Add to repos.md; update security-engineer threat taxonomy; 3 days outstanding
+- **[Medium] CJS Framework (Fable 5 jailbreak severity)** — Add to repos.md; update security-engineer with CJS-0 to CJS-4; 30 days overdue
+- **[Low] Enterprise Admin API user management** — `ce-user-management-2026-07-13` beta; note in repos.md; 18 days overdue
+- **[High] Agentic Misalignment threat taxonomy** — Add July 13 failure modes to security-engineer prompt; 6 days outstanding
+- **[Medium] Mid-conversation system messages now GA** — Fable 5, Mythos 5, Opus 4.8, Opus 5 eligible; evaluate software-architect + security-engineer dispatch; 10 days outstanding
+- **[Medium] Mid-conversation tool changes beta** — `mid-conversation-tool-changes-2026-07-01`; evaluate for RepairBoss stage transitions; 5 days outstanding
+- **[Medium] Server-side fallback for refusals** — `server-side-fallback-2026-07-01`; add to scripted run guidance; 5 days outstanding
+- **[Medium] API key expiration — set rotation schedule** — 90-day rotation for `ANTHROPIC_API_KEY`; 5 days outstanding
+- **[High] Update Claude Code** — `npm install -g @anthropic-ai/claude-code@latest`; 22 days overdue
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1; 30 days outstanding
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (35 days overdue)
+- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (35 days)
+
+---
+
 ## Latest Scan: 2026-07-31
 
 ### Summary
