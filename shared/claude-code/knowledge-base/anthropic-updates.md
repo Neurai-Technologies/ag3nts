@@ -1,5 +1,98 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-08-02
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 3
+- Actionable integrations: 2
+
+### Context
+
+One day since last scan (August 1). Three new API-layer findings not in yesterday's scan: (1) **No billing for API refusals** — confirmed in API release notes; when `stop_reason: "refusal"` triggers without output, the request is now free. (2) **Advisor tool max_tokens parameter** — newly identified June 30 feature; caps advisor model output per call, reducing latency/cost for agent workflows. (3) **Managed Agents now on AWS** — webhooks, multiagent orchestration, and self-hosted sandboxes now available on Claude Platform on AWS (previously Claude Platform only).
+
+Engineering postmortem at `https://www.anthropic.com/engineering/a-postmortem-of-three-recent-issues` appeared in search for the second consecutive day. Describes infrastructure incidents on August 5, 25, and 26 — the first incident date (August 5) is still 3 days in the future from today (August 2); excluding for 2nd consecutive day, will re-check August 5+.
+
+No new research papers. Research page shows July 6 interpretability paper and June 26 Economic Index as most recent — both pre-date the 30-day window from August 2. No news announcements dated August 2; most recent items are July 27–30. No new Claude Code changelog entries.
+
+Carry-forward: **CRITICAL — Opus 4.7 fast mode REMOVED and erroring (34 consecutive days without action)**. **CRITICAL — claude-mythos-preview RETIRED 17 days ago**. **CRITICAL — agent-memory-2026-07-22 live (12 days old)**. **Critical — Opus 4.1 deprecation 3 days away (August 5)**. **High — Experimental Prompt APIs retiring 15 days away (August 17)**. **High — Sonnet 5 introductory pricing ends 29 days away (August 31)**. All other carry-forward items advanced by 1 day.
+
+---
+
+### Findings
+
+#### No Billing for API Refusals (stop_reason: "refusal")
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: Confirmed August 2, 2026 (exact addition date unconfirmed)
+- **Category**: API
+- **What Changed**: When Claude returns `stop_reason: "refusal"` without generating any output, the API request is no longer billed. Previously all requests consumed tokens regardless of whether Claude refused to respond.
+- **Impact on ag3nts**: Minor direct impact — ag3nts agents rarely trigger hard refusals. However, high-volume scripted runs (cron tasks, RepairBoss pipelines) that may occasionally hit refusals now have reduced cost tail. Worth noting for cost accounting.
+- **Proposed Changes**:
+  - [ ] No immediate config change required; note in cost accounting if billing monitoring is added
+- **Priority**: Low — passive cost-saving benefit; no ag3nts config change needed
+
+#### Advisor Tool max_tokens Parameter
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: June 30, 2026 release notes; newly identified in this scan
+- **Category**: API
+- **What Changed**: The advisor tool definition now accepts a `max_tokens` parameter to cap the advisor model's output per call. Reduces latency and output token cost for workloads that don't need full-length advisor responses. Set via `tools[].max_tokens` on the advisor tool definition.
+- **Impact on ag3nts**: If `code-reviewer` or `security-engineer` agents use the advisor tool for sub-agent orchestration or advisory calls, adding `max_tokens` could reduce pipeline latency and token spend. Evaluate advisor tool usage patterns in these agents.
+- **Proposed Changes**:
+  - [ ] Audit `~/.claude/agents/code-reviewer.md` for advisor tool usage; add `max_tokens` cap if present
+  - [ ] Audit `~/.claude/agents/security-engineer.md` for advisor tool usage; add `max_tokens` cap if present
+- **Priority**: Medium — latency/cost optimization; depends on whether advisor tool is in use
+
+#### Managed Agents Now Available on Claude Platform on AWS
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: Confirmed August 2, 2026 (exact date unconfirmed)
+- **Category**: API
+- **What Changed**: Claude Managed Agents webhooks, multiagent orchestration, and self-hosted sandboxes are now available on Claude Platform on AWS. Multiagent orchestration and Outcomes now in public beta under `managed-agents-2026-04-01` beta header. Full feature parity between Claude Platform and Claude Platform on AWS.
+- **Impact on ag3nts**: Currently ag3nts runs on Claude Platform (non-AWS). If infrastructure migrates to AWS, full Managed Agents feature set is now available there. The `managed-agents-2026-04-01` beta header for multiagent orchestration is the most directly relevant item — applicable to RepairBoss pipeline evaluation.
+- **Proposed Changes**:
+  - [ ] Add Managed Agents AWS docs URL to `shared/claude-code/knowledge-base/repos.md`
+  - [ ] Note `managed-agents-2026-04-01` beta header for multiagent orchestration in RepairBoss pipeline evaluation
+- **Priority**: Medium — platform parity; directly actionable if AWS migration planned; beta header immediately testable
+
+---
+
+### Recommendations
+
+Top 3 actions for August 2:
+
+1. **[CRITICAL — FINAL WARNING — 3 days] Opus 4.1 deprecation August 5** — `grep -r "claude-opus-4-1" ~/.claude/ shared/`; audit and replace immediately. 3 days until live errors. Do not miss this deadline.
+
+2. **[CRITICAL — NOW — LIVE] Opus 4.7 fast mode REMOVED — 34 days without action** — `grep -r "opus-4-7" ~/.claude/ shared/`; replace all hits with `claude-opus-5`. Live errors for 34 consecutive days.
+
+3. **[High — 29 days] Sonnet 5 introductory pricing ends August 31** — Upgrade `code-reviewer`, `accessibility-auditor`, `reality-checker`, `ux-architect`, `anthropic` agents to `claude-sonnet-5` before standard pricing kicks in. 29-day window remaining.
+
+Carry-forward:
+- **[CRITICAL — NOW — LIVE] Opus 4.7 fast mode REMOVED** — removed July 24; errors live NOW; `grep -r "opus-4-7" ~/.claude/ shared/`; 34 consecutive days without action
+- **[CRITICAL — NOW] claude-mythos-preview retired** — RETIRED July 21 (17 days ago); `grep -r "claude-mythos-preview" ~/.claude/ shared/`; errors live NOW
+- **[CRITICAL — NOW] agent-memory-2026-07-22 live** — memory list behavior changed July 22; audit pagination + header usage in hooks; 12 days old
+- **[Critical — 3 days] Opus 4.1 deprecation** — August 5; FINAL WARNING — 3 days remaining; `grep -r "claude-opus-4-1"` audit URGENT
+- **[High — 15 days] Experimental Prompt APIs retiring August 17** — `/v1/experimental/generate_prompt` and siblings; grep audit + migrate if found; 5 days old
+- **[High — 29 days] Sonnet 5 introductory pricing ends August 31** — upgrade all Sonnet-tier agents; 29-day deadline; 12 days consumed
+- **[High] Upgrade Sonnet agents to claude-sonnet-5** — code-reviewer, accessibility-auditor, reality-checker, ux-architect, anthropic; 12 days outstanding; hard August 31 deadline
+- **[High] Upgrade Opus agents to claude-opus-5** — software-architect, security-engineer; 8 days outstanding; 22% agentic coding improvement confirmed
+- **[High] Writing effective tools for AI agents** — Add to repos.md; apply eval-driven tool description review to code-reviewer and security-engineer; 2 days outstanding
+- **[High] Claude Agent SDK engineering post** — Add to repos.md; review best practices against ag3nts harness architecture; 2 days outstanding
+- **[High] Claude Code sandboxing** — Add to repos.md; evaluate sandboxed bash tool; update ag3nts.md Permission Mode section; 3 days outstanding
+- **[Medium] Off switch for dual-use knowledge** — Add to repos.md; update security-engineer agent; 3 days outstanding
+- **[High] AI-discovered cryptographic attacks** — Add to repos.md; update security-engineer threat taxonomy; 4 days outstanding
+- **[Medium] CJS Framework (Fable 5 jailbreak severity)** — Add to repos.md; update security-engineer with CJS-0 to CJS-4; 31 days overdue
+- **[Low] Enterprise Admin API user management** — `ce-user-management-2026-07-13` beta; note in repos.md; 19 days overdue
+- **[High] Agentic Misalignment threat taxonomy** — Add July 13 failure modes to security-engineer prompt; 7 days outstanding
+- **[Medium] Mid-conversation system messages now GA** — Fable 5, Mythos 5, Opus 4.8, Opus 5 eligible; evaluate software-architect + security-engineer dispatch; 11 days outstanding
+- **[Medium] Mid-conversation tool changes beta** — `mid-conversation-tool-changes-2026-07-01`; evaluate for RepairBoss stage transitions; 6 days outstanding
+- **[Medium] Server-side fallback for refusals** — `server-side-fallback-2026-07-01`; add to scripted run guidance; 6 days outstanding
+- **[Medium] API key expiration — set rotation schedule** — 90-day rotation for `ANTHROPIC_API_KEY`; 6 days outstanding
+- **[High] Update Claude Code** — `npm install -g @anthropic-ai/claude-code@latest`; 23 days overdue
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1; 31 days outstanding
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (36 days overdue)
+- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (36 days)
+
+---
+
 ## Latest Scan: 2026-08-01
 
 ### Summary
