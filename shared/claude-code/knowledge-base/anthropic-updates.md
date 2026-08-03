@@ -1,5 +1,120 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-08-03
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 5
+- Actionable integrations: 3
+
+### Context
+
+One day since last scan (August 2). Five new findings: (1) **Claude Science AI Workbench** — Anthropic launched a specialist science-agent product in beta; pattern relevant to ag3nts specialist dispatch. (2) **Claude Code: Background agents auto-commit, push, and open draft PRs** — native background agent workflow now mirrors ag3nts pre-commit/pre-PR hook pattern; requires hook-compatibility audit. (3) **Claude Code: Subagents and context compaction inherit extended thinking** — affects software-architect and security-engineer sub-agent behavior. (4) **Claude Code: Explore agent inherits main session model** — built-in Explore agent now model-consistent with parent. (5) **Claude Code: Claude Platform on AWS (anthropicAws) added as upstream provider** — complements yesterday's Managed Agents on AWS finding; improved failover chain.
+
+Engineering postmortem (incidents August 5, 25, 26) still future-dated for first incident — now 2 days away. Excluding for third consecutive day; re-check August 5.
+
+Carry-forward: **CRITICAL — Opus 4.7 fast mode REMOVED and erroring (35 consecutive days without action)**. **CRITICAL — claude-mythos-preview RETIRED 18 days ago**. **CRITICAL — agent-memory-2026-07-22 live (13 days old)**. **CRITICAL — Opus 4.1 deprecation 2 days away (August 5) — LAST CHANCE**. **High — Experimental Prompt APIs retiring 14 days away (August 17)**. **High — Sonnet 5 introductory pricing ends 28 days away (August 31)**. All other carry-forward items advanced by 1 day.
+
+---
+
+### Findings
+
+#### Claude Science: AI Workbench for Scientists
+- **Source**: https://www.anthropic.com/news/claude-science-ai-workbench
+- **Published**: Circa July 2026 (AI for Science program applications ran through July 15, 2026)
+- **Category**: Agent
+- **What Changed**: Anthropic launched Claude Science, a dedicated AI workbench for scientific research. It integrates tools and packages researchers commonly use, produces auditable artifacts, and provides access to computing resources via specialist agents that query and synthesize across data sources. Available in beta on macOS and Linux for Pro, Max, Team, and Enterprise plans.
+- **Impact on ag3nts**: Introduces a reference pattern for specialist multi-agent dispatch in domain-specific contexts (science). The "specialist agents that query and synthesize across data sources without manual navigation" pattern mirrors ag3nts' code-reviewer multi-specialist dispatch. The auditable artifacts pattern is relevant to RepairBoss pipeline stage outputs. Not directly an ag3nts config change, but worth noting as a reference architecture.
+- **Proposed Changes**:
+  - [ ] Add `https://www.anthropic.com/news/claude-science-ai-workbench` to `shared/claude-code/knowledge-base/repos.md` with description "Anthropic: Claude Science — AI workbench for scientists; specialist agents synthesize across data sources; reference pattern for domain-specialist multi-agent dispatch"
+- **Priority**: Low — reference architecture; no immediate ag3nts config change
+
+#### Claude Code: Background Agents Auto-Commit, Push, and Open Draft PRs
+- **Source**: https://docs.anthropic.com/en/release-notes/claude-code
+- **Published**: Recent Claude Code changelog (exact date TBD)
+- **Category**: Tooling
+- **What Changed**: Claude Code background agents now automatically commit changes, push to origin, and open draft PRs when finished. This is a native platform workflow that mirrors what ag3nts' pre-commit and pre-PR hooks enforce manually.
+- **Impact on ag3nts**: HIGH. The pre-commit hook chain (secrets scan → lint gate → security gate) and pre-PR hook (`pre-pr-review-gate.sh`) exist to gate commits/PRs made via foreground sessions. If background agents auto-commit/push/PR, they may bypass hook execution — or hooks may need to be explicitly configured to fire in background agent context. This requires audit: are pre-commit and pre-PR hooks invoked when background agents commit? If not, the security/quality gates have a gap for background-agent-generated commits.
+- **Proposed Changes**:
+  - [ ] Audit whether PreToolUse hooks on Bash apply in background agent context; test with a background agent commit
+  - [ ] Review `shared/claude-code/hooks/pre-commit-secrets-scan.sh` and `pre-commit-review-gate.sh` for compatibility with background agent execution
+  - [ ] Update `shared/ag3nts.md` "Scripted / Automated Runs" or "Auto-Invoke Rules" section to note background agent commit/PR behavior and hook applicability
+- **Priority**: High — potential security/quality gate gap if hooks don't fire in background agent context
+
+#### Claude Code: Subagents and Context Compaction Inherit Extended Thinking
+- **Source**: https://docs.anthropic.com/en/release-notes/claude-code
+- **Published**: Recent Claude Code changelog (exact date TBD)
+- **Category**: Model | Tooling
+- **What Changed**: Subagents and context compaction now inherit the session's extended thinking configuration. Previously, sub-agent calls may have used default (non-extended) thinking regardless of the parent session's setting.
+- **Impact on ag3nts**: Directly affects `software-architect` (Opus) and `security-engineer` (Opus) — both are heavy reasoning agents that may benefit from extended thinking. If the parent session has extended thinking enabled, sub-agent dispatches from RepairBoss pipeline will now propagate that setting. This could meaningfully improve quality of Stage 4 threat model and Stage 6 OWASP audit outputs at potentially higher token cost.
+- **Proposed Changes**:
+  - [ ] Note extended thinking inheritance in `shared/ag3nts.md` under the agent table for `software-architect` and `security-engineer`
+  - [ ] Evaluate whether to enable extended thinking in RepairBoss parent sessions to propagate to specialist agents
+- **Priority**: Medium — quality improvement for heavy reasoning agents; token cost tradeoff to evaluate
+
+#### Claude Code: Explore Agent Inherits Main Session Model
+- **Source**: https://docs.anthropic.com/en/release-notes/claude-code
+- **Published**: Recent Claude Code changelog (exact date TBD)
+- **Category**: Tooling
+- **What Changed**: The built-in Explore agent now inherits the main session's model instead of using a default model. This ensures Explore sub-agent calls are consistent with the parent session's configured model.
+- **Impact on ag3nts**: ag3nts sub-agents are dispatched by agents like `code-reviewer` (which uses Explore-style search). With model inheritance, the Explore agent's model will match whatever model the invoking agent session uses — relevant if/when agents are upgraded to `claude-sonnet-5` or `claude-opus-5`. Ensures consistency; no immediate config change required.
+- **Proposed Changes**:
+  - [ ] No immediate config change; note when upgrading agent models that Explore now inherits the parent model
+- **Priority**: Low — informational; no immediate action
+
+#### Claude Code: Claude Platform on AWS Added as Upstream Provider
+- **Source**: https://docs.anthropic.com/en/release-notes/claude-code
+- **Published**: Recent Claude Code changelog (exact date TBD)
+- **Category**: Tooling | API
+- **What Changed**: Claude Platform on AWS (`anthropicAws`) is now a named upstream provider in Claude Code with improved failover chain handling. This complements the August 2 finding (Managed Agents on AWS reaching full feature parity) and brings Claude Code's provider routing in line with Managed Agents availability.
+- **Impact on ag3nts**: If ag3nts migrates to Claude Platform on AWS, Claude Code will now handle failover natively via the `anthropicAws` provider. No immediate change needed; reinforces the carry-forward recommendation to add Managed Agents AWS docs to repos.md.
+- **Proposed Changes**:
+  - [ ] Add `anthropicAws` upstream provider context to the Managed Agents AWS repos.md entry recommended yesterday
+- **Priority**: Low — complements existing carry-forward; no new immediate action
+
+---
+
+### Recommendations
+
+Top 3 actions for August 3:
+
+1. **[CRITICAL — LAST CHANCE — 2 days] Opus 4.1 deprecation August 5** — `grep -r "claude-opus-4-1" ~/.claude/ shared/`; audit and replace immediately. 2 days until live errors — this is the last day to act before impact.
+
+2. **[High] Audit background agent hook compatibility** — Background agents now auto-commit/push/open PRs natively. Verify that `pre-commit-secrets-scan.sh`, `pre-commit-review-gate.sh`, and `pre-pr-review-gate.sh` hooks fire in background agent context. If not, background-agent commits bypass the security/quality gate entirely.
+
+3. **[CRITICAL — NOW — LIVE] Opus 4.7 fast mode REMOVED — 35 days without action** — `grep -r "opus-4-7" ~/.claude/ shared/`; replace all hits with `claude-opus-5`. Live errors for 35 consecutive days.
+
+Carry-forward:
+- **[CRITICAL — NOW — LIVE] Opus 4.7 fast mode REMOVED** — removed July 24; errors live NOW; `grep -r "opus-4-7" ~/.claude/ shared/`; 35 consecutive days without action
+- **[CRITICAL — NOW] claude-mythos-preview retired** — RETIRED July 21 (18 days ago); `grep -r "claude-mythos-preview" ~/.claude/ shared/`; errors live NOW
+- **[CRITICAL — NOW] agent-memory-2026-07-22 live** — memory list behavior changed July 22; audit pagination + header usage in hooks; 13 days old
+- **[CRITICAL — 2 days] Opus 4.1 deprecation** — August 5; LAST CHANCE — 2 days remaining; `grep -r "claude-opus-4-1"` audit URGENT
+- **[High — 14 days] Experimental Prompt APIs retiring August 17** — `/v1/experimental/generate_prompt` and siblings; grep audit + migrate if found
+- **[High — 28 days] Sonnet 5 introductory pricing ends August 31** — upgrade all Sonnet-tier agents; 28-day deadline
+- **[High] Upgrade Sonnet agents to claude-sonnet-5** — code-reviewer, accessibility-auditor, reality-checker, ux-architect, anthropic; 13 days outstanding; hard August 31 deadline
+- **[High] Upgrade Opus agents to claude-opus-5** — software-architect, security-engineer; 9 days outstanding; 22% agentic coding improvement confirmed
+- **[High] Writing effective tools for AI agents** — Add to repos.md; apply eval-driven tool description review to code-reviewer and security-engineer; 3 days outstanding
+- **[High] Claude Agent SDK engineering post** — Add to repos.md; review best practices against ag3nts harness architecture; 3 days outstanding
+- **[High] Claude Code sandboxing** — Add to repos.md; evaluate sandboxed bash tool; update ag3nts.md Permission Mode section; 4 days outstanding
+- **[Medium] Off switch for dual-use knowledge** — Add to repos.md; update security-engineer agent; 4 days outstanding
+- **[High] AI-discovered cryptographic attacks** — Add to repos.md; update security-engineer threat taxonomy; 5 days outstanding
+- **[Medium] CJS Framework (Fable 5 jailbreak severity)** — Add to repos.md; update security-engineer with CJS-0 to CJS-4; 32 days overdue
+- **[Low] Enterprise Admin API user management** — `ce-user-management-2026-07-13` beta; note in repos.md; 20 days overdue
+- **[High] Agentic Misalignment threat taxonomy** — Add July 13 failure modes to security-engineer prompt; 8 days outstanding
+- **[Medium] Mid-conversation system messages now GA** — Fable 5, Mythos 5, Opus 4.8, Opus 5 eligible; evaluate software-architect + security-engineer dispatch; 12 days outstanding
+- **[Medium] Mid-conversation tool changes beta** — `mid-conversation-tool-changes-2026-07-01`; evaluate for RepairBoss stage transitions; 7 days outstanding
+- **[Medium] Server-side fallback for refusals** — `server-side-fallback-2026-07-01`; add to scripted run guidance; 7 days outstanding
+- **[Medium] API key expiration — set rotation schedule** — 90-day rotation for `ANTHROPIC_API_KEY`; 7 days outstanding
+- **[High] Update Claude Code** — `npm install -g @anthropic-ai/claude-code@latest`; 24 days overdue
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1; 32 days outstanding
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (37 days overdue)
+- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (37 days)
+- **[Low] Managed Agents on AWS docs** — Add to repos.md; note `managed-agents-2026-04-01` beta header; 1 day outstanding
+- **[Low] Claude Science AI Workbench** — Add to repos.md; reference pattern for specialist agent dispatch; NEW today
+- **[High] Background agent hook compatibility** — Audit pre-commit/pre-PR hooks in background agent context; NEW today
+
+---
+
 ## Latest Scan: 2026-08-02
 
 ### Summary
