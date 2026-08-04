@@ -1,5 +1,83 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-08-04
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 1
+- Actionable integrations: 1
+
+### Context
+
+One day since last scan (August 3). One new engineering finding: **Quantifying Infrastructure Noise in Agentic Coding Evals** — Anthropic published research showing infrastructure configuration alone (CPU/memory allocation, not model capability) can swing agentic coding benchmark scores by 6+ percentage points, exceeding typical leaderboard margins. Directly relevant to any benchmark-based quality assertions in RepairBoss pipeline outputs and reality-checker assessments.
+
+Engineering postmortem at `https://www.anthropic.com/engineering/a-postmortem-of-three-recent-issues` now appearing for 4th consecutive day in search results. First incident (August 5) is 1 day away — postmortem will likely become verifiable tomorrow; re-check August 5.
+
+**TODAY: Opus 4.1 deprecation is 1 day away (August 5 — TOMORROW).** This is the final opportunity to audit and replace `claude-opus-4-1` references before live errors begin. This item has been critical for the last 4 consecutive scans with no action taken.
+
+Carry-forward: **CRITICAL — Opus 4.7 fast mode REMOVED and erroring (36 consecutive days without action)**. **CRITICAL — claude-mythos-preview RETIRED 19 days ago**. **CRITICAL — agent-memory-2026-07-22 live (14 days old)**. **CRITICAL — Opus 4.1 deprecation TOMORROW (August 5) — FINAL HOUR**. **High — Experimental Prompt APIs retiring 13 days away (August 17)**. **High — Sonnet 5 introductory pricing ends 27 days away (August 31)**. All other carry-forward items advanced by 1 day.
+
+---
+
+### Findings
+
+#### Quantifying Infrastructure Noise in Agentic Coding Evals
+- **Source**: https://www.anthropic.com/engineering/infrastructure-noise
+- **Published**: 2026 (exact date unconfirmed; appears within last 30-day window)
+- **Category**: Agent | Tooling
+- **What Changed**: Anthropic published research showing that infrastructure configuration — cluster health, hardware specs, CPU/memory allocation — can produce score differences that exceed typical leaderboard margins on agentic coding benchmarks. In internal experiments on Terminal-Bench 2.0, the gap between the most- and least-resourced setups was 6 percentage points (p < 0.01). Extra resources enable agents to try resource-intensive approaches (large dependencies, expensive subprocesses, memory-intensive test suites) that fail under constrained setups. Top leaderboard positions on SWE-bench and Terminal-Bench are often separated by just a few percentage points — smaller than this infrastructure margin.
+- **Impact on ag3nts**: When `reality-checker` or RepairBoss pipeline stages evaluate agent quality based on benchmark citations or model performance claims, they should account for infrastructure variance. A 6pp gap means two systems running the "same" benchmark under different hardware configs are not directly comparable. Any ag3nts quality eval framework should document and standardize the infrastructure spec alongside the score. Also informs `code-reviewer`'s correctness dimension: code performance benchmarks cited in PRs may reflect infra, not logic.
+- **Proposed Changes**:
+  - [ ] Add `https://www.anthropic.com/engineering/infrastructure-noise` to `shared/claude-code/knowledge-base/repos.md` with description "Anthropic: Quantifying infrastructure noise in agentic coding evals — infra config alone can swing benchmark scores 6pp; standardize infra spec alongside eval scores"
+  - [ ] Note infra variance caveat in `reality-checker` agent guidance when evaluating benchmark-based performance claims
+- **Priority**: Medium — affects benchmark interpretation; no urgent code change, but important context for quality evaluation
+
+---
+
+### Recommendations
+
+Top 3 actions for August 4:
+
+1. **[CRITICAL — TOMORROW — FINAL HOUR] Opus 4.1 deprecation August 5** — `grep -r "claude-opus-4-1" ~/.claude/ shared/`; live errors begin TOMORROW. Flagged for 4 consecutive scans with no action. This is the last window before production impact.
+
+2. **[CRITICAL — NOW — LIVE] Opus 4.7 fast mode REMOVED — 36 days without action** — `grep -r "opus-4-7" ~/.claude/ shared/`; replace all hits with `claude-opus-5`. Live errors for 36 consecutive days.
+
+3. **[High] Audit background agent hook compatibility** — Background agents auto-commit/push/open PRs natively (found August 3). Verify `pre-commit-secrets-scan.sh`, `pre-commit-review-gate.sh`, and `pre-pr-review-gate.sh` fire in background agent context. Hook gap is a direct security risk on any background-agent-generated commit.
+
+Carry-forward:
+- **[CRITICAL — NOW — LIVE] Opus 4.7 fast mode REMOVED** — removed July 24; errors live NOW; `grep -r "opus-4-7" ~/.claude/ shared/`; 36 consecutive days without action
+- **[CRITICAL — NOW] claude-mythos-preview retired** — RETIRED July 21 (19 days ago); `grep -r "claude-mythos-preview" ~/.claude/ shared/`; errors live NOW
+- **[CRITICAL — NOW] agent-memory-2026-07-22 live** — memory list behavior changed July 22; audit pagination + header usage in hooks; 14 days old
+- **[CRITICAL — TOMORROW] Opus 4.1 deprecation** — August 5; FINAL HOUR — 1 day remaining; `grep -r "claude-opus-4-1"` audit NOW
+- **[High — 13 days] Experimental Prompt APIs retiring August 17** — `/v1/experimental/generate_prompt` and siblings; grep audit + migrate if found
+- **[High — 27 days] Sonnet 5 introductory pricing ends August 31** — upgrade all Sonnet-tier agents; 27-day deadline
+- **[High] Upgrade Sonnet agents to claude-sonnet-5** — code-reviewer, accessibility-auditor, reality-checker, ux-architect, anthropic; 14 days outstanding; hard August 31 deadline
+- **[High] Upgrade Opus agents to claude-opus-5** — software-architect, security-engineer; 10 days outstanding; 22% agentic coding improvement confirmed
+- **[High] Writing effective tools for AI agents** — Add to repos.md; apply eval-driven tool description review to code-reviewer and security-engineer; 4 days outstanding
+- **[High] Claude Agent SDK engineering post** — Add to repos.md; review best practices against ag3nts harness architecture; 4 days outstanding
+- **[High] Claude Code sandboxing** — Add to repos.md; evaluate sandboxed bash tool; update ag3nts.md Permission Mode section; 5 days outstanding
+- **[Medium] Off switch for dual-use knowledge** — Add to repos.md; update security-engineer agent; 5 days outstanding
+- **[High] AI-discovered cryptographic attacks** — Add to repos.md; update security-engineer threat taxonomy; 6 days outstanding
+- **[Medium] CJS Framework (Fable 5 jailbreak severity)** — Add to repos.md; update security-engineer with CJS-0 to CJS-4; 33 days overdue
+- **[Low] Enterprise Admin API user management** — `ce-user-management-2026-07-13` beta; note in repos.md; 21 days overdue
+- **[High] Agentic Misalignment threat taxonomy** — Add July 13 failure modes to security-engineer prompt; 9 days outstanding
+- **[Medium] Mid-conversation system messages now GA** — Fable 5, Mythos 5, Opus 4.8, Opus 5 eligible; evaluate software-architect + security-engineer dispatch; 13 days outstanding
+- **[Medium] Mid-conversation tool changes beta** — `mid-conversation-tool-changes-2026-07-01`; evaluate for RepairBoss stage transitions; 8 days outstanding
+- **[Medium] Server-side fallback for refusals** — `server-side-fallback-2026-07-01`; add to scripted run guidance; 8 days outstanding
+- **[Medium] API key expiration — set rotation schedule** — 90-day rotation for `ANTHROPIC_API_KEY`; 8 days outstanding
+- **[High] Update Claude Code** — `npm install -g @anthropic-ai/claude-code@latest`; 25 days overdue
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — From July 1; 33 days outstanding
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — Carry-forward since June 26 (38 days overdue)
+- **[High] WIF adoption** — Eliminate long-lived `ANTHROPIC_API_KEY`; carry-forward since June 26 (38 days)
+- **[Low] Managed Agents on AWS docs** — Add to repos.md; note `managed-agents-2026-04-01` beta header; 2 days outstanding
+- **[Low] Claude Science AI Workbench** — Add to repos.md; reference pattern for specialist agent dispatch; 1 day outstanding
+- **[High] Background agent hook compatibility** — Audit pre-commit/pre-PR hooks in background agent context; 1 day outstanding
+- **[Medium] Subagents inherit extended thinking** — Note in ag3nts.md for software-architect and security-engineer; evaluate extended thinking in RepairBoss parent sessions; 1 day outstanding
+- **[Low] anthropicAws upstream provider** — Add to repos.md alongside Managed Agents AWS entry; 1 day outstanding
+- **[Medium] Infra noise in agentic coding evals** — Add to repos.md; note in reality-checker guidance; NEW today
+
+---
+
 ## Latest Scan: 2026-08-03
 
 ### Summary
