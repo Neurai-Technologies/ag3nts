@@ -1,5 +1,151 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-08-05
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 6
+- Actionable integrations: 5
+
+### Context
+
+**TODAY: Opus 4.1 deprecation is NOW LIVE (August 5).** `claude-opus-4-1-20250805` retirement was scheduled for today — API calls using this model ID may now return errors. This has been flagged as Critical for 5 consecutive scans with no reported action.
+
+**TODAY: Three infrastructure bugs postmortem confirmed (August 5).** The first incident — misrouted Sonnet 4 requests to 1M-context servers — began August 5. The engineering postmortem was anticipated in yesterday's scan and is now verifiable.
+
+**NEW BREAKING: Claude Sonnet 5 API behavior changes.** Sonnet 5 is now the DEFAULT model for Free and Pro plans. Three breaking API changes apply: (1) adaptive thinking is ON by default, (2) manual extended thinking is REMOVED (returns 400), (3) non-default sampling parameters return 400. Any agent being upgraded from Sonnet 4.6 to Sonnet 5 must audit for extended thinking usage and sampling parameter customization before migration.
+
+**TODAY: Harness design for long-running app development** — new Anthropic Engineering post not previously logged. Key new pattern: generator works in sprints, evaluator uses Playwright MCP to grade each sprint, claude-progress.txt bridges sessions.
+
+New carry-forwards since August 4: **[Critical] Sonnet 5 breaking API changes on migrate**, **[High] Three infrastructure bugs postmortem**, **[High] Harness design for long-running apps**, **[Medium] Project Glasswing expanded to 150+ orgs**, **[Medium] Refusals no longer billed**, **[Medium] Managed Agents on AWS confirmed GA**, **[Low] Advisor tool max_tokens**.
+
+---
+
+### Findings
+
+#### Opus 4.1 Deprecation — NOW LIVE
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: August 5, 2026 (retirement date)
+- **Category**: Model
+- **What Changed**: `claude-opus-4-1-20250805` reached end-of-life today. API calls using this model ID now return errors. Migration target is `claude-opus-4-8` or `claude-opus-5`.
+- **Impact on ag3nts**: Any hooks, scripts, or agent definitions referencing `claude-opus-4-1` are broken NOW. This includes potential references in `~/.claude/agents/`, hook scripts in `shared/claude-code/hooks/`, and any CLAUDE.md model references.
+- **Proposed Changes**:
+  - [ ] `grep -r "claude-opus-4-1" ~/.claude/ shared/` — find all references and replace with `claude-opus-5`
+- **Priority**: Critical — live breakage NOW; 5th consecutive scan flagging this
+
+---
+
+#### Claude Sonnet 5 — Breaking API Behavior Changes on Migrate
+- **Source**: https://www.anthropic.com/news/claude-sonnet-5 + https://docs.anthropic.com/en/release-notes/api
+- **Published**: ~August 2026 (introductory pricing window active)
+- **Category**: Model | API
+- **What Changed**: Claude Sonnet 5 (`claude-sonnet-5`) is now the default model for Free and Pro plans. Three breaking changes apply when migrating from Sonnet 4.6: (1) adaptive thinking is ON by default, (2) manual extended thinking is REMOVED — setting `thinking: { type: "enabled" }` returns a 400 error, (3) setting sampling parameters to non-default values returns a 400 error. Introductory pricing: $2/$10 per million tokens through August 31, 2026 (then $3/$15).
+- **Impact on ag3nts**: `code-reviewer` (Sonnet), `accessibility-auditor` (Sonnet), `reality-checker` (Sonnet), `ux-architect` (Sonnet), and `anthropic` (Sonnet) agents are flagged for upgrade to Sonnet 5 by August 31. If any of these agents use extended thinking or custom sampling, those configs must be removed before upgrading — otherwise the API call returns 400 immediately.
+- **Proposed Changes**:
+  - [ ] Before upgrading each Sonnet agent definition to `claude-sonnet-5`, grep the agent file for `extended_thinking`, `thinking`, `temperature`, `top_p`, `top_k` — strip any of those before migration
+  - [ ] Note adaptive thinking behavior change in `shared/ag3nts.md` agent table under the Sonnet 5 model column
+- **Priority**: Critical — breaking changes that silently errored if extended thinking or sampling was in use; hard August 31 deadline
+
+---
+
+#### Three Infrastructure Bugs Postmortem — August 5 Incident Confirmed
+- **Source**: https://www.anthropic.com/engineering/a-postmortem-of-three-recent-issues
+- **Published**: August 2026
+- **Category**: Tooling | Agent
+- **What Changed**: Engineering postmortem documents three bugs that affected Claude quality from August 2026: (1) Misrouted Sonnet 4 requests to 1M-context window servers — ~0.8% of requests affected, starting August 5; (2) Approximate top-k operation bug returning wrong token probabilities for certain batch sizes and model configs; (3) Load balancing change August 29 routing more short-context requests to 1M-context servers. All caused degraded responses; no quality intentionally reduced by Anthropic.
+- **Impact on ag3nts**: Any benchmark or quality assertions made in the period covering these bugs (August 5 — late August) may reflect infrastructure error, not model capability. `reality-checker` and `code-reviewer` agents should add a caveat for any performance claims citing outputs from this window. Cross-ref with yesterday's infrastructure noise finding (infra can swing evals 6pp).
+- **Proposed Changes**:
+  - [ ] Add postmortem URL to `shared/claude-code/knowledge-base/repos.md` with description "Anthropic: Aug 2026 infrastructure postmortem — Sonnet 4 misrouting, top-k bug, load balancing; quality assertions from Aug 5 – late Aug should note infra uncertainty"
+- **Priority**: High — context for quality evaluation integrity; postmortem confirms first incident starts today
+
+---
+
+#### Harness Design for Long-Running Application Development
+- **Source**: https://www.anthropic.com/engineering/harness-design-long-running-apps
+- **Published**: ~August 2026 (newly indexed)
+- **Category**: Agent | Tooling
+- **What Changed**: New engineering post extending the "effective harnesses" series into full-stack long-running app development. Generator works in sprints (one feature at a time from a spec); evaluator uses Playwright MCP to click through the running app and grade each sprint against product depth, functionality, visual design, and code quality. Stack: React + Vite + FastAPI + SQLite/PostgreSQL. `claude-progress.txt` alongside git history bridges fresh context windows between sessions — the specific file name is now documented as a Anthropic-recommended pattern.
+- **Impact on ag3nts**: Directly extends the harness patterns already in `repos.md` (`effective-harnesses-for-long-running-agents`, `multi-agent-research-system`). The sprint-based generator/evaluator pattern and the `claude-progress.txt` bridge file are immediately applicable to RepairBoss pipeline stages. The Playwright MCP evaluator pattern could replace or supplement the `reality-checker` agent for frontend quality gates.
+- **Proposed Changes**:
+  - [ ] Add `https://www.anthropic.com/engineering/harness-design-long-running-apps` to `shared/claude-code/knowledge-base/repos.md` with description "Anthropic: Harness design for long-running app development — sprint generator + Playwright MCP evaluator; claude-progress.txt session bridge pattern; React+Vite+FastAPI stack"
+  - [ ] Reference `claude-progress.txt` pattern in `shared/claude-code/CLAUDE.md` as a recommended context-bridging convention for multi-session agent work
+- **Priority**: High — new concrete pattern applicable to RepairBoss; Playwright MCP evaluator validates ux-architect agent outputs
+
+---
+
+#### Project Glasswing Expanded to 150+ Organizations in 15+ Countries
+- **Source**: https://www.anthropic.com/news/expanding-project-glasswing
+- **Published**: August 2026
+- **Category**: Safety | Agent
+- **What Changed**: Project Glasswing (AI-assisted critical software security) expanded from its initial cohort to ~150 new organizations in 15+ countries. New sectors now covered: power, water, healthcare, communications, hardware. Total CVEs found by Claude Mythos Preview across all partners: >10,000 high/critical severity vulnerabilities.
+- **Impact on ag3nts**: The `security-engineer` agent (Opus) uses CVE references. Glasswing expansion means the attack surface coverage of AI-assisted CVE discovery has broadened dramatically — the threat landscape the agent must reason about now includes critical infrastructure sectors. The >10k CVE finding reinforces that AI-assisted vulnerability detection is production-ready and should be reflected in the agent's confidence framing.
+- **Proposed Changes**:
+  - [ ] Add `https://www.anthropic.com/news/expanding-project-glasswing` to `shared/claude-code/knowledge-base/repos.md` with description "Anthropic: Project Glasswing expansion — 150+ orgs, 15+ countries, power/water/healthcare/comms/hardware sectors, >10k high/critical CVEs found; validates AI-assisted vuln detection at scale"
+- **Priority**: Medium — context enrichment for security-engineer; no immediate code change
+
+---
+
+#### Refusals No Longer Billed
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: August 2026
+- **Category**: API
+- **What Changed**: API requests that return `stop_reason: "refusal"` without Claude generating any output are no longer billed. This reduces the cost of safety-filtered requests to zero.
+- **Impact on ag3nts**: When `security-engineer` (Opus, $5/$25 per million) or `software-architect` (Opus) prompt Claude with potentially ambiguous threat modeling inputs that trigger safety filtering, those calls are now free. No change needed — this is a passive cost reduction. Worth noting in cost planning if any auto-invoke flows generate frequent refusals.
+- **Proposed Changes**: None required — automatic API-side change
+- **Priority**: Low — passive cost reduction; no config change needed
+
+---
+
+### Recommendations
+
+Top 3 actions for August 5:
+
+1. **[CRITICAL — NOW — LIVE] `grep -r "claude-opus-4-1" ~/.claude/ shared/`** — Opus 4.1 retired TODAY. Any references cause live API errors now. Replace with `claude-opus-5`. This is the 5th consecutive scan flagging this with no action.
+
+2. **[CRITICAL — PRE-MIGRATE CHECK] Audit Sonnet agents before upgrading to claude-sonnet-5** — Before replacing `claude-sonnet-4-6` with `claude-sonnet-5` in any agent definition, grep that agent file for `extended_thinking`, `thinking`, `temperature`, `top_p`, `top_k`. Sonnet 5 returns 400 on any of those. Affects: `code-reviewer`, `accessibility-auditor`, `reality-checker`, `ux-architect`, `anthropic` agents. August 31 deadline.
+
+3. **[High] Add harness-design-long-running-apps to repos.md + note claude-progress.txt pattern in CLAUDE.md** — New Anthropic-documented session-bridging pattern. Directly applicable to RepairBoss multi-stage flows.
+
+Carry-forward:
+- **[CRITICAL — NOW — LIVE] Opus 4.1 deprecated TODAY** — August 5 retirement date; live errors NOW; 5 consecutive scans flagged, no action
+- **[CRITICAL — NOW — LIVE] Opus 4.7 fast mode REMOVED** — removed July 24; errors live NOW; `grep -r "opus-4-7" ~/.claude/ shared/`; 37 consecutive days without action
+- **[CRITICAL — NOW — LIVE] claude-mythos-preview RETIRED** — retired July 21 (20 days ago); `grep -r "claude-mythos-preview" ~/.claude/ shared/`; live errors
+- **[CRITICAL] Sonnet 5 breaking changes on migrate** — manual extended thinking returns 400; non-default sampling returns 400; audit before any Sonnet 5 migration; August 31 deadline; NEW today
+- **[CRITICAL — NOW] agent-memory-2026-07-22 live** — memory list behavior changed July 22; audit pagination + header usage; 15 days old
+- **[High — 12 days] Experimental Prompt APIs retiring August 17** — `/v1/experimental/generate_prompt` and siblings; grep audit + migrate if found
+- **[High — 26 days] Sonnet 5 introductory pricing ends August 31** — upgrade all Sonnet-tier agents before deadline; 26 days
+- **[High] Upgrade Sonnet agents to claude-sonnet-5** — code-reviewer, accessibility-auditor, reality-checker, ux-architect, anthropic; after breaking-change audit; August 31 deadline; 15 days outstanding
+- **[High] Upgrade Opus agents to claude-opus-5** — software-architect, security-engineer; 11 days outstanding; 22% agentic coding improvement confirmed
+- **[High] Three infrastructure bugs postmortem** — add to repos.md; note quality caveat for Aug 5–late Aug outputs; NEW today
+- **[High] Harness design for long-running apps** — add to repos.md; note claude-progress.txt pattern in CLAUDE.md; NEW today
+- **[High] Claude Code sandboxing** — add to repos.md; evaluate sandboxed bash tool; update ag3nts.md Permission Mode; 6 days outstanding
+- **[High] Writing effective tools for AI agents** — add to repos.md; apply eval-driven tool description review; 5 days outstanding
+- **[High] Claude Agent SDK engineering post** — add to repos.md; review against ag3nts harness architecture; 5 days outstanding
+- **[High] AI-discovered cryptographic attacks** — add to repos.md; update security-engineer threat taxonomy; 7 days outstanding
+- **[High] Agentic Misalignment threat taxonomy** — add July 13 failure modes to security-engineer prompt; 10 days outstanding
+- **[High] Update Claude Code** — `npm install -g @anthropic-ai/claude-code@latest`; 26 days overdue
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — from July 1; 34 days outstanding
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — carry-forward since June 26; 39 days overdue
+- **[High] WIF adoption** — eliminate long-lived ANTHROPIC_API_KEY; carry-forward since June 26; 39 days
+- **[High] Background agent hook compatibility** — audit pre-commit/pre-PR hooks in background agent context; 2 days outstanding
+- **[Medium] Project Glasswing expanded** — add to repos.md; update security-engineer context; NEW today
+- **[Medium] Refusals no longer billed** — passive cost reduction; no action required; NEW today
+- **[Medium] Managed Agents on AWS confirmed GA** — webhooks + multiagent + self-hosted sandboxes live; add to repos.md; `managed-agents-2026-04-01` beta header; 3 days outstanding
+- **[Medium] Off switch for dual-use knowledge** — add to repos.md; update security-engineer agent; 6 days outstanding
+- **[Medium] CJS Framework (Fable 5 jailbreak severity)** — add to repos.md; update security-engineer with CJS-0 to CJS-4; 34 days overdue
+- **[Medium] Mid-conversation system messages now GA** — evaluate software-architect + security-engineer dispatch; 14 days outstanding
+- **[Medium] Mid-conversation tool changes beta** — evaluate for RepairBoss stage transitions; 9 days outstanding
+- **[Medium] Server-side fallback for refusals** — add to scripted run guidance; 9 days outstanding
+- **[Medium] API key expiration — set rotation schedule** — 90-day rotation for ANTHROPIC_API_KEY; 9 days outstanding
+- **[Medium] Subagents inherit extended thinking** — note in ag3nts.md for software-architect and security-engineer; 2 days outstanding
+- **[Medium] Infra noise in agentic coding evals** — add to repos.md; note in reality-checker guidance; 1 day outstanding
+- **[Low] Advisor tool max_tokens** — now caps output per call; note in scripted agent call guidance; NEW today
+- **[Low] Enterprise Admin API user management** — `ce-user-management-2026-07-13` beta; note in repos.md; 22 days overdue
+- **[Low] Claude Science AI Workbench** — add to repos.md; 2 days outstanding
+- **[Low] anthropicAws upstream provider** — add to repos.md alongside Managed Agents AWS entry; 2 days outstanding
+
+---
+
 ## Latest Scan: 2026-08-04
 
 ### Summary
