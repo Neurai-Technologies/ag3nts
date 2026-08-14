@@ -1,5 +1,107 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-08-14
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 2 (both were published Aug 10–12 but missed by the Aug 13 scan)
+- Actionable integrations: 1 (carry-forward deadline resolved)
+
+### Context
+
+One day since last scan (August 13). Two items surfaced that were missed by the August 13 scan: the Sonnet 5 permanent pricing announcement (August 10) and the Worker Retraining Programs economic research (August 12). No new announcements specifically dated August 14 found across all four sources.
+
+**DEADLINE RESOLVED: Sonnet 5 introductory pricing is now permanent.** The August 31 pricing deadline ("$2/$10 introductory → $3/$15 standard") no longer applies. Sonnet 5's $2/$10 per million input/output tokens is the permanent standard rate. The upgrade case for Sonnet-tier agents remains compelling on capability grounds but carries no cost-pressure deadline.
+
+**TODAY: Opus 4.1 is DAY 10 past retirement.** Live API errors on any `claude-opus-4-1` references since August 5. 14th consecutive scan with no action logged.
+
+**3 DAYS: Experimental Prompt APIs retire August 17.** `/v1/experimental/generate_prompt`, `/v1/experimental/improve_prompt`, and `/v1/experimental/templatize_prompt` — and the Workbench — shut down in **3 days**. This is the last weekend before the deadline.
+
+---
+
+### Findings
+
+#### Sonnet 5 Introductory Pricing Made Permanent
+- **Source**: https://www.anthropic.com/news/claude-sonnet-5 (pricing update)
+- **Published**: August 10, 2026 (missed by Aug 13 scan)
+- **Category**: API / Model capabilities
+- **What Changed**: Anthropic made Sonnet 5's introductory pricing permanent. The $2 per million input / $10 per million output token rate — originally announced as an introductory rate through August 31, 2026 — is now the standard permanent price. The previously announced standard rate of $3/$15 after August 31 no longer applies.
+- **Impact on ag3nts**: **Resolves the August 31 deadline item.** Agents on Sonnet 4.6 (`code-reviewer`, `accessibility-auditor`, `reality-checker`, `ux-architect`, `anthropic`) can be migrated to Sonnet 5 on capability merit without any cost-pressure deadline. The breaking-change audit (manual extended thinking returns 400, non-default sampling returns 400) is still required before migration.
+- **Proposed Changes**:
+  - [ ] Remove the August 31 pricing deadline from all carry-forward recommendations; reclassify Sonnet 5 migration as capability-driven with no time pressure
+- **Priority**: Medium — resolves a deadline concern; migration still warranted but no urgency
+
+#### Worker Retraining Programs Economic Research
+- **Source**: https://www.anthropic.com/research/reviewing-the-evidence-on-worker-retraining-programs
+- **Published**: August 12, 2026 (missed by Aug 13 scan)
+- **Category**: Safety / Alignment (economic policy)
+- **What Changed**: Anthropic's Economic Research team published a meta-analysis of 56 randomized US studies on worker retraining programs in the context of AI labor displacement. Key findings: "sector programs" partnering directly with employers produce meaningfully larger gains than general retraining, but replication attempts often fail; at scale, existing retraining programs would likely fall short of compensating for AI-driven displacement.
+- **Impact on ag3nts**: No direct config impact. Contextual for understanding Anthropic's policy-facing AI safety posture. Not agent-actionable.
+- **Proposed Changes**:
+  - [ ] None required
+- **Priority**: Low — economic policy research; no agent config changes needed
+
+---
+
+### Recommendations
+
+Top 3 actions for August 14:
+
+1. **[CRITICAL — LIVE — DAY 10] Opus 4.1 errors are NOW live** — `grep -r "claude-opus-4-1" ~/.claude/ shared/`; replace all hits with `claude-opus-5`. Day 10 of live API errors. 14th consecutive scan flagged. No action still logged.
+
+2. **[CRITICAL — 3 DAYS] Audit for experimental prompt API usage before August 17** — `grep -r "experimental.*prompt\|generate_prompt\|improve_prompt\|templatize_prompt" ~/.claude/ shared/ .`; any usage must be migrated or removed. **3 days remain** — weekend before the Monday deadline.
+
+3. **[High] Update security-engineer agent with Summer 2026 misalignment taxonomy** — Open `~/.claude/agents/security-engineer.md`; add covert pipeline sabotage, transcript mislabeling, and human coaching attack vectors from `alignment.anthropic.com/2026/agentic-misalignment-summer-2026/` to the threat taxonomy section. 3 days outstanding.
+
+Carry-forward (advancing 1 day from August 13; new items marked NEW; resolved items marked RESOLVED):
+- **[CRITICAL — NOW — LIVE — DAY 10] Opus 4.1 deprecated** — retired August 5; live API errors NOW for 10 days; `grep -r "claude-opus-4-1" ~/.claude/ shared/`; 14 consecutive scans without action
+- **[CRITICAL — NOW — LIVE] Opus 4.7 fast mode REMOVED** — removed July 24; errors live NOW; `grep -r "opus-4-7" ~/.claude/ shared/`; 46 consecutive days without action
+- **[CRITICAL — NOW — LIVE] claude-mythos-preview RETIRED** — retired July 21 (24 days ago); `grep -r "claude-mythos-preview" ~/.claude/ shared/`; errors live NOW
+- **[CRITICAL] Sonnet 5 breaking changes on migrate** — manual extended thinking returns 400; non-default sampling returns 400; audit before any Sonnet 5 migration; 10 days outstanding
+- **[CRITICAL — NOW] agent-memory-2026-07-22 live** — memory list behavior changed July 22; audit pagination + header usage; 23 days old
+- **[Critical — 3 DAYS] Experimental Prompt APIs retiring August 17** — `/v1/experimental/generate_prompt` and siblings; grep audit + migrate if found; **DEADLINE IN 3 DAYS**
+- **[RESOLVED] Sonnet 5 introductory pricing deadline** — pricing made permanent Aug 10; $2/$10 per million tokens is now the standard rate; no longer time-sensitive; migration still desirable on capability grounds
+- **[High] Update security-engineer with Summer 2026 misalignment failure modes** — covert sabotage, transcript mislabeling, human coaching attacks; `alignment.anthropic.com/2026/agentic-misalignment-summer-2026/`; 3 days outstanding
+- **[High] Add cybersecurity eval incidents to repos.md and security-engineer** — https://www.anthropic.com/news/investigating-incidents-cybersecurity-evals; eval-environment escape threat category; 4 days outstanding
+- **[High] Upgrade Sonnet agents to claude-sonnet-5** — code-reviewer, accessibility-auditor, reality-checker, ux-architect, anthropic; after breaking-change audit; no deadline (pricing now permanent); 24 days outstanding
+- **[High] Upgrade Opus agents to claude-opus-5** — software-architect, security-engineer; 20 days outstanding; 22% agentic coding improvement confirmed
+- **[High] Three infrastructure bugs postmortem** — add to repos.md; note quality caveat for Aug 5–late Aug outputs; 9 days outstanding
+- **[High] Harness design for long-running apps** — add to repos.md; note claude-progress.txt pattern in CLAUDE.md; 9 days outstanding
+- **[High] Claude Code sandboxing** — add to repos.md; evaluate sandboxed bash tool; update ag3nts.md Permission Mode; 15 days outstanding
+- **[High] Writing effective tools for AI agents** — add to repos.md; apply eval-driven tool description review; 14 days outstanding
+- **[High] Claude Agent SDK engineering post** — add to repos.md; review against ag3nts harness architecture; 14 days outstanding
+- **[High] AI-discovered cryptographic attacks** — add to repos.md; update security-engineer threat taxonomy; 16 days outstanding
+- **[High] Agentic Misalignment threat taxonomy (July 13)** — now superseded by Summer 2026 post; 19 days outstanding
+- **[High] Update Claude Code** — `npm install -g @anthropic-ai/claude-code@latest`; 35 days overdue
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — from July 1; 43 days outstanding
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — carry-forward since June 26; 48 days overdue
+- **[High] WIF adoption** — eliminate long-lived ANTHROPIC_API_KEY; carry-forward since June 26; 48 days
+- **[High] Background agent hook compatibility** — audit pre-commit/pre-PR hooks in background agent context; 11 days outstanding
+- **[Medium] Add open-weights models position to repos.md** — https://www.anthropic.com/news/position-open-weights-models; 4 days outstanding
+- **[Medium] Project Glasswing expanded** — add to repos.md; update security-engineer context; 9 days outstanding
+- **[Medium] Refusals no longer billed** — passive cost reduction; no action required; 9 days outstanding
+- **[Medium] Managed Agents on AWS confirmed GA** — webhooks + multiagent + self-hosted sandboxes live; add to repos.md; 12 days outstanding
+- **[Medium] Off switch for dual-use knowledge** — add to repos.md; update security-engineer agent; 15 days outstanding
+- **[Medium] CJS Framework (Fable 5 jailbreak severity)** — add to repos.md; update security-engineer with CJS-0 to CJS-4; 43 days overdue
+- **[Medium] Mid-conversation system messages now GA** — evaluate software-architect + security-engineer dispatch; 23 days outstanding
+- **[Medium] Mid-conversation tool changes beta** — evaluate for RepairBoss stage transitions; 18 days outstanding
+- **[Medium] Server-side fallback for refusals** — add to scripted run guidance; 18 days outstanding
+- **[Medium] API key expiration — set rotation schedule** — 90-day rotation for ANTHROPIC_API_KEY; 18 days outstanding
+- **[Medium] Subagents inherit extended thinking** — note in ag3nts.md for software-architect and security-engineer; 11 days outstanding
+- **[Medium] Infra noise in agentic coding evals** — add to repos.md; note in reality-checker guidance; 10 days outstanding
+- **[Medium — NEW] Worker Retraining Programs economic research** — https://www.anthropic.com/research/reviewing-the-evidence-on-worker-retraining-programs; policy context; no config changes needed; NEW TODAY
+- **[Low] Tino Cuéllar joins as Chief Global Affairs Officer** — https://www.anthropic.com/news/tino-cuellar; organizational; no config changes needed; 2 days outstanding
+- **[Low] Rare disease research grants** — https://www.anthropic.com/news/rare-disease-research-grants; application window closed; research context only; 2 days outstanding
+- **[Low] Add Riemann zeta/mathematical capabilities post to repos.md** — https://www.anthropic.com/research/riemann-zeta; research context only; 3 days outstanding
+- **[Low] Advisor tool max_tokens** — now caps output per call; note in scripted agent call guidance; 9 days outstanding
+- **[Low] Enterprise Admin API user management** — `ce-user-management-2026-07-13` beta; note in repos.md; 31 days overdue
+- **[Low] Claude Science AI Workbench** — add to repos.md; 11 days outstanding
+- **[Low] anthropicAws upstream provider** — add to repos.md alongside Managed Agents AWS entry; 11 days outstanding
+- **[Medium] Add Global Workspace paper to repos.md** — https://www.anthropic.com/research/global-workspace; carry-forward from July 16 (29 days)
+- **[Low] Fable 5 biology safeguard update** — classifier retrained; cuts false positives 85%; routes dangerous requests to Opus 5; no ag3nts config changes needed; 7 days outstanding
+
+---
+
 ## Latest Scan: 2026-08-13
 
 ### Summary
