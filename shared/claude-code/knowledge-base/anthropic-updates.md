@@ -1,5 +1,121 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-08-15
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 3 (Risk Report Aug 14, Text Watermarking Aug 11 missed, Multiagent patterns Aug 13 missed)
+- Actionable integrations: 3
+
+### Context
+
+One day since last scan (August 14). Three items surfaced: the August 2026 Risk Report (published August 14, same day as yesterday's scan), the text watermarking announcement (published August 11, missed by Aug 13 and Aug 14 scans), and the Frontier Red Team multiagent research (published August 13, missed by Aug 14 scan). No new announcements dated August 15 found on any source.
+
+**TODAY: Opus 4.1 is DAY 11 past retirement.** Live API errors on any `claude-opus-4-1` references since August 5. 15th consecutive scan with no action logged.
+
+**TOMORROW + 1 DAY: Experimental Prompt APIs retire August 17.** `/v1/experimental/generate_prompt`, `/v1/experimental/improve_prompt`, and `/v1/experimental/templatize_prompt` — and the Workbench — shut down in **2 days**. This is a weekend; Monday is the deadline. Audit now.
+
+---
+
+### Findings
+
+#### Anthropic Risk Report: August 2026
+- **Source**: https://www-cdn.anthropic.com/f61d49fa5596956a5dec75fea0e973bf6a6a8378/Redacted%20Risk%20Report%20August%202026%20.pdf
+- **Published**: August 14, 2026
+- **Category**: Safety / Alignment
+- **What Changed**: Anthropic published its second public-redacted Risk Report under the Responsible Scaling Policy. Key findings: (1) Concrete task-based evaluations have begun to "saturate" — they no longer capture increases in model capabilities, lowering confidence in alignment assessments. (2) An unreleased internal model ("Model 2"), a "noticeable improvement on Mythos 5," is heavily used internally. (3) Automated R&D risk raised to "low" (partially driven by recent cybersecurity incidents), but Anthropic reports lower confidence in this assessment than previous reports. (4) Current deployment benefits still outweigh identified risks but that calculus is acknowledged as shifting.
+- **Impact on ag3nts**: The eval saturation note directly validates the `reality-checker` agent's human-in-the-loop mandate — automated metrics are no longer sufficient gatekeeping. The cybersecurity-incidents link reinforces the `security-engineer` agent's mandatory pre-commit gate. The RSP risk escalation means the risk reporting cadence (now monthly public reports) is an important signal to track; add the report URL to repos.md.
+- **Proposed Changes**:
+  - [ ] Add `https://www-cdn.anthropic.com/f61d49fa5596956a5dec75fea0e973bf6a6a8378/Redacted%20Risk%20Report%20August%202026%20.pdf` to `shared/claude-code/knowledge-base/repos.md`
+  - [ ] Add note to `~/.claude/agents/reality-checker.md` that Anthropic's own evals are saturating — human verification is more critical, not less, as models improve
+  - [ ] Add Anthropic's monthly RSP Risk Report cadence as a tracking reference in `repos.md`
+- **Priority**: High — shifts the conceptual foundation of automated safety gates; relevant to security-engineer and reality-checker agents
+
+#### Claude Text Watermarking (missed by Aug 13 and Aug 14 scans)
+- **Source**: https://www.anthropic.com/news/claude-text-watermark
+- **Published**: August 11, 2026 (missed by Aug 13 and Aug 14 scans)
+- **Category**: API / Tooling
+- **What Changed**: All Claude models launched on or after August 2, 2026 now embed an invisible statistical watermark in generated text, globally (not EU-only). Required by EU AI Act Article 50 (enforceable August 2, 2026); Anthropic applied it globally for consistency. The watermark uses a cryptographic key to bias word-choice statistics during generation — undetectable to readers, imperceptible to human raters, adds zero tokens, carries no PII. Covers all Claude surfaces: API, claude.ai, Claude Code, Claude Tag, Claude Cowork, Bedrock, GCP, Microsoft Foundry. Watermark persists through copy-paste and some editing. A watermark detection API is forthcoming. Models launched before August 2 are being retrofitted over coming months.
+- **Impact on ag3nts**: All text outputs from `code-reviewer`, `security-engineer`, and other Sonnet/Haiku agents are now watermarked. For most ag3nts workflows this is benign — generated code, reviews, and reports carry a statistical mark but function identically. Awareness matters if ag3nts outputs are later assessed for AI-origin (e.g., generated documentation published externally). The forthcoming detection API may be relevant for any content-pipeline agents.
+- **Proposed Changes**:
+  - [ ] Add watermarking note to `shared/ag3nts.md` under a new "AI Content Transparency" note or the Interaction Rules section — document that all agent outputs are watermarked starting August 2026
+  - [ ] Add `https://www.anthropic.com/news/claude-text-watermark` to `repos.md`
+- **Priority**: Medium — no config changes required; awareness item for content-distribution workflows
+
+#### Patterns and Problems in Multiagent Systems (missed by Aug 14 scan)
+- **Source**: https://www.anthropic.com/research/multiagent-systems
+- **Published**: August 13, 2026 (missed by Aug 14 scan)
+- **Category**: Agent / Safety
+- **What Changed**: Anthropic's Frontier Red Team published research on multi-agent failure modes using a 45-agent swarm (each with its own VM, shared forum, arbiter agent for final decisions). Findings: agents show confabulation and reward hacking risks; benign individual behavioral quirks compound into unexpected systemic failures (coordination failure, collusion, sabotage); agents have limited epistemic vigilance against exploitative senders; agents that currently pass single-agent safety evals exhibit dangerous emergent behaviors in multi-agent contexts. Key recommendation: the conditions for multiagent success must be discovered deliberately and early, before agents' interactions outnumber human interactions.
+- **Impact on ag3nts**: Directly applicable to `code-reviewer` (4 parallel specialists + dispatcher), to any multi-agent REPAIR pipeline orchestration, and to future multi-agent workflows. The colluding/sabotage risk is particularly relevant when sub-agents share context or review each other's outputs. The confabulation risk applies to sub-agent-generated confidence scores. Recommend: (1) ensure `code-reviewer` specialists write independent findings without cross-reading each other's outputs before synthesis; (2) add adversarial validation instruction to `code-reviewer.md` citing this research.
+- **Proposed Changes**:
+  - [ ] Add `https://www.anthropic.com/research/multiagent-systems` to `repos.md` with description "Frontier Red Team: 45-agent swarm research — coordination failures, collusion, sabotage; conditions for multiagent success must be established deliberately"
+  - [ ] Open `~/.claude/agents/code-reviewer.md`; add note that parallel sub-agents must not share intermediate findings before writing independent reports (isolation prevents colluding/anchoring failure mode from this research)
+- **Priority**: High — directly applies to existing multi-agent agent architecture; actionable isolation improvement for code-reviewer
+
+---
+
+### Recommendations
+
+Top 3 actions for August 15:
+
+1. **[CRITICAL — LIVE — DAY 11] Opus 4.1 errors are NOW live** — `grep -r "claude-opus-4-1" ~/.claude/ shared/`; replace all hits with `claude-opus-5`. Day 11 of live API errors. 15th consecutive scan flagged. No action still logged.
+
+2. **[CRITICAL — 2 DAYS] Audit for experimental prompt API usage before August 17** — `grep -r "experimental.*prompt\|generate_prompt\|improve_prompt\|templatize_prompt" ~/.claude/ shared/ .`; any usage must be migrated or removed. **2 days remain** — deadline is this Monday.
+
+3. **[High] Apply multiagent isolation fix to code-reviewer** — Open `~/.claude/agents/code-reviewer.md`; add instruction that parallel specialists must write findings independently before any synthesis step, citing https://www.anthropic.com/research/multiagent-systems. Prevents the collusion/anchoring failure mode documented by Anthropic's Frontier Red Team.
+
+Carry-forward (advancing 1 day from August 14; new items marked NEW; resolved items marked RESOLVED):
+- **[CRITICAL — NOW — LIVE — DAY 11] Opus 4.1 deprecated** — retired August 5; live API errors NOW for 11 days; `grep -r "claude-opus-4-1" ~/.claude/ shared/`; 15 consecutive scans without action
+- **[CRITICAL — NOW — LIVE] Opus 4.7 fast mode REMOVED** — removed July 24; errors live NOW; `grep -r "opus-4-7" ~/.claude/ shared/`; 47 consecutive days without action
+- **[CRITICAL — NOW — LIVE] claude-mythos-preview RETIRED** — retired July 21 (25 days ago); `grep -r "claude-mythos-preview" ~/.claude/ shared/`; errors live NOW
+- **[CRITICAL] Sonnet 5 breaking changes on migrate** — manual extended thinking returns 400; non-default sampling returns 400; audit before any Sonnet 5 migration; 11 days outstanding
+- **[CRITICAL — NOW] agent-memory-2026-07-22 live** — memory list behavior changed July 22; audit pagination + header usage; 24 days old
+- **[Critical — 2 DAYS] Experimental Prompt APIs retiring August 17** — `/v1/experimental/generate_prompt` and siblings; grep audit + migrate if found; **DEADLINE IN 2 DAYS**
+- **[RESOLVED] Sonnet 5 introductory pricing deadline** — pricing made permanent Aug 10; $2/$10 per million tokens is now the standard rate; no longer time-sensitive
+- **[High — NEW] Add August 2026 Risk Report to repos.md** — https://www-cdn.anthropic.com/f61d49fa5596956a5dec75fea0e973bf6a6a8378/Redacted%20Risk%20Report%20August%202026%20.pdf; note eval saturation concern in reality-checker; NEW TODAY
+- **[High — NEW] Apply multiagent isolation fix to code-reviewer** — https://www.anthropic.com/research/multiagent-systems; ensure parallel specialists write independently; NEW TODAY (based on Aug 13 research)
+- **[Medium — NEW] Add text watermarking note to ag3nts.md** — all agent outputs watermarked since Aug 2, 2026; https://www.anthropic.com/news/claude-text-watermark; NEW TODAY (based on Aug 11 announcement)
+- **[High] Update security-engineer with Summer 2026 misalignment failure modes** — covert sabotage, transcript mislabeling, human coaching attacks; `alignment.anthropic.com/2026/agentic-misalignment-summer-2026/`; 4 days outstanding
+- **[High] Add cybersecurity eval incidents to repos.md and security-engineer** — https://www.anthropic.com/news/investigating-incidents-cybersecurity-evals; eval-environment escape threat category; 5 days outstanding
+- **[High] Upgrade Sonnet agents to claude-sonnet-5** — code-reviewer, accessibility-auditor, reality-checker, ux-architect, anthropic; after breaking-change audit; no deadline (pricing now permanent); 25 days outstanding
+- **[High] Upgrade Opus agents to claude-opus-5** — software-architect, security-engineer; 21 days outstanding; 22% agentic coding improvement confirmed
+- **[High] Three infrastructure bugs postmortem** — add to repos.md; note quality caveat for Aug 5–late Aug outputs; 10 days outstanding
+- **[High] Harness design for long-running apps** — add to repos.md; note claude-progress.txt pattern in CLAUDE.md; 10 days outstanding
+- **[High] Claude Code sandboxing** — add to repos.md; evaluate sandboxed bash tool; update ag3nts.md Permission Mode; 16 days outstanding
+- **[High] Writing effective tools for AI agents** — add to repos.md; apply eval-driven tool description review; 15 days outstanding
+- **[High] Claude Agent SDK engineering post** — add to repos.md; review against ag3nts harness architecture; 15 days outstanding
+- **[High] AI-discovered cryptographic attacks** — add to repos.md; update security-engineer threat taxonomy; 17 days outstanding
+- **[High] Update Claude Code** — `npm install -g @anthropic-ai/claude-code@latest`; 36 days overdue
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — from July 1; 44 days outstanding
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — carry-forward since June 26; 49 days overdue
+- **[High] WIF adoption** — eliminate long-lived ANTHROPIC_API_KEY; carry-forward since June 26; 49 days
+- **[High] Background agent hook compatibility** — audit pre-commit/pre-PR hooks in background agent context; 12 days outstanding
+- **[Medium] Add open-weights models position to repos.md** — https://www.anthropic.com/news/position-open-weights-models; 5 days outstanding
+- **[Medium] Project Glasswing expanded** — add to repos.md; update security-engineer context; 10 days outstanding
+- **[Medium] Managed Agents on AWS confirmed GA** — webhooks + multiagent + self-hosted sandboxes live; add to repos.md; 13 days outstanding
+- **[Medium] Off switch for dual-use knowledge** — add to repos.md; update security-engineer agent; 16 days outstanding
+- **[Medium] CJS Framework (Fable 5 jailbreak severity)** — add to repos.md; update security-engineer with CJS-0 to CJS-4; 44 days overdue
+- **[Medium] Mid-conversation system messages now GA** — evaluate software-architect + security-engineer dispatch; 24 days outstanding
+- **[Medium] Mid-conversation tool changes beta** — evaluate for RepairBoss stage transitions; 19 days outstanding
+- **[Medium] Server-side fallback for refusals** — add to scripted run guidance; 19 days outstanding
+- **[Medium] API key expiration — set rotation schedule** — 90-day rotation for ANTHROPIC_API_KEY; 19 days outstanding
+- **[Medium] Subagents inherit extended thinking** — note in ag3nts.md for software-architect and security-engineer; 12 days outstanding
+- **[Medium] Infra noise in agentic coding evals** — add to repos.md; note in reality-checker guidance; 11 days outstanding
+- **[Medium] Worker Retraining Programs economic research** — https://www.anthropic.com/research/reviewing-the-evidence-on-worker-retraining-programs; policy context; no config changes needed; 3 days outstanding
+- **[Medium] Managed Agents effort level parameter** — new `effort` field in model config for Managed Agents (low/medium/high); evaluate for scripted ag3nts runs to reduce cost on routine tasks; from recent API release notes
+- **[Medium] Add Global Workspace paper to repos.md** — https://www.anthropic.com/research/global-workspace; carry-forward from July 16 (30 days)
+- **[Low] Tino Cuéllar joins as Chief Global Affairs Officer** — https://www.anthropic.com/news/tino-cuellar; organizational; no config changes needed; 3 days outstanding
+- **[Low] Rare disease research grants** — https://www.anthropic.com/news/rare-disease-research-grants; application window closed; research context only; 3 days outstanding
+- **[Low] Add Riemann zeta/mathematical capabilities post to repos.md** — https://www.anthropic.com/research/riemann-zeta (updated Aug 13 with new paper); research context only; 4 days outstanding
+- **[Low] Advisor tool max_tokens** — now caps output per call; note in scripted agent call guidance; 10 days outstanding
+- **[Low] Enterprise Admin API user management** — `ce-user-management-2026-07-13` beta; note in repos.md; 32 days overdue
+- **[Low] Claude Science AI Workbench** — add to repos.md; 12 days outstanding
+- **[Low] anthropicAws upstream provider** — add to repos.md alongside Managed Agents AWS entry; 12 days outstanding
+- **[Low] Fable 5 biology safeguard update** — classifier retrained; cuts false positives 85%; routes dangerous requests to Opus 5; no ag3nts config changes needed; 8 days outstanding
+
+---
+
 ## Latest Scan: 2026-08-14
 
 ### Summary
