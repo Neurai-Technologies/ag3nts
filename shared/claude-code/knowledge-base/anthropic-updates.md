@@ -1,5 +1,105 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-08-16
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 3 (Self-Hosted Environments Aug 6, Fable 5 Biology Safeguards Aug 7, Riemann Zeta Breakthrough Aug 10/13 — all missed by previous scans)
+- Actionable integrations: 2
+
+### Context
+
+One day since last scan (August 15). No new announcements found dated August 15 or 16. Three items surfaced that were missed by Aug 13, 14, and 15 scans: Claude Code self-hosted environments (August 6), Fable 5 biology safeguards update (August 7), and Claude's Riemann zeta mathematical breakthrough (August 10, updated August 13).
+
+**TODAY: Opus 4.1 is DAY 12 past retirement.** Live API errors on any `claude-opus-4-1` references since August 5. 16th consecutive scan with no action logged.
+
+**TOMORROW: Experimental Prompt APIs retire August 17.** `/v1/experimental/generate_prompt`, `/v1/experimental/improve_prompt`, and `/v1/experimental/templatize_prompt` — and the Workbench — shut down **TOMORROW**. Last chance to audit.
+
+---
+
+### Findings
+
+#### Claude Mathematical Capabilities: Riemann Zeta Breakthrough (missed by Aug 13, 14, 15 scans)
+- **Source**: https://www.anthropic.com/research/riemann-zeta
+- **Published**: August 10, 2026 (updated August 13, 2026)
+- **Category**: Model / Agent
+- **What Changed**: An unreleased research version of Claude (using ~60 subagents, 31 million tokens, 36 hours of compute) raised the longstanding lower bound on the fraction of Riemann zeta zeros on the critical line from 41.6% to 67.2% — 46 years of combined human progress in a single run. Claude coordinated approximately 60 sub-agents, ran 2,400 shell commands and hundreds of Python scripts, and produced a formally verified Lean proof. The key insight came from connecting two previously unrelated papers across sub-fields. The result was an unintended byproduct of asking Claude to "take a real stab" at the Riemann hypothesis itself.
+- **Impact on ag3nts**: Validates and scales the multi-agent dispatch pattern used by `code-reviewer` (4 parallel specialists) and the Workflow tool's pipeline/parallel model. Demonstrates that 60+ sub-agents coordinated over hours can produce genuinely novel outputs unattainable by single-agent runs. The token scale (31M) confirms multi-agent workflows benefit from the 1M context window and 1-hour prompt cache TTL. The "60 agents × 650 failed ideas → 1 breakthrough" ratio directly informs how to set iteration thresholds in autonomous Workflow loops.
+- **Proposed Changes**:
+  - [ ] Add `https://www.anthropic.com/research/riemann-zeta` to `repos.md` with description "Claude unreleased model: 60-subagent, 31M-token, 36-hour Riemann zeta breakthrough — 41.6%→67.2%; validates multi-agent dispatch scale and loop-until-breakthrough design"
+- **Priority**: High — landmark demonstration of multi-agent orchestration at scale; directly informs Workflow loop design and sub-agent count heuristics
+
+#### Improving Fable 5 Biology Safeguards (missed by Aug 13, 14, 15 scans)
+- **Source**: https://www.anthropic.com/news/improving-fable-5-s-biology-safeguards
+- **Published**: August 7, 2026
+- **Category**: Safety / API
+- **What Changed**: Anthropic reduced Fable 5 biology-related fallbacks by ~85% by rewriting the classifier's "constitution" (the tiered rule set distinguishing benign from dual-use queries), gathering expert feedback, and retraining the classifier. Everyday health, educational, and clinical queries now pass through without triggering the fallback. Dual-use professional biology, virology, toxicology, and molecular design queries continue to be blocked.
+- **Impact on ag3nts**: Relevant to `security-engineer` agent's dual-use knowledge classification — the conceptual model of a tiered "constitution" (a named rule set distinguishing benign from harmful) is directly applicable when updating the security-engineer's threat taxonomy. No direct config change required; awareness item for any ag3nts that invoke Fable 5 on biology topics.
+- **Proposed Changes**:
+  - [ ] Add `https://www.anthropic.com/news/improving-fable-5-s-biology-safeguards` to `repos.md` with description "Fable 5 biology safeguards: 85% fewer fallbacks via classifier constitution rewrite; tiered benign/dual-use/blocked model relevant to security-engineer threat taxonomy"
+- **Priority**: Medium — no config changes required; classifier constitution pattern is a useful mental model for security-engineer threat taxonomy updates
+
+#### Self-Hosted Environments for Claude Code (missed by Aug 13, 14, 15 scans)
+- **Source**: https://claude.com/blog/run-claude-code-sessions-on-your-own-compute
+- **Published**: August 6, 2026
+- **Category**: Tooling / Agent
+- **What Changed**: Claude Code Team and Enterprise plans now support a public beta for self-hosted session runners — sessions can run on the customer's own infrastructure instead of Anthropic's cloud. Two modes: Fixed (persistent runners, sessions round-robin) and On-demand (runners spin up/down with each session). Sessions inside the customer's network access internal services, toolchains, and compliance controls. Repository checkouts, build artifacts, secrets, and files stay on customer-provisioned machines.
+- **Impact on ag3nts**: Distinct from the sandboxing carry-forward item (sandboxing = what tools can do inside a session; self-hosted = where the session runs). For ag3nts: (1) scheduled routines like this scan could run on Rohan's own machine with direct access to the portable SSD; (2) pre-commit hooks that need access to internal dev networks become possible; (3) the `ag3nts/` portable SSD setup is a natural fit for a fixed runner — sessions start next to the codebase and symlinks are already in place. Requires Team or Enterprise plan.
+- **Proposed Changes**:
+  - [ ] Add `https://claude.com/blog/run-claude-code-sessions-on-your-own-compute` to `repos.md` with description "Claude Code self-hosted runners (Team/Enterprise beta): sessions on own infra with internal network access; fixed or on-demand mode; natural fit for ag3nts portable SSD setup"
+  - [ ] Add note to `shared/ag3nts.md` under "Scripted / Automated Runs" section documenting self-hosted runner option as alternative to cloud sessions for workflows requiring local dev network or SSD access
+- **Priority**: High — the ag3nts portable SSD architecture is a direct match for self-hosted fixed runners; enables scheduled routines with local file/network access
+
+---
+
+### Recommendations
+
+Top 3 actions for August 16:
+
+1. **[CRITICAL — TOMORROW — LAST CHANCE] Audit for experimental prompt API usage before August 17** — `grep -r "experimental.*prompt\|generate_prompt\|improve_prompt\|templatize_prompt" ~/.claude/ shared/ .`; any usage must be migrated or removed. **APIs and Workbench shut down TOMORROW.**
+
+2. **[CRITICAL — LIVE — DAY 12] Opus 4.1 errors are NOW live** — `grep -r "claude-opus-4-1" ~/.claude/ shared/`; replace all hits with `claude-opus-5`. Day 12 of live API errors. 16th consecutive scan flagged. No action still logged.
+
+3. **[High] Evaluate self-hosted runner for ag3nts scheduled routines** — review `https://claude.com/blog/run-claude-code-sessions-on-your-own-compute`; determine if Team/Enterprise plan is available; if so, configure a fixed runner pointed at the ag3nts portable SSD to give scheduled agents local file access.
+
+Carry-forward (advancing 1 day from August 15; new items marked NEW; resolved items marked RESOLVED):
+- **[CRITICAL — NOW — LIVE — DAY 12] Opus 4.1 deprecated** — retired August 5; live API errors NOW for 12 days; `grep -r "claude-opus-4-1" ~/.claude/ shared/`; 16 consecutive scans without action
+- **[CRITICAL — NOW — LIVE] Opus 4.7 fast mode REMOVED** — removed July 24; errors live NOW; `grep -r "opus-4-7" ~/.claude/ shared/`; 48 consecutive days without action
+- **[CRITICAL — NOW — LIVE] claude-mythos-preview RETIRED** — retired July 21 (26 days ago); `grep -r "claude-mythos-preview" ~/.claude/ shared/`; errors live NOW
+- **[CRITICAL] Sonnet 5 breaking changes on migrate** — manual extended thinking returns 400; non-default sampling returns 400; audit before any Sonnet 5 migration; 12 days outstanding
+- **[CRITICAL — NOW] agent-memory-2026-07-22 live** — memory list behavior changed July 22; audit pagination + header usage; 25 days old
+- **[CRITICAL — TOMORROW] Experimental Prompt APIs retiring August 17** — `/v1/experimental/generate_prompt` and siblings; grep audit + migrate if found; **DEADLINE TOMORROW**
+- **[High — NEW] Add Riemann Zeta research to repos.md** — https://www.anthropic.com/research/riemann-zeta; 60-subagent, 31M-token multi-agent orchestration at scale; validates loop design; NEW TODAY
+- **[High — NEW] Evaluate self-hosted runners for ag3nts** — https://claude.com/blog/run-claude-code-sessions-on-your-own-compute; Team/Enterprise beta; natural fit for portable SSD setup; NEW TODAY
+- **[High] Add August 2026 Risk Report to repos.md** — https://www-cdn.anthropic.com/f61d49fa5596956a5dec75fea0e973bf6a6a8378/Redacted%20Risk%20Report%20August%202026%20.pdf; note eval saturation concern in reality-checker; 1 day outstanding
+- **[High] Apply multiagent isolation fix to code-reviewer** — https://www.anthropic.com/research/multiagent-systems; ensure parallel specialists write independently; 1 day outstanding
+- **[High] Update security-engineer with Summer 2026 misalignment failure modes** — covert sabotage, transcript mislabeling, human coaching attacks; `alignment.anthropic.com/2026/agentic-misalignment-summer-2026/`; 5 days outstanding
+- **[High] Add cybersecurity eval incidents to repos.md and security-engineer** — https://www.anthropic.com/news/investigating-incidents-cybersecurity-evals; eval-environment escape threat category; 6 days outstanding
+- **[High] Upgrade Sonnet agents to claude-sonnet-5** — code-reviewer, accessibility-auditor, reality-checker, ux-architect, anthropic; after breaking-change audit; no deadline (pricing now permanent); 26 days outstanding
+- **[High] Upgrade Opus agents to claude-opus-5** — software-architect, security-engineer; 22 days outstanding; 22% agentic coding improvement confirmed
+- **[High] Three infrastructure bugs postmortem** — add to repos.md; note quality caveat for Aug 5–late Aug outputs; 11 days outstanding
+- **[High] Harness design for long-running apps** — add to repos.md; note claude-progress.txt pattern in CLAUDE.md; 11 days outstanding
+- **[High] Claude Code sandboxing** — add to repos.md; evaluate sandboxed bash tool; update ag3nts.md Permission Mode; 17 days outstanding
+- **[High] Writing effective tools for AI agents** — add to repos.md; apply eval-driven tool description review; 16 days outstanding
+- **[High] Claude Agent SDK engineering post** — add to repos.md; review against ag3nts harness architecture; 16 days outstanding
+- **[High] AI-discovered cryptographic attacks** — add to repos.md; update security-engineer threat taxonomy; 18 days outstanding
+- **[High] Update Claude Code** — `npm install -g @anthropic-ai/claude-code@latest`; 37 days overdue
+- **[High] Audit Claude Code hook matchers for hyphenated identifiers** — from July 1; 45 days outstanding
+- **[High] Adopt `web_search_20260318` with `response_inclusion`** — carry-forward since June 26; 50 days overdue
+- **[High] WIF adoption** — eliminate long-lived ANTHROPIC_API_KEY; carry-forward since June 26; 50 days
+- **[High] Background agent hook compatibility** — audit pre-commit/pre-PR hooks in background agent context; 13 days outstanding
+- **[Medium — NEW] Add Fable 5 biology safeguards update to repos.md** — https://www.anthropic.com/news/improving-fable-5-s-biology-safeguards; classifier constitution pattern; NEW TODAY
+- **[Medium] Add text watermarking note to ag3nts.md** — all agent outputs watermarked since Aug 2, 2026; https://www.anthropic.com/news/claude-text-watermark; 1 day outstanding
+- **[Medium] Add open-weights models position to repos.md** — https://www.anthropic.com/news/position-open-weights-models; 6 days outstanding
+- **[Medium] Project Glasswing expanded** — add to repos.md; update security-engineer context; 11 days outstanding
+- **[Medium] Managed Agents on AWS confirmed GA** — webhooks + multiagent + self-hosted sandboxes live; add to repos.md; 14 days outstanding
+- **[Medium] Off switch for dual-use knowledge** — add to repos.md; update security-engineer agent; 17 days outstanding
+- **[Medium] CJS Framework (Fable 5 jailbreak severity)** — add to repos.md; update security-engineer with CJS-0 to CJS-4; 45 days overdue
+- **[Medium] Mid-conversation system messages now GA** — evaluate software-architect + security-engineer dispatch; 25 days outstanding
+- **[Medium] Mid-conversation tool changes beta** — evaluate for RepairBoss stage transitions; 20 days outstanding
+
+---
+
 ## Latest Scan: 2026-08-15
 
 ### Summary
