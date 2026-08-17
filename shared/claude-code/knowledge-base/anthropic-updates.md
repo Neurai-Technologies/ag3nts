@@ -1,5 +1,163 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-08-17
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 11
+- Actionable integrations: 5
+
+### Context
+
+Scan window: July 18 – August 17, 2026. Last scan covered through August 16 (Aug 16 entry) and back-filled some missed August items. This scan surfaces all findings from the past 30 days not yet logged, including two major new model releases (Sonnet 5 and Opus 5, both July 24), critical API breaking changes (Opus 4.7 fast mode removed, prompt tools retired today), and several new API capabilities.
+
+**URGENT: Experimental Prompt APIs retired TODAY (August 17).** `/v1/experimental/generate_prompt`, `/v1/experimental/improve_prompt`, and `/v1/experimental/templatize_prompt` are now shut down. Any code calling these returns errors.
+
+---
+
+### Findings
+
+#### Claude Sonnet 5 — New Model Release
+- **Source**: https://www.anthropic.com/news/claude-sonnet-5
+- **Published**: July 24, 2026
+- **Category**: Model
+- **What Changed**: Sonnet 5 delivers near-Opus-class performance at Sonnet pricing. Strong agentic coding, reasoning, tool use improvements over Sonnet 4.6. Available on Claude Platform, AWS, Google Cloud, Microsoft Foundry. Pricing: $2/$10 per MTok (now permanent as of Aug 10; previously planned to increase to $3/$15 on Sep 1 — that increase cancelled). Supports fine-grained thinking effort control.
+- **Impact on ag3nts**: All Sonnet-based agents (`code-reviewer`, `ux-architect`, `reality-checker`, `accessibility-auditor`, `anthropic`) run on Sonnet 4.6. Upgrading to Sonnet 5 gives near-Opus output quality at the same price tier. Highest-value upgrade available.
+- **Proposed Changes**:
+  - [ ] Agent definitions in `~/.claude/agents/`: update `model:` field from `claude-sonnet-4-6` to `claude-sonnet-5` for `code-reviewer`, `ux-architect`, `reality-checker`, `accessibility-auditor`, `anthropic` agents
+  - [ ] `shared/ag3nts.md` — update agent table model column to reflect Sonnet 5; add note that Sonnet 5 ≈ Opus-class quality at Sonnet pricing
+- **Priority**: High — near-Opus quality at same price, straightforward model ID update
+
+---
+
+#### Claude Opus 5 — New Flagship Model Release
+- **Source**: https://www.anthropic.com/news/claude-opus-5 (system card: July 24, 2026)
+- **Published**: July 24, 2026
+- **Category**: Model
+- **What Changed**: Opus 5 is the new flagship Opus model. Monitoring agents can now manage parts of their own memory in production, enabling more autonomous and reliable long-horizon agent runs. Supports mid-conversation tool changes (beta) and mid-conversation system messages.
+- **Impact on ag3nts**: `software-architect` and `security-engineer` agents use Opus. Upgrading to Opus 5 is the highest-capability option. Memory self-management is relevant for the `software-architect` agent's multi-stage REPAIR pipeline.
+- **Proposed Changes**:
+  - [ ] Agent definitions for `software-architect` and `security-engineer` — update `model:` from `claude-opus-4-7` (or `claude-opus-4-6`) to `claude-opus-5`
+  - [ ] `shared/ag3nts.md` — update Opus agent entries in the agent table
+- **Priority**: High — new frontier Opus; straightforward model ID update
+
+---
+
+#### Opus 4.7 Fast Mode Removed — BREAKING CHANGE
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: August 2026
+- **Category**: API / Model
+- **What Changed**: Fast mode has been removed for Claude Opus 4.7. Any API request with `speed: "fast"` targeting Opus 4.7 now returns an error. Migration path: use Claude Opus 5 or Claude Opus 4.8 for fast mode.
+- **Impact on ag3nts**: The current session fallback model is listed as `claude-opus-4-7[1m]`. If any agent definitions, scripts, or API calls reference `claude-opus-4-7` with `speed: "fast"`, they will error. The `[1m]` tag also indicates this is the 1M-context variant — verify it is still a valid model identifier.
+- **Proposed Changes**:
+  - [ ] Audit `~/.claude/agents/` and any Python/TS scripts for `claude-opus-4-7` references with fast mode
+  - [ ] Update fallback model configuration from `claude-opus-4-7` to `claude-opus-5` or `claude-opus-4-8`
+  - [ ] `shared/ag3nts.md` — update any model references if they still reference Opus 4.7
+- **Priority**: Critical — active API errors for any fast-mode Opus 4.7 calls; audit required
+
+---
+
+#### Mid-Conversation Tool Changes — Beta (July 2026)
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: July 1, 2026
+- **Category**: API / Agent
+- **What Changed**: New beta (`mid-conversation-tool-changes-2026-07-01` header) on Fable 5, Mythos 5, Opus 4.8, and Opus 5. Allows adding or removing tools between turns of a conversation while preserving the prompt cache. Previously, any tool list change invalidated the cached prefix, forcing full re-processing.
+- **Impact on ag3nts**: The `code-reviewer` agent dispatches 4 parallel specialists. If the multi-agent flow uses progressive tool exposure (e.g., specialist 1 unlocks tools for specialist 2), this beta eliminates cache invalidation cost. Also relevant for REPAIR pipeline stage transitions where available tools change between stages.
+- **Proposed Changes**:
+  - [ ] `code-reviewer` agent definition — evaluate adopting `mid-conversation-tool-changes-2026-07-01` beta header for multi-specialist dispatch flows that change tool sets between turns
+- **Priority**: Medium — cache efficiency gain for multi-specialist agent flows; evaluate benefit vs. beta risk
+
+---
+
+#### Agent Memory API Update (Stable Ordering Beta)
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: July 22, 2026
+- **Category**: API / Agent
+- **What Changed**: New beta header `agent-memory-2026-07-22` changes `GET /v1/memory_stores/{id}/memories` behavior: results use stable server-defined ordering; `order_by`/`order` params ignored; `depth` accepts only 0, 1, or omitted (other values → 400); `path_prefix` must end with `/` and matches whole path segments. Page cursors issued without the header are not valid with it.
+- **Impact on ag3nts**: If any agent uses the Managed Agents memory API, they must migrate to this header. Relevant primarily to any future `anthropic` or `version` agent enhancements that use memory stores.
+- **Proposed Changes**:
+  - [ ] Audit agent definitions using `memory_stores` API — update to `agent-memory-2026-07-22` header if any exist; note cursor restart requirement
+- **Priority**: Low — only impacts code using memory stores API; no current ag3nts agent is known to use it
+
+---
+
+#### Managed Agents: Hard Spend Budget Cap
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: July 2026
+- **Category**: API / Agent
+- **What Changed**: You can now set a budget (hard spend cap) on Managed Agents sessions. Agents that hit the cap stop cleanly rather than running unbounded.
+- **Impact on ag3nts**: The scheduled `anthropic` scanner agent (this agent) runs daily. Adding a budget cap prevents runaway spend if a scan gets stuck. The `software-architect` agent on Opus 5 during long REPAIR pipelines could also benefit from a cap.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — document budget cap as a recommended parameter for long-running or scheduled agent sessions
+- **Priority**: Medium — cost safety for scheduled/autonomous agent runs
+
+---
+
+#### Text Watermarking (SynthID-Text) — EU AI Act Compliance
+- **Source**: https://www.anthropic.com/news/claude-text-watermark
+- **Published**: August 2026
+- **Category**: Safety / Tooling
+- **What Changed**: Claude now watermarks AI-generated text using the SynthID-Text approach (based on Google DeepMind's Nature paper). Works by subtly influencing word selection at generation time. No extra tokens, no hidden characters, no cost increase. Cannot identify the user or organization. Works better on longer texts. Anthropic signed the EU Code of Practice on Transparency of AI-Generated Content (July 2026) to comply with the EU AI Act.
+- **Impact on ag3nts**: Transparent and automatic — no configuration required. The `anthropic` scanner agent and `code-reviewer` outputs will carry watermarks. Operators can query the watermark to detect Claude-generated content after the fact, which could be useful for audit trails of automated agent outputs.
+- **Proposed Changes**: None required; watermarking is automatic.
+- **Priority**: Low — informational; no config needed; audit trail benefit is passive
+
+---
+
+#### GRAM: Off Switch for Dual-Use Knowledge in AI Models
+- **Source**: https://www.anthropic.com/research/off-switch-dual-use
+- **Published**: July 8, 2026
+- **Category**: Safety / Alignment
+- **What Changed**: Anthropic (with AE Studio) published GRAM (Generalized Removable Activation Modules) — a training technique that gives models dedicated removable compartments for each dual-use knowledge category (virology, chemistry, etc.). After training, specific modules can be deleted, producing 16 different safety configurations from a single training run. Directly removes knowledge rather than refusing to use it.
+- **Impact on ag3nts**: No direct integration; informational for `security-engineer` agent's threat modeling knowledge base. GRAM is a reference for discussions of fine-grained AI safety controls.
+- **Proposed Changes**:
+  - [ ] Add `https://www.anthropic.com/research/off-switch-dual-use` to `repos.md` with description "GRAM: removable activation modules for dual-use knowledge categories — relevant to security-engineer agent threat modeling context"
+- **Priority**: Low — research reference; no ag3nts code changes required
+
+---
+
+#### Claude's Mathematical Capabilities: Riemann Zeta (Note — Already in Aug 16 scan)
+- **Source**: https://www.anthropic.com/research/riemann-zeta
+- **Published**: August 10, 2026
+- **Note**: Already captured in the August 16 scan. Skipping duplicate.
+
+---
+
+#### Experimental Prompt Tools API Retirement — BREAKING TODAY
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: August 17, 2026 (retirement effective today)
+- **Category**: API / Tooling
+- **What Changed**: `/v1/experimental/generate_prompt`, `/v1/experimental/improve_prompt`, and `/v1/experimental/templatize_prompt` are retired as of today, along with the Workbench UI. All calls to these endpoints now return errors.
+- **Impact on ag3nts**: Audit any scripts, hooks, or agent definitions that call these endpoints. Not expected to affect current ag3nts configuration (no agent definitions are known to use the experimental prompt APIs), but confirm.
+- **Proposed Changes**:
+  - [ ] Search `~/.claude/`, `shared/`, and any project scripts for `/v1/experimental/` references; remove or replace with current endpoints
+- **Priority**: Critical — live API errors today; audit required even if no impact expected
+
+---
+
+#### Sonnet 5 Pricing Permanent ($2/$10 MTok)
+- **Source**: https://www.anthropic.com/news/claude-sonnet-5 + pricing announcement
+- **Published**: August 10, 2026
+- **Category**: API / Pricing
+- **What Changed**: Sonnet 5's introductory pricing ($2 input / $10 output per MTok) is now the standard price. The scheduled September 1, 2026 increase to $3/$15 MTok is cancelled.
+- **Impact on ag3nts**: Budget planning for Sonnet-based agents is now stable. The planned cost increase is off the table — Sonnet 5 is cost-stable indefinitely at its current price.
+- **Proposed Changes**: None; informational.
+- **Priority**: Low — no config change; budget planning impact only
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **Upgrade Sonnet agents to Sonnet 5** — Edit `~/.claude/agents/code-reviewer`, `ux-architect`, `reality-checker`, `accessibility-auditor`, `anthropic`: change `model: claude-sonnet-4-6` → `model: claude-sonnet-5`. Near-Opus quality at the same price. Highest ROI change available.
+
+2. **Upgrade Opus agents to Opus 5 + audit Opus 4.7 fast mode** — Edit `~/.claude/agents/software-architect`, `security-engineer`: change Opus model to `claude-opus-5`. Simultaneously audit any `claude-opus-4-7` references for `speed: "fast"` — those calls error now. Also update the session fallback model reference in configuration.
+
+3. **Audit for retired APIs** — Search for `/v1/experimental/` in all scripts and agent definitions (hooks, automation scripts, Bash commands in agent files). Experimental prompt tools APIs are retired as of today.
+
+---
+
 ## Latest Scan: 2026-08-16
 
 ### Summary
