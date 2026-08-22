@@ -1,6 +1,93 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-08-21
+## Latest Scan: 2026-08-22
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 5
+- Actionable integrations: 3
+
+### Context
+
+Scan window: July 23 – August 22, 2026. One day since the Aug 21 scan. New items: Frontier Red Team post on multiagent coordination failures (directly relevant to ag3nts parallel-agent dispatch); engineering postmortem on three response-quality bugs (evaluation gap finding relevant to reality-checker); mid-conversation system messages now stable on Sonnet 5 / Opus 5 (cache-preserving instruction injection for multi-stage pipelines); advisor tool max_tokens; Risk Report August 2026.
+
+---
+
+### Findings
+
+#### Patterns and Problems in Emerging Multiagent Systems
+- **Source**: https://www.anthropic.com/research/multiagent-systems
+- **Published**: August 13, 2026
+- **Category**: Agent / Safety
+- **What Changed**: Frontier Red Team published findings from large-scale multiagent experiments. Key result: "coordination doesn't naturally emerge from stronger intelligence nor alignment at the individual level." Useful multiagent behaviors require (1) environments that exert social pressure and (2) social computing systems redesigned for self-replicating/self-improving actors — both described as open problems in interaction and mechanism design. Vulnerability-detection experiment showed agents can specialize effectively per-codebase, but emergent failures remain hard to predict.
+- **Impact on ag3nts**: Directly relevant to `code-reviewer` 4-specialist parallel dispatch and `security-engineer` REPAIR dispatch. The finding that coordination failures are not solved by stronger individual models validates the `reality-checker` as a necessary gate between parallel specialist outputs and final output. Also validates the pre-commit sequential gate design (LINT → SECURITY → MARKER) over parallel.
+- **Proposed Changes**:
+  - [ ] `~/.claude/agents/reality-checker` — add explicit instruction: "when reviewing parallel-agent outputs, flag coordination failures: conflicting conclusions, missing cross-agent synthesis, one agent silently overriding another"
+  - [ ] `shared/ag3nts.md` — add note in "Auto-Invoke Rules" section: multiagent dispatch (code-reviewer, security-engineer) does not self-coordinate; reality-checker is the required synthesis gate
+- **Priority**: High — peer-reviewed Anthropic finding on the exact failure mode in ag3nts multi-agent dispatch
+
+---
+
+#### A Postmortem of Three Recent Issues
+- **Source**: https://www.anthropic.com/engineering/a-postmortem-of-three-recent-issues
+- **Published**: August 2026
+- **Category**: Tooling / Model
+- **What Changed**: Anthropic engineering published a postmortem on three infrastructure bugs that intermittently degraded Claude's response quality. Key finding: standard evaluations failed to catch the degradation because "Claude often recovers well from isolated mistakes" — the eval set didn't capture compounding or consecutive error patterns. One bug's behavior varied depending on unrelated concurrent operations (heisenbugs).
+- **Impact on ag3nts**: The `reality-checker` agent's "defaults to NEEDS WORK" posture is validated, but needs stronger guidance to not just evaluate isolated outputs — it should look for inconsistency patterns across a run (e.g. code-reviewer Stage 1 output vs Stage 3 output contradictions). The pre-commit marker hash mechanism is also directly relevant: it guards against exactly the kind of intermittent/heisenbug regression described.
+- **Proposed Changes**:
+  - [ ] `~/.claude/agents/reality-checker` — add instruction: "evaluate consistency across all prior agent outputs in this session, not just the final output; flag if earlier and later outputs contradict each other"
+  - [ ] `shared/ag3nts.md` — add note that pre-commit marker hash (SHA of staged diff) protects against heisenbug-class regressions where the same prompt passes on retry
+- **Priority**: Medium — directly informs reality-checker design and pre-commit gate rationale
+
+---
+
+#### Mid-Conversation System Messages (Stable)
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: August 2026
+- **Category**: API
+- **What Changed**: Mid-conversation system messages are now stable (no beta header required) on Claude Fable 5, Mythos 5, Opus 4.8, Opus 5, and Sonnet 5. Usage: append `{"role": "system"}` to the `messages` array instead of editing the top-level `system` field. The cached system prefix remains unchanged, preserving prompt cache hits while injecting new stage-specific instructions mid-run.
+- **Impact on ag3nts**: The REPAIR pipeline's multi-stage flow (Stage 4 threat model → Stage 6 OWASP audit) currently requires rebuilding the full system prompt per stage or losing cache. Mid-conversation system messages allow stage instructions to be injected without breaking the cached prefix, reducing per-stage cost by ~85% on repeated runs.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — add note under "REPAIR pipeline modes": "Stage instructions can be injected as mid-conversation system messages on Sonnet 5 / Opus 5 to preserve prompt cache across stages"
+  - [ ] Consider updating REPAIR orchestration prompt to demonstrate the pattern
+- **Priority**: Medium — meaningful cost reduction on multi-stage pipelines; models already upgraded to Sonnet 5 / Opus 5 (pending from Aug 17 scan) are eligible
+
+---
+
+#### Advisor Tool max_tokens Parameter
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: August 2026
+- **Category**: API
+- **What Changed**: The advisor tool now supports `tools[].max_tokens` to cap the advisor model's output per call. Reduces latency and output token cost for workloads that don't need full-length advisor responses.
+- **Impact on ag3nts**: Low. Relevant only if ag3nts agents use the advisor tool directly. No current agent definitions reference advisor tool use.
+- **Proposed Changes**: None required.
+- **Priority**: Low — informational
+
+---
+
+#### Risk Report: August 2026
+- **Source**: https://www-cdn.anthropic.com/f61d49fa5596956a5dec75fea0e973bf6a6a8378/Redacted%20Risk%20Report%20August%202026%20.pdf
+- **Published**: August 2026
+- **Category**: Safety
+- **What Changed**: Anthropic published the August 2026 Risk Report (redacted public version). Contains Anthropic's current assessment of frontier AI risks, safety posture, and mitigation measures.
+- **Impact on ag3nts**: Informational input for `security-engineer` threat modeling context. No direct workflow impact.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add entry for the risk report URL as a reference for security-engineer agent
+- **Priority**: Low — informational
+
+---
+
+### Recommendations
+
+1. **Update `reality-checker` agent for coordination failure detection** — add instructions to (a) flag coordination failures in parallel-agent outputs, and (b) evaluate consistency across all prior agent outputs in a session (multiagent coordination paper + postmortem findings both point here).
+
+2. **Document mid-conversation system messages in REPAIR pipeline** — update `shared/ag3nts.md` Stage 4/6 notes. Once Sonnet 5 / Opus 5 model upgrades are applied (pending from Aug 17 scan), REPAIR stages can use cache-preserving system injection to cut token costs.
+
+3. **Carry forward from Aug 21**: hook script injection audit and reward-hacking detection in reality-checker remain open. Model upgrades (all Sonnet agents → Sonnet 5, Opus agents → Opus 5) remain the highest-ROI pending changes from Aug 17.
+
+---
+
+## Previous Scan: 2026-08-21
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
