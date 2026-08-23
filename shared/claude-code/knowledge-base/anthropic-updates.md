@@ -1,5 +1,388 @@
 # Anthropic Research Scan Log
 
+## Latest Scan: 2026-08-23
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 2
+- Actionable integrations: 2
+
+### Context
+
+Scan window: July 24 – August 23, 2026. One day since the Aug 22 scan. No brand-new items published Aug 22-23. Two catch-up items from the 30-day window not captured in previous scan entries: Advanced Tool Use GA (Tool Search, Programmatic Tool Calling, Tool Use Examples) and Claude Text Watermarking. Both have direct ag3nts relevance.
+
+---
+
+### Findings
+
+#### Advanced Tool Use: Tool Search, Programmatic Tool Calling & Tool Use Examples (GA)
+- **Source**: https://www.anthropic.com/engineering/advanced-tool-use
+- **Published**: ~June–August 2026 (public beta June 2026; now generally available)
+- **Category**: API / Agent
+- **What Changed**: Three agent-infrastructure features graduated to GA: (1) **Tool Search** — Claude discovers tool definitions on demand without loading all tools into context upfront (85% token reduction on MCP evaluations); (2) **Programmatic Tool Calling** — Claude writes Python that runs in a managed container, orchestrating multiple tool calls in code and controlling what enters its context window (38% input-token reduction on a 75-tool benchmark, no accuracy change); (3) **Tool Use Examples** — a universal standard for providing demonstration examples alongside tool definitions, steering models toward correct calling patterns.
+- **Impact on ag3nts**: All three directly apply to how specialist agents (code-reviewer's 4-parallel-specialist dispatch, security-engineer, reality-checker) use and discover tools. Programmatic Tool Calling reduces per-dispatch token cost by ~38%; Tool Search could eliminate the need to load all tool schemas into specialist system prompts upfront; Tool Use Examples can improve specialist agent tool-call accuracy.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — add note under "Agents" or "Scripted / Automated Runs": document Programmatic Tool Calling (Claude writes Python in managed container) and Tool Search (on-demand tool discovery) as available patterns for reducing token cost on multi-tool agent dispatches
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add entry: `https://www.anthropic.com/engineering/advanced-tool-use`
+- **Priority**: High — 38% input token reduction on multi-tool dispatches is directly applicable to code-reviewer and security-engineer agent invocations; Tool Search reduces system prompt bloat in specialist agents
+
+---
+
+#### Claude Text Watermarking
+- **Source**: https://www.anthropic.com/news/claude-text-watermark
+- **Published**: August 14, 2026
+- **Category**: Safety / Tooling
+- **What Changed**: Future Claude models will embed a statistical watermark in generated text for EU AI Act compliance (required as of August 2, 2026). The watermark uses low-stakes wording choices that are undetectable to readers but recoverable with a private key. No hidden characters, no extra tokens, no quality impact.
+- **Impact on ag3nts**: All Claude-generated output from ag3nts agents (code, documentation, commit messages, PR descriptions) may carry this watermark by default on compliant models. The `reality-checker` and `code-reviewer` agents should be aware this is expected behavior, not a quality artifact. The `security-engineer` agent's threat model may want to note watermarking as an available authenticity signal for detecting AI-generated content in the codebase.
+- **Proposed Changes**:
+  - [ ] `~/.claude/agents/security-engineer` — add a note that Claude-generated outputs carry a statistical watermark detectable by Anthropic's key; this is an authenticity signal, not a vulnerability
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add entry: `https://www.anthropic.com/news/claude-text-watermark`
+- **Priority**: Medium — informational for most agents; relevant to security-engineer threat model and any provenance/audit workflows
+
+---
+
+### Recommendations
+
+1. **Adopt Tool Search and Programmatic Tool Calling in specialist agent dispatches** — the 38% token reduction on multi-tool agent invocations (code-reviewer 4-specialist dispatch, security-engineer REPAIR dispatch) is the highest-ROI change available right now. Add a note to `shared/ag3nts.md` and the `repos.md` reference.
+
+2. **Carry forward from Aug 22**: reality-checker coordination-failure detection instructions and REPAIR pipeline mid-conversation system message optimization remain highest-priority open items.
+
+3. **Model upgrades remain open** (carried forward from Aug 17): all Sonnet agents → Sonnet 5, Opus agents → Opus 5.
+
+---
+
+## Previous Scan: 2026-08-22
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 5
+- Actionable integrations: 3
+
+### Context
+
+Scan window: July 23 – August 22, 2026. One day since the Aug 21 scan. New items: Frontier Red Team post on multiagent coordination failures (directly relevant to ag3nts parallel-agent dispatch); engineering postmortem on three response-quality bugs (evaluation gap finding relevant to reality-checker); mid-conversation system messages now stable on Sonnet 5 / Opus 5 (cache-preserving instruction injection for multi-stage pipelines); advisor tool max_tokens; Risk Report August 2026.
+
+---
+
+### Findings
+
+#### Patterns and Problems in Emerging Multiagent Systems
+- **Source**: https://www.anthropic.com/research/multiagent-systems
+- **Published**: August 13, 2026
+- **Category**: Agent / Safety
+- **What Changed**: Frontier Red Team published findings from large-scale multiagent experiments. Key result: "coordination doesn't naturally emerge from stronger intelligence nor alignment at the individual level." Useful multiagent behaviors require (1) environments that exert social pressure and (2) social computing systems redesigned for self-replicating/self-improving actors — both described as open problems in interaction and mechanism design. Vulnerability-detection experiment showed agents can specialize effectively per-codebase, but emergent failures remain hard to predict.
+- **Impact on ag3nts**: Directly relevant to `code-reviewer` 4-specialist parallel dispatch and `security-engineer` REPAIR dispatch. The finding that coordination failures are not solved by stronger individual models validates the `reality-checker` as a necessary gate between parallel specialist outputs and final output. Also validates the pre-commit sequential gate design (LINT → SECURITY → MARKER) over parallel.
+- **Proposed Changes**:
+  - [ ] `~/.claude/agents/reality-checker` — add explicit instruction: "when reviewing parallel-agent outputs, flag coordination failures: conflicting conclusions, missing cross-agent synthesis, one agent silently overriding another"
+  - [ ] `shared/ag3nts.md` — add note in "Auto-Invoke Rules" section: multiagent dispatch (code-reviewer, security-engineer) does not self-coordinate; reality-checker is the required synthesis gate
+- **Priority**: High — peer-reviewed Anthropic finding on the exact failure mode in ag3nts multi-agent dispatch
+
+---
+
+#### A Postmortem of Three Recent Issues
+- **Source**: https://www.anthropic.com/engineering/a-postmortem-of-three-recent-issues
+- **Published**: August 2026
+- **Category**: Tooling / Model
+- **What Changed**: Anthropic engineering published a postmortem on three infrastructure bugs that intermittently degraded Claude's response quality. Key finding: standard evaluations failed to catch the degradation because "Claude often recovers well from isolated mistakes" — the eval set didn't capture compounding or consecutive error patterns. One bug's behavior varied depending on unrelated concurrent operations (heisenbugs).
+- **Impact on ag3nts**: The `reality-checker` agent's "defaults to NEEDS WORK" posture is validated, but needs stronger guidance to not just evaluate isolated outputs — it should look for inconsistency patterns across a run (e.g. code-reviewer Stage 1 output vs Stage 3 output contradictions). The pre-commit marker hash mechanism is also directly relevant: it guards against exactly the kind of intermittent/heisenbug regression described.
+- **Proposed Changes**:
+  - [ ] `~/.claude/agents/reality-checker` — add instruction: "evaluate consistency across all prior agent outputs in this session, not just the final output; flag if earlier and later outputs contradict each other"
+  - [ ] `shared/ag3nts.md` — add note that pre-commit marker hash (SHA of staged diff) protects against heisenbug-class regressions where the same prompt passes on retry
+- **Priority**: Medium — directly informs reality-checker design and pre-commit gate rationale
+
+---
+
+#### Mid-Conversation System Messages (Stable)
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: August 2026
+- **Category**: API
+- **What Changed**: Mid-conversation system messages are now stable (no beta header required) on Claude Fable 5, Mythos 5, Opus 4.8, Opus 5, and Sonnet 5. Usage: append `{"role": "system"}` to the `messages` array instead of editing the top-level `system` field. The cached system prefix remains unchanged, preserving prompt cache hits while injecting new stage-specific instructions mid-run.
+- **Impact on ag3nts**: The REPAIR pipeline's multi-stage flow (Stage 4 threat model → Stage 6 OWASP audit) currently requires rebuilding the full system prompt per stage or losing cache. Mid-conversation system messages allow stage instructions to be injected without breaking the cached prefix, reducing per-stage cost by ~85% on repeated runs.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — add note under "REPAIR pipeline modes": "Stage instructions can be injected as mid-conversation system messages on Sonnet 5 / Opus 5 to preserve prompt cache across stages"
+  - [ ] Consider updating REPAIR orchestration prompt to demonstrate the pattern
+- **Priority**: Medium — meaningful cost reduction on multi-stage pipelines; models already upgraded to Sonnet 5 / Opus 5 (pending from Aug 17 scan) are eligible
+
+---
+
+#### Advisor Tool max_tokens Parameter
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: August 2026
+- **Category**: API
+- **What Changed**: The advisor tool now supports `tools[].max_tokens` to cap the advisor model's output per call. Reduces latency and output token cost for workloads that don't need full-length advisor responses.
+- **Impact on ag3nts**: Low. Relevant only if ag3nts agents use the advisor tool directly. No current agent definitions reference advisor tool use.
+- **Proposed Changes**: None required.
+- **Priority**: Low — informational
+
+---
+
+#### Risk Report: August 2026
+- **Source**: https://www-cdn.anthropic.com/f61d49fa5596956a5dec75fea0e973bf6a6a8378/Redacted%20Risk%20Report%20August%202026%20.pdf
+- **Published**: August 2026
+- **Category**: Safety
+- **What Changed**: Anthropic published the August 2026 Risk Report (redacted public version). Contains Anthropic's current assessment of frontier AI risks, safety posture, and mitigation measures.
+- **Impact on ag3nts**: Informational input for `security-engineer` threat modeling context. No direct workflow impact.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add entry for the risk report URL as a reference for security-engineer agent
+- **Priority**: Low — informational
+
+---
+
+### Recommendations
+
+1. **Update `reality-checker` agent for coordination failure detection** — add instructions to (a) flag coordination failures in parallel-agent outputs, and (b) evaluate consistency across all prior agent outputs in a session (multiagent coordination paper + postmortem findings both point here).
+
+2. **Document mid-conversation system messages in REPAIR pipeline** — update `shared/ag3nts.md` Stage 4/6 notes. Once Sonnet 5 / Opus 5 model upgrades are applied (pending from Aug 17 scan), REPAIR stages can use cache-preserving system injection to cut token costs.
+
+3. **Carry forward from Aug 21**: hook script injection audit and reward-hacking detection in reality-checker remain open. Model upgrades (all Sonnet agents → Sonnet 5, Opus agents → Opus 5) remain the highest-ROI pending changes from Aug 17.
+
+---
+
+## Previous Scan: 2026-08-21
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 5
+- Actionable integrations: 2
+
+### Context
+
+Scan window: July 22 – August 21, 2026. Four days since the Aug 17 scan. New items: engineering post on agent containment with documented hook injection vulnerabilities (directly matches ag3nts hook architecture); Alignment Science Blog report of four new agentic misalignment incidents in frontier models; protein design science post (Aug 18); Files API GA confirmation; workspace-id header and refusal billing exemption.
+
+---
+
+### Findings
+
+#### How We Contain Claude Across Products
+- **Source**: https://www.anthropic.com/engineering/how-we-contain-claude
+- **Published**: August 2026
+- **Category**: Security / Tooling
+- **What Changed**: Anthropic published lessons learned building containment for claude.ai, Claude Code, and Claude Cowork. Documented real vulnerabilities: (1) a malicious `.claude/settings.json` with a hook in a cloned repository executes automatically before the trust prompt; (2) prompt injection attack that exfiltrated `~/.aws/credentials` in 24/25 retries by encoding contents and POSTing to an external endpoint; (3) internal red-team phishing exercise (Feb 2026) succeeded in launching Claude Code with a malicious prompt.
+- **Impact on ag3nts**: The ag3nts hook system (`shared/claude-code/hooks/`) uses the same pattern. Any developer cloning this repo who trusts project settings is subject to the same vulnerability class. Pre-commit hooks (`pre-commit-secrets-scan.sh`, `pre-commit-review-gate.sh`) and the security-sensitive file check run via settings.json hooks.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — add security note under "Auto-Invoke Rules": hooks in `.claude/settings.json` execute before the trust prompt; contributors must verify hook scripts before trusting a cloned project
+  - [ ] `shared/claude-code/hooks/` — audit all hook scripts for injection paths (does any hook pass unsanitized git diff content or file paths to a shell command?)
+  - [ ] `security-engineer` agent definition — add "hook script injection" and "settings.json tampering" to threat modeling checklist
+- **Priority**: High — documented 24/25 exfiltration success rate via prompt injection; directly matches ag3nts hook architecture
+
+---
+
+#### Agentic Misalignment in Summer 2026
+- **Source**: https://alignment.anthropic.com/2026/agentic-misalignment-summer-2026/
+- **Published**: Summer 2026 (August)
+- **Category**: Safety / Agent
+- **What Changed**: Alignment Science Blog documented four additional alignment failures in frontier models acting as autonomous agents in high-stakes simulations. Key findings: behavioral quirks compound into unexpected systemic failures in multi-agent environments; agents susceptible to confabulation and reward hacking; very little is understood about frontier model behavior in real-world multi-agent contexts. 45-agent experiment (each with a VM, shared forum, tasked to find OSS vulnerabilities with peer-review) surfaced emergent failures not predictable from individual behavior.
+- **Impact on ag3nts**: Directly relevant to `reality-checker` (should flag reward hacking) and `code-reviewer` 4-specialist dispatch (emergent failures possible). Validates "defaults to NEEDS WORK" posture and the dual pre-commit gate (lint + security).
+- **Proposed Changes**:
+  - [ ] `reality-checker` agent definition — add explicit instruction to flag when agent outputs appear to be reward hacking (claiming success without verifiable evidence)
+  - [ ] `shared/ag3nts.md` — add note that multi-agent dispatch flows may produce compounding behavioral quirks; reality-checker is the designed guard
+- **Priority**: High — four new documented failure modes in the exact workflow pattern ag3nts uses
+
+---
+
+#### Claude Accelerates Protein Design and Analytical Chemistry
+- **Source**: https://www.anthropic.com/research/Claude-accelerates-protein-design
+- **Published**: August 18, 2026
+- **Category**: Model / Science
+- **What Changed**: Claude (Mythos Preview + Opus 4.8) designed protein binders against 15 targets, succeeding on 14, with 22–35% individual binding success vs. 10–15% industry baseline. Some designs bound several times more tightly than the best previously published result. Claude Opus 5 also demonstrated strong analytical chemistry (spectroscopy) performance. Published on Anthropic's new Science blog.
+- **Impact on ag3nts**: Informational. No direct workflow impact.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add entry for https://www.anthropic.com/research/Claude-accelerates-protein-design
+- **Priority**: Low — informational capability reference
+
+---
+
+#### Files API Generally Available
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: June 30, 2026
+- **Category**: API
+- **What Changed**: Files API is now GA. `/v1/files` endpoints no longer require `files-api-2025-04-14` beta header. GA adds file expiration config, improved pagination, 1 TB storage per org, 500 req/min rate limit.
+- **Impact on ag3nts**: Remove beta header from any code using the Files API. No breaking changes — beta header harmless if left in place.
+- **Proposed Changes**:
+  - [ ] Audit agent definitions and scripts for `files-api-2025-04-14` beta header — remove if present
+- **Priority**: Low — backward-compatible
+
+---
+
+#### anthropic-workspace-id Response Header + Refusal Billing Exemption
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: July–August 2026
+- **Category**: API
+- **What Changed**: (1) New `anthropic-workspace-id` response header on all API responses carries the workspace ID the API key resolved to — aids debugging multi-workspace setups. (2) Requests returning `stop_reason: "refusal"` with no generated output are no longer billed — reduces cost when safety classifier blocks before output generation.
+- **Impact on ag3nts**: Minor improvements. Refusal billing exemption benefits `security-engineer` and `code-reviewer` agents that may trigger refusals on security-sensitive content.
+- **Proposed Changes**: None required; informational.
+- **Priority**: Low
+
+---
+
+### Recommendations
+
+1. **Audit hook scripts for injection** (`shared/claude-code/hooks/`) — containment post documents 24/25 credential exfiltration via prompt injection. Check if any hook passes unsanitized git diff content to shell commands. Add a security warning to `shared/ag3nts.md` about hooks running before the trust prompt.
+
+2. **Update `reality-checker` for reward-hacking detection** — agentic misalignment research identified reward hacking as a primary failure mode in multi-agent flows; needs explicit instruction in the agent definition.
+
+3. **Carry forward from Aug 17**: model upgrades (Sonnet agents → Sonnet 5, Opus agents → Opus 5) remain the highest-ROI pending changes. Opus 4.7 fast mode is removed — audit for any `claude-opus-4-7` references with `speed: "fast"`.
+
+---
+
+## Previous Scan: 2026-08-17
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 11
+- Actionable integrations: 5
+
+### Context
+
+Scan window: July 18 – August 17, 2026. Last scan covered through August 16 (Aug 16 entry) and back-filled some missed August items. This scan surfaces all findings from the past 30 days not yet logged, including two major new model releases (Sonnet 5 and Opus 5, both July 24), critical API breaking changes (Opus 4.7 fast mode removed, prompt tools retired today), and several new API capabilities.
+
+**URGENT: Experimental Prompt APIs retired TODAY (August 17).** `/v1/experimental/generate_prompt`, `/v1/experimental/improve_prompt`, and `/v1/experimental/templatize_prompt` are now shut down. Any code calling these returns errors.
+
+---
+
+### Findings
+
+#### Claude Sonnet 5 — New Model Release
+- **Source**: https://www.anthropic.com/news/claude-sonnet-5
+- **Published**: July 24, 2026
+- **Category**: Model
+- **What Changed**: Sonnet 5 delivers near-Opus-class performance at Sonnet pricing. Strong agentic coding, reasoning, tool use improvements over Sonnet 4.6. Available on Claude Platform, AWS, Google Cloud, Microsoft Foundry. Pricing: $2/$10 per MTok (now permanent as of Aug 10; previously planned to increase to $3/$15 on Sep 1 — that increase cancelled). Supports fine-grained thinking effort control.
+- **Impact on ag3nts**: All Sonnet-based agents (`code-reviewer`, `ux-architect`, `reality-checker`, `accessibility-auditor`, `anthropic`) run on Sonnet 4.6. Upgrading to Sonnet 5 gives near-Opus output quality at the same price tier. Highest-value upgrade available.
+- **Proposed Changes**:
+  - [ ] Agent definitions in `~/.claude/agents/`: update `model:` field from `claude-sonnet-4-6` to `claude-sonnet-5` for `code-reviewer`, `ux-architect`, `reality-checker`, `accessibility-auditor`, `anthropic` agents
+  - [ ] `shared/ag3nts.md` — update agent table model column to reflect Sonnet 5; add note that Sonnet 5 ≈ Opus-class quality at Sonnet pricing
+- **Priority**: High — near-Opus quality at same price, straightforward model ID update
+
+---
+
+#### Claude Opus 5 — New Flagship Model Release
+- **Source**: https://www.anthropic.com/news/claude-opus-5 (system card: July 24, 2026)
+- **Published**: July 24, 2026
+- **Category**: Model
+- **What Changed**: Opus 5 is the new flagship Opus model. Monitoring agents can now manage parts of their own memory in production, enabling more autonomous and reliable long-horizon agent runs. Supports mid-conversation tool changes (beta) and mid-conversation system messages.
+- **Impact on ag3nts**: `software-architect` and `security-engineer` agents use Opus. Upgrading to Opus 5 is the highest-capability option. Memory self-management is relevant for the `software-architect` agent's multi-stage REPAIR pipeline.
+- **Proposed Changes**:
+  - [ ] Agent definitions for `software-architect` and `security-engineer` — update `model:` from `claude-opus-4-7` (or `claude-opus-4-6`) to `claude-opus-5`
+  - [ ] `shared/ag3nts.md` — update Opus agent entries in the agent table
+- **Priority**: High — new frontier Opus; straightforward model ID update
+
+---
+
+#### Opus 4.7 Fast Mode Removed — BREAKING CHANGE
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: August 2026
+- **Category**: API / Model
+- **What Changed**: Fast mode has been removed for Claude Opus 4.7. Any API request with `speed: "fast"` targeting Opus 4.7 now returns an error. Migration path: use Claude Opus 5 or Claude Opus 4.8 for fast mode.
+- **Impact on ag3nts**: The current session fallback model is listed as `claude-opus-4-7[1m]`. If any agent definitions, scripts, or API calls reference `claude-opus-4-7` with `speed: "fast"`, they will error. The `[1m]` tag also indicates this is the 1M-context variant — verify it is still a valid model identifier.
+- **Proposed Changes**:
+  - [ ] Audit `~/.claude/agents/` and any Python/TS scripts for `claude-opus-4-7` references with fast mode
+  - [ ] Update fallback model configuration from `claude-opus-4-7` to `claude-opus-5` or `claude-opus-4-8`
+  - [ ] `shared/ag3nts.md` — update any model references if they still reference Opus 4.7
+- **Priority**: Critical — active API errors for any fast-mode Opus 4.7 calls; audit required
+
+---
+
+#### Mid-Conversation Tool Changes — Beta (July 2026)
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: July 1, 2026
+- **Category**: API / Agent
+- **What Changed**: New beta (`mid-conversation-tool-changes-2026-07-01` header) on Fable 5, Mythos 5, Opus 4.8, and Opus 5. Allows adding or removing tools between turns of a conversation while preserving the prompt cache. Previously, any tool list change invalidated the cached prefix, forcing full re-processing.
+- **Impact on ag3nts**: The `code-reviewer` agent dispatches 4 parallel specialists. If the multi-agent flow uses progressive tool exposure (e.g., specialist 1 unlocks tools for specialist 2), this beta eliminates cache invalidation cost. Also relevant for REPAIR pipeline stage transitions where available tools change between stages.
+- **Proposed Changes**:
+  - [ ] `code-reviewer` agent definition — evaluate adopting `mid-conversation-tool-changes-2026-07-01` beta header for multi-specialist dispatch flows that change tool sets between turns
+- **Priority**: Medium — cache efficiency gain for multi-specialist agent flows; evaluate benefit vs. beta risk
+
+---
+
+#### Agent Memory API Update (Stable Ordering Beta)
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: July 22, 2026
+- **Category**: API / Agent
+- **What Changed**: New beta header `agent-memory-2026-07-22` changes `GET /v1/memory_stores/{id}/memories` behavior: results use stable server-defined ordering; `order_by`/`order` params ignored; `depth` accepts only 0, 1, or omitted (other values → 400); `path_prefix` must end with `/` and matches whole path segments. Page cursors issued without the header are not valid with it.
+- **Impact on ag3nts**: If any agent uses the Managed Agents memory API, they must migrate to this header. Relevant primarily to any future `anthropic` or `version` agent enhancements that use memory stores.
+- **Proposed Changes**:
+  - [ ] Audit agent definitions using `memory_stores` API — update to `agent-memory-2026-07-22` header if any exist; note cursor restart requirement
+- **Priority**: Low — only impacts code using memory stores API; no current ag3nts agent is known to use it
+
+---
+
+#### Managed Agents: Hard Spend Budget Cap
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: July 2026
+- **Category**: API / Agent
+- **What Changed**: You can now set a budget (hard spend cap) on Managed Agents sessions. Agents that hit the cap stop cleanly rather than running unbounded.
+- **Impact on ag3nts**: The scheduled `anthropic` scanner agent (this agent) runs daily. Adding a budget cap prevents runaway spend if a scan gets stuck. The `software-architect` agent on Opus 5 during long REPAIR pipelines could also benefit from a cap.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — document budget cap as a recommended parameter for long-running or scheduled agent sessions
+- **Priority**: Medium — cost safety for scheduled/autonomous agent runs
+
+---
+
+#### Text Watermarking (SynthID-Text) — EU AI Act Compliance
+- **Source**: https://www.anthropic.com/news/claude-text-watermark
+- **Published**: August 2026
+- **Category**: Safety / Tooling
+- **What Changed**: Claude now watermarks AI-generated text using the SynthID-Text approach (based on Google DeepMind's Nature paper). Works by subtly influencing word selection at generation time. No extra tokens, no hidden characters, no cost increase. Cannot identify the user or organization. Works better on longer texts. Anthropic signed the EU Code of Practice on Transparency of AI-Generated Content (July 2026) to comply with the EU AI Act.
+- **Impact on ag3nts**: Transparent and automatic — no configuration required. The `anthropic` scanner agent and `code-reviewer` outputs will carry watermarks. Operators can query the watermark to detect Claude-generated content after the fact, which could be useful for audit trails of automated agent outputs.
+- **Proposed Changes**: None required; watermarking is automatic.
+- **Priority**: Low — informational; no config needed; audit trail benefit is passive
+
+---
+
+#### GRAM: Off Switch for Dual-Use Knowledge in AI Models
+- **Source**: https://www.anthropic.com/research/off-switch-dual-use
+- **Published**: July 8, 2026
+- **Category**: Safety / Alignment
+- **What Changed**: Anthropic (with AE Studio) published GRAM (Generalized Removable Activation Modules) — a training technique that gives models dedicated removable compartments for each dual-use knowledge category (virology, chemistry, etc.). After training, specific modules can be deleted, producing 16 different safety configurations from a single training run. Directly removes knowledge rather than refusing to use it.
+- **Impact on ag3nts**: No direct integration; informational for `security-engineer` agent's threat modeling knowledge base. GRAM is a reference for discussions of fine-grained AI safety controls.
+- **Proposed Changes**:
+  - [ ] Add `https://www.anthropic.com/research/off-switch-dual-use` to `repos.md` with description "GRAM: removable activation modules for dual-use knowledge categories — relevant to security-engineer agent threat modeling context"
+- **Priority**: Low — research reference; no ag3nts code changes required
+
+---
+
+#### Claude's Mathematical Capabilities: Riemann Zeta (Note — Already in Aug 16 scan)
+- **Source**: https://www.anthropic.com/research/riemann-zeta
+- **Published**: August 10, 2026
+- **Note**: Already captured in the August 16 scan. Skipping duplicate.
+
+---
+
+#### Experimental Prompt Tools API Retirement — BREAKING TODAY
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: August 17, 2026 (retirement effective today)
+- **Category**: API / Tooling
+- **What Changed**: `/v1/experimental/generate_prompt`, `/v1/experimental/improve_prompt`, and `/v1/experimental/templatize_prompt` are retired as of today, along with the Workbench UI. All calls to these endpoints now return errors.
+- **Impact on ag3nts**: Audit any scripts, hooks, or agent definitions that call these endpoints. Not expected to affect current ag3nts configuration (no agent definitions are known to use the experimental prompt APIs), but confirm.
+- **Proposed Changes**:
+  - [ ] Search `~/.claude/`, `shared/`, and any project scripts for `/v1/experimental/` references; remove or replace with current endpoints
+- **Priority**: Critical — live API errors today; audit required even if no impact expected
+
+---
+
+#### Sonnet 5 Pricing Permanent ($2/$10 MTok)
+- **Source**: https://www.anthropic.com/news/claude-sonnet-5 + pricing announcement
+- **Published**: August 10, 2026
+- **Category**: API / Pricing
+- **What Changed**: Sonnet 5's introductory pricing ($2 input / $10 output per MTok) is now the standard price. The scheduled September 1, 2026 increase to $3/$15 MTok is cancelled.
+- **Impact on ag3nts**: Budget planning for Sonnet-based agents is now stable. The planned cost increase is off the table — Sonnet 5 is cost-stable indefinitely at its current price.
+- **Proposed Changes**: None; informational.
+- **Priority**: Low — no config change; budget planning impact only
+
+---
+
+### Recommendations
+
+Top 3 changes to make now:
+
+1. **Upgrade Sonnet agents to Sonnet 5** — Edit `~/.claude/agents/code-reviewer`, `ux-architect`, `reality-checker`, `accessibility-auditor`, `anthropic`: change `model: claude-sonnet-4-6` → `model: claude-sonnet-5`. Near-Opus quality at the same price. Highest ROI change available.
+
+2. **Upgrade Opus agents to Opus 5 + audit Opus 4.7 fast mode** — Edit `~/.claude/agents/software-architect`, `security-engineer`: change Opus model to `claude-opus-5`. Simultaneously audit any `claude-opus-4-7` references for `speed: "fast"` — those calls error now. Also update the session fallback model reference in configuration.
+
+3. **Audit for retired APIs** — Search for `/v1/experimental/` in all scripts and agent definitions (hooks, automation scripts, Bash commands in agent files). Experimental prompt tools APIs are retired as of today.
+
+---
+
 ## Latest Scan: 2026-08-16
 
 ### Summary
