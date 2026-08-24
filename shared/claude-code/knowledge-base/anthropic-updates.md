@@ -1,6 +1,37 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-08-23
+## Latest Scan: 2026-08-24
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 0
+- Actionable integrations: 0
+
+### Context
+
+Scan window: July 25 – August 24, 2026. One day since the Aug 23 scan. Full sweep of all four Anthropic channels confirmed no new posts dated August 23–24. Research blog last post: Aug 2026 (Worker Retraining Programs Aug 12, Global Workspace July 6). News last post: Aug 14 (Claude Text Watermarking). Engineering last post: April 23 postmortem. API release notes last entry: Aug 17 (prompt tools retirement). No new items found outside those already logged in prior scan entries.
+
+**Status on unresolved critical items:** Opus 4.1 (`claude-opus-4-1-20250805`) retired August 5 — DAY 19 of live API errors, 17th consecutive scan with no action logged. `claude-mythos-preview` retired July 21 — DAY 34 of live API errors, 17th consecutive scan with no action logged.
+
+---
+
+### Findings
+
+No new findings.
+
+---
+
+### Recommendations
+
+1. **[CRITICAL — LIVE — DAY 19] Fix Opus 4.1 errors now** — `grep -r "claude-opus-4-1" ~/.claude/ shared/`; replace all hits with `claude-opus-5`. Every API call to this model has been failing since August 5. 17th consecutive scan flagged. No action still logged.
+
+2. **[CRITICAL — LIVE — DAY 34] Fix claude-mythos-preview errors now** — `grep -r "claude-mythos-preview" ~/.claude/ shared/`; replace with `claude-mythos-5` or remove if agent is obsolete. Retired July 21; live errors for 34 days. 17th consecutive scan flagged.
+
+3. **[High] Upgrade Sonnet agents to Sonnet 5** — `code-reviewer`, `ux-architect`, `reality-checker`, `accessibility-auditor`, `anthropic` agents: `model: claude-sonnet-4-6` → `model: claude-sonnet-5`. Near-Opus quality at same price. Carried forward from Aug 17.
+
+---
+
+## Previous Scan: 2026-08-23
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
