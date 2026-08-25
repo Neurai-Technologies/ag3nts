@@ -1,6 +1,101 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-08-24
+## Latest Scan: 2026-08-25
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 5
+- Actionable integrations: 4
+
+### Context
+
+Scan window: July 26 – August 25, 2026. One day since the Aug 24 scan. No new posts published today (Aug 25). Five items from within the 30-day window were missed by prior scans: the "Discovering cryptographic weaknesses with Claude" research paper (July 28), "Patterns and problems in multiagent systems" (Aug 13), Session Budgets for Managed Agents (API), Web Domain Restrictions for Managed Agents (API), and confirmation that Sonnet 5 introductory pricing is now permanent (no Sept 1 increase). Engineering blog remains unchanged since April 23 postmortem.
+
+**Status on unresolved critical items:** Opus 4.1 (`claude-opus-4-1-20250805`) retired August 5 — DAY 20 of live API errors, 18th consecutive scan with no action logged. `claude-mythos-preview` retired July 21 — DAY 35 of live API errors, 18th consecutive scan with no action logged.
+
+---
+
+### Findings
+
+#### Discovering Cryptographic Weaknesses with Claude
+- **Source**: https://www.anthropic.com/research/discovering-cryptographic-weaknesses
+- **Published**: July 28, 2026
+- **Category**: Research / Safety
+- **What Changed**: Claude Mythos Preview discovered fundamental algorithmic weaknesses in production cryptography — including a novel attack on HAWK (a post-quantum digital signature scheme) and a new round-reduced AES attack vector. Claude also identified implementation vulnerabilities in TLS, AES-GCM, and SSH libraries. These are algorithm-level mathematical flaws, not just implementation bugs. No production systems are currently affected.
+- **Impact on ag3nts**: The `security-engineer` agent's threat modeling scope should expand to include AI-assisted cryptographic analysis as an attack capability in threat models. When auditing cryptographic code (TLS configs, AES usage, SSH keys, digital signatures), the agent should flag these as higher-risk than previously assumed. Also relevant to `reality-checker` when evaluating security posture of systems using post-quantum cryptography.
+- **Proposed Changes**:
+  - [ ] `~/.claude/agents/security-engineer` — add guidance: treat Claude-assisted cryptographic analysis as a capable attack vector; flag uses of HAWK/post-quantum schemes, round-reduced AES, TLS/AES-GCM/SSH as warranting deeper review; note the July 2026 Anthropic research as a reference
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add entry: `https://www.anthropic.com/research/discovering-cryptographic-weaknesses`
+- **Priority**: High — directly expands the threat surface the security-engineer agent should model; cryptographic algorithm weakness discovery by AI is a new attack category not in most threat models
+
+---
+
+#### Patterns and Problems in Multiagent Systems (Frontier Red Team)
+- **Source**: https://www.anthropic.com/research/multiagent-systems
+- **Published**: August 13, 2026
+- **Category**: Agent / Research
+- **What Changed**: Anthropic's Frontier Red Team published findings on failure modes in real-world multiagent systems. Key finding: agents excel at tool use with well-defined inputs/outputs but fail when treating each other as distinct peers with their own goals and behaviors. "Coordination failures" — where agents misinterpret each other's outputs or fail to maintain shared state — are the dominant failure mode, not individual agent errors.
+- **Impact on ag3nts**: The `code-reviewer` 4-parallel-specialist dispatch and the REPAIR pipeline's multi-stage agent orchestration are exactly the patterns flagged as prone to coordination failure. The `reality-checker` agent's role as a production-readiness gate is validated. Suggests adding explicit output schemas and handoff contracts between specialist agents to reduce coordination failures.
+- **Proposed Changes**:
+  - [ ] `~/.claude/agents/code-reviewer` — add structured output schema for each specialist's findings (correctness/security/convention/history) so the dispatcher can detect and handle coordination failures rather than silently missing specialist output
+  - [ ] `shared/ag3nts.md` — add note under "Agents" section: cite Anthropic Frontier Red Team (Aug 2026) finding that coordination failure (not individual agent error) is the dominant multiagent failure mode; add guidance on structured output contracts for multi-specialist dispatch
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add entry: `https://www.anthropic.com/research/multiagent-systems`
+- **Priority**: High — directly applies to code-reviewer's multi-specialist dispatch and REPAIR pipeline; coordination failure is the gap between intended and actual behavior in the current pattern
+
+---
+
+#### Session Budgets for Claude Managed Agents
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: August 2026
+- **Category**: API / Agent
+- **What Changed**: Managed Agents sessions now accept a `budget` parameter — a hard USD cap on session spend at public list rates. A session reaching its budget pauses with `budget_reached` stop reason instead of continuing to run. Deployments can set a default budget applied to every session they start. Budget can be changed or removed to resume a paused session.
+- **Impact on ag3nts**: The `anthropic` scout agent and other long-running automated agents (security-engineer in REPAIR mode, code-reviewer in 4-specialist dispatch) can now have hard cost caps applied when running as Managed Agents. Prevents runaway spend on automated/scheduled invocations. The "Scripted / Automated Runs" section of ag3nts.md should note this as a best practice for CI/cron usage.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — add note under "Scripted / Automated Runs": Managed Agents sessions support a `budget` hard cap; use `budget_reached` stop reason handling in automated pipelines to prevent runaway cost
+- **Priority**: Medium — directly relevant to the scheduled anthropic scan and any automated REPAIR pipeline runs; good hygiene for cost-bounded automation
+
+---
+
+#### Web Domain Restrictions for Managed Agents (web_search / web_fetch)
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: August 2026
+- **Category**: API / Security
+- **What Changed**: `web_search` and `web_fetch` tools in the `agent_toolset_20260401` config now accept `allowed_domains` and `blocked_domains` per-tool. `web_fetch` also accepts `max_content_tokens`. `web_search` accepts `user_location`. This allows precise control over which sites agents can reach.
+- **Impact on ag3nts**: The `anthropic` agent uses heavy web search (flagged in ag3nts.md). The `security-engineer` agent accesses CVE databases. Restricting to known-safe domains reduces prompt injection and SSRF risk from web-fetched content. Relevant to the security-sensitive file check hook and the threat model for agents that fetch external content.
+- **Proposed Changes**:
+  - [ ] `~/.claude/agents/anthropic` — add note: when running as Managed Agent, configure `allowed_domains: ["anthropic.com", "docs.anthropic.com"]` to limit web access to intended sources
+  - [ ] `~/.claude/agents/security-engineer` — add note: configure `allowed_domains` to CVE/NVD/OWASP sources when running as Managed Agent to prevent prompt injection via arbitrary URLs
+- **Priority**: Medium — security hardening for web-enabled agents; low implementation cost, meaningful reduction in prompt injection surface
+
+---
+
+#### Sonnet 5 Introductory Pricing Confirmed Permanent
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: August 2026
+- **Category**: API / Model
+- **What Changed**: The previously announced September 1, 2026 price increase for Claude Sonnet 5 ($3/$15 per MTok) has been cancelled. The introductory price of $2 input / $10 output per MTok is now the standard rate with no expiry.
+- **Impact on ag3nts**: Removes the cost concern that was a counterargument to upgrading Sonnet agents to Sonnet 5. The repeated recommendation (Aug 17, Aug 22, Aug 23, Aug 24) to upgrade `code-reviewer`, `ux-architect`, `reality-checker`, `accessibility-auditor`, and `anthropic` agents from `claude-sonnet-4-6` to `claude-sonnet-5` is now unambiguously cost-neutral vs. the current setup.
+- **Proposed Changes**:
+  - [ ] `~/.claude/agents/code-reviewer` — `model: claude-sonnet-4-6` → `model: claude-sonnet-5`
+  - [ ] `~/.claude/agents/ux-architect` — `model: claude-sonnet-4-6` → `model: claude-sonnet-5`
+  - [ ] `~/.claude/agents/reality-checker` — `model: claude-sonnet-4-6` → `model: claude-sonnet-5`
+  - [ ] `~/.claude/agents/accessibility-auditor` — `model: claude-sonnet-4-6` → `model: claude-sonnet-5`
+  - [ ] `~/.claude/agents/anthropic` — `model: claude-sonnet-4-6` → `model: claude-sonnet-5`
+- **Priority**: High — pricing confirmed permanent; near-Opus quality at same price; no reason to delay the upgrade
+
+---
+
+### Recommendations
+
+1. **[CRITICAL — LIVE — DAY 20] Fix Opus 4.1 errors now** — `grep -r "claude-opus-4-1" ~/.claude/ shared/`; replace all hits with `claude-opus-5`. Every API call to this model has been failing since August 5. 18th consecutive scan flagged.
+
+2. **[CRITICAL — LIVE — DAY 35] Fix claude-mythos-preview errors now** — `grep -r "claude-mythos-preview" ~/.claude/ shared/`; replace with `claude-mythos-5` or remove if agent is obsolete. Retired July 21; live errors for 35 days. 18th consecutive scan flagged.
+
+3. **[High] Upgrade Sonnet agents to Sonnet 5** — Pricing now confirmed permanent at $2/$10 per MTok (no Sept 1 increase). Upgrade `code-reviewer`, `ux-architect`, `reality-checker`, `accessibility-auditor`, `anthropic` agents from `claude-sonnet-4-6` to `claude-sonnet-5`.
+
+---
+
+## Previous Scan: 2026-08-24
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
