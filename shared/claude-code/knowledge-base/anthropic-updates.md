@@ -1,6 +1,57 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-08-25
+## Latest Scan: 2026-08-26
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 2
+- Actionable integrations: 1
+
+### Context
+
+Scan window: July 27 – August 26, 2026. One day since the Aug 25 scan. No new posts published today (Aug 26). Two items from within the 30-day window were missed by prior scans: the "Piloting Claude in Chrome" announcement (Aug 21) — which contains browser prompt injection safety data directly relevant to the security-engineer agent — and Anthropic's $5M wellbeing research grants program (Aug 25). Engineering blog remains unchanged since the three-recent-issues postmortem.
+
+**Status on unresolved critical items:** Opus 4.1 (`claude-opus-4-1-20250805`) retired August 5 — DAY 21 of live API errors, 19th consecutive scan with no action logged. `claude-mythos-preview` retired July 21 — DAY 36 of live API errors, 19th consecutive scan with no action logged.
+
+---
+
+### Findings
+
+#### Piloting Claude in Chrome
+- **Source**: https://www.anthropic.com/news/claude-for-chrome
+- **Published**: August 21, 2026
+- **Category**: Safety / Agent
+- **What Changed**: Anthropic published the safety analysis from its Claude in Chrome pilot. Key data: autonomous browser-action mode had a 23.6% prompt injection attack success rate without mitigations; after adding safety mitigations this dropped to 11.2%. The post describes the threat model for browser-integrated agents — injected instructions in web content, malicious redirects, cross-tab data exfiltration. Pilot started with 1,000 Max plan users via waitlist; now available to all paid subscribers.
+- **Impact on ag3nts**: The `security-engineer` agent's threat model for web-enabled agents (the `anthropic` scout agent uses heavy web fetch/search) should treat browser prompt injection as a first-class threat. The 23.6% baseline and 11.2% post-mitigation rates are concrete threat-level benchmarks. For any future ag3nts that operate on or via browsers, this safety research defines the required mitigation baseline.
+- **Proposed Changes**:
+  - [ ] `~/.claude/agents/security-engineer` — add browser prompt injection to threat model checklist; cite Anthropic Aug 2026 data (23.6%→11.2% with mitigations); flag web-fetching agents as requiring injection-resistant prompting
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add entry: `https://www.anthropic.com/news/claude-for-chrome`
+- **Priority**: Medium — directly relevant to security-engineer threat modeling for web-enabled agents; provides concrete attack success rate data
+
+---
+
+#### Funding Better Evaluations of AI's Impact on Wellbeing
+- **Source**: https://www.anthropic.com/news/wellbeing-research-grants
+- **Published**: August 25, 2026
+- **Category**: Safety / Research
+- **What Changed**: Anthropic launched a $5M grant program for independent open-source evaluations of AI's impact on user wellbeing. Grantees build evals measuring AI effects in sensitive contexts (mental health, emotional conversations). Applications due September 21; published as open-source projects.
+- **Impact on ag3nts**: Low direct applicability. No agent changes needed. Noting for awareness — wellbeing evaluation frameworks from grantees may become relevant reference material if ag3nts workflows are extended to sensitive user-facing contexts.
+- **Proposed Changes**: None
+- **Priority**: Low — research/policy announcement; no ag3nts integration at this time
+
+---
+
+### Recommendations
+
+1. **[CRITICAL — LIVE — DAY 21] Fix Opus 4.1 errors now** — `grep -r "claude-opus-4-1" ~/.claude/ shared/`; replace all hits with `claude-opus-5`. Every API call to this model has been failing since August 5. 19th consecutive scan flagged.
+
+2. **[CRITICAL — LIVE — DAY 36] Fix claude-mythos-preview errors now** — `grep -r "claude-mythos-preview" ~/.claude/ shared/`; replace with `claude-mythos-5` or remove if agent is obsolete. Retired July 21; live errors for 36 days. 19th consecutive scan flagged.
+
+3. **[High] Upgrade Sonnet agents to Sonnet 5** — Pricing confirmed permanent ($2/$10 per MTok). Upgrade `code-reviewer`, `ux-architect`, `reality-checker`, `accessibility-auditor`, `anthropic` agents from `claude-sonnet-4-6` to `claude-sonnet-5`.
+
+---
+
+## Previous Scan: 2026-08-25
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
