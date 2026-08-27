@@ -1,6 +1,69 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-08-26
+## Latest Scan: 2026-08-27
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 3
+- Actionable integrations: 2
+
+### Context
+
+Scan window: July 28 – August 27, 2026. One day since the Aug 26 scan. New items found: a new engineering blog post on harness design for long-running apps (first engineering post since April 23), an Advisor Tool max_tokens API enhancement, and Rare Disease Research Grants (science grant, no ag3nts impact). Also noted: refusal no-billing change and anthropic-workspace-id response header (API quality-of-life, low ag3nts relevance).
+
+**Status on unresolved critical items:** Opus 4.1 (`claude-opus-4-1-20250805`) retired August 5 — DAY 22 of live API errors, 20th consecutive scan with no action logged. `claude-mythos-preview` retired July 21 — DAY 37 of live API errors, 20th consecutive scan with no action logged.
+
+---
+
+### Findings
+
+#### Harness Design for Long-Running Application Development
+- **Source**: https://www.anthropic.com/engineering/harness-design-long-running-apps
+- **Published**: August 2026 (exact date unconfirmed; first engineering blog post surfacing since April 23)
+- **Category**: Agent / Tooling
+- **What Changed**: New Anthropic engineering post on harness design patterns for long-running AI applications. Companion/successor to the earlier "effective-harnesses-for-long-running-agents" post. Covers how to structure agent harnesses for sustained multi-hour application development workflows.
+- **Impact on ag3nts**: Directly relevant to the REPAIR pipeline's multi-stage orchestration and the hook-enforced pre-commit/pre-PR gate design. May contain updated pattern guidance that validates or refines current hook architecture. Worth reading before any REPAIR pipeline changes.
+- **Proposed Changes**:
+  - [ ] Read https://www.anthropic.com/engineering/harness-design-long-running-apps; extract patterns relevant to `shared/claude-code/hooks/` or REPAIR pipeline stages
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add entry: `https://www.anthropic.com/engineering/harness-design-long-running-apps`
+- **Priority**: Medium — new Anthropic engineering guidance on harness design; validates or updates existing ag3nts pipeline structure
+
+---
+
+#### Advisor Tool Enhancement: max_tokens Parameter
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: August 2026
+- **Category**: API / Agent
+- **What Changed**: The advisor tool in the Claude API now supports a `max_tokens` parameter capping the advisor model's output per call. Reduces both latency and output token cost for workloads that don't need full-length advisor responses.
+- **Impact on ag3nts**: Relevant if any ag3nts agents are deployed as Managed Agents with advisor tooling. In particular, the code-reviewer 4-specialist dispatch or security-engineer audit steps could use a capped advisor call for triage/planning before full specialist output, controlling per-call cost.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — add note under "Scripted / Automated Runs": advisor tool calls in Managed Agents now support `max_tokens` to cap per-call latency and cost; useful for planning/triage steps
+- **Priority**: Low — useful optimization when Managed Agents deployment is active; no immediate agent file change needed
+
+---
+
+#### Rare Disease Research Grants
+- **Source**: https://www.anthropic.com/news/rare-disease-research-grants
+- **Published**: August 2026
+- **Category**: Research / Science
+- **What Changed**: Anthropic launched an AI for Science grant program focused on rare disease research, funding use of Claude to accelerate rare disease diagnosis and treatment workflows.
+- **Impact on ag3nts**: No direct applicability. Science grant program outside the ag3nts developer tooling scope.
+- **Proposed Changes**: None
+- **Priority**: Low — awareness only
+
+---
+
+### Recommendations
+
+1. **[CRITICAL — LIVE — DAY 22] Fix Opus 4.1 errors now** — `grep -r "claude-opus-4-1" ~/.claude/ shared/`; replace all hits with `claude-opus-5`. Every API call to this model has been failing since August 5. 20th consecutive scan flagged.
+
+2. **[CRITICAL — LIVE — DAY 37] Fix claude-mythos-preview errors now** — `grep -r "claude-mythos-preview" ~/.claude/ shared/`; replace with `claude-mythos-5` or remove if agent is obsolete. Retired July 21; live errors for 37 days. 20th consecutive scan flagged.
+
+3. **[High] Upgrade Sonnet agents to Sonnet 5** — Pricing confirmed permanent at $2/$10 per MTok. Upgrade `code-reviewer`, `ux-architect`, `reality-checker`, `accessibility-auditor`, `anthropic` agents from `claude-sonnet-4-6` to `claude-sonnet-5`.
+
+---
+
+## Previous Scan: 2026-08-26
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
