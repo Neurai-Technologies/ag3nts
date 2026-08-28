@@ -1,6 +1,69 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-08-27
+## Latest Scan: 2026-08-28
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 3
+- Actionable integrations: 1
+
+### Context
+
+Scan window: July 29 – August 28, 2026. One day since the Aug 27 scan. One high-relevance finding: Anthropic Frontier Red Team published "Patterns and problems in emerging multiagent systems" (Aug 13), with concrete findings on multi-agent coordination failure modes directly applicable to ag3nts' code-reviewer dispatch and RepairBoss orchestration. Two lower-relevance items: mid-conversation system messages out of beta (GA on Fable 5, Mythos 5, Opus 4.8), and retirement of experimental prompt tools APIs (Aug 17) which ag3nts does not use. Engineering blog unchanged.
+
+**Status on unresolved critical items:** Opus 4.1 (`claude-opus-4-1-20250805`) retired August 5 — DAY 23 of live API errors, 21st consecutive scan with no action logged. `claude-mythos-preview` retired July 21 — DAY 38 of live API errors, 21st consecutive scan with no action logged.
+
+---
+
+### Findings
+
+#### Patterns and Problems in Emerging Multiagent Systems
+- **Source**: https://www.anthropic.com/research/multiagent-systems
+- **Published**: August 13, 2026
+- **Category**: Agent
+- **What Changed**: Anthropic Frontier Red Team research paper on failure modes and coordination patterns in multiagent AI deployments. Key findings: (1) more capable execution-layer models are not necessarily more coordinated — they take forceful actions faster and can lock out other agents before conflicts resolve; (2) successful self-coordination requires two components: *thoughtfulness* (consistently modeling other agents' states) and *foresight* (predicting how other agents will react before deciding); (3) highly parallelizable problems like software vulnerability detection are the strongest current use case for multi-agent swarms, with individual agents pointed at isolated codebases.
+- **Impact on ag3nts**: Directly relevant to the code-reviewer 4-parallel-specialist dispatch and the RepairBoss orchestration pipeline. The "lock-out" risk applies when multiple specialists write to shared state; the foresight/thoughtfulness framework is a useful heuristic for evaluating whether a new agent should be added to the parallel dispatch. The vulnerability-detection finding validates the security-engineer + code-reviewer parallel pattern.
+- **Proposed Changes**:
+  - [ ] `~/.claude/agents/code-reviewer` — add a note in dispatch instructions: per Anthropic Frontier Red Team (Aug 2026), parallel specialist agents with higher capability may take forceful/conflicting actions faster; isolate each specialist's output scope to prevent lock-out (no shared mutable state between specialists)
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add entry: `https://www.anthropic.com/research/multiagent-systems | Anthropic Frontier Red Team: Patterns and problems in emerging multiagent systems — lock-out risk, thoughtfulness/foresight coordination framework, parallelizable use cases`
+- **Priority**: High — concrete failure-mode research from Anthropic's own red team; directly maps to ag3nts' parallel multi-agent dispatch design
+
+---
+
+#### Mid-Conversation System Messages Now GA
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: August 2026
+- **Category**: API
+- **What Changed**: Mid-conversation system messages are now generally available on Claude Fable 5, Claude Mythos 5, and Claude Opus 4.8 across Claude API, Amazon Bedrock, and Google Cloud. The beta header (`anthropic-beta: mid-conversation-system-2026-xx-xx` or equivalent) is no longer required.
+- **Impact on ag3nts**: If any ag3nts workflows inject system messages mid-conversation (e.g. pipeline-stage instructions, dynamic context injection), the beta header can be dropped. No behavioral change expected — this is a header-cleanup maintenance item.
+- **Proposed Changes**:
+  - [ ] Audit `shared/claude-code/hooks/` and any agent definition files for any `anthropic-beta` headers related to mid-conversation system messages; remove if present
+- **Priority**: Low — GA promotion of a beta feature; no functional change, header cleanup only if beta header was in use
+
+---
+
+#### Experimental Prompt Tools APIs Retirement
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: August 17, 2026
+- **Category**: API
+- **What Changed**: The experimental Workbench prompt-engineering endpoints (`/v1/experimental/generate_prompt`, `/v1/experimental/improve_prompt`, `/v1/experimental/templatize_prompt`) are retired as of August 17, 2026.
+- **Impact on ag3nts**: ag3nts agents do not appear to use these experimental endpoints. No action required.
+- **Proposed Changes**: None
+- **Priority**: Low — awareness only; verify no agent scripts call these endpoints if in doubt
+
+---
+
+### Recommendations
+
+1. **[CRITICAL — LIVE — DAY 23] Fix Opus 4.1 errors now** — `grep -r "claude-opus-4-1" ~/.claude/ shared/`; replace all hits with `claude-opus-5`. Every API call to this model has been failing since August 5. 21st consecutive scan flagged.
+
+2. **[CRITICAL — LIVE — DAY 38] Fix claude-mythos-preview errors now** — `grep -r "claude-mythos-preview" ~/.claude/ shared/`; replace with `claude-mythos-5` or remove if agent is obsolete. Retired July 21. 21st consecutive scan flagged.
+
+3. **[High] Read multiagent coordination paper, update code-reviewer dispatch** — Read https://www.anthropic.com/research/multiagent-systems; add isolation note to `~/.claude/agents/code-reviewer` dispatch instructions to prevent specialist lock-out (no shared mutable state between parallel specialists). Also add to `repos.md`.
+
+---
+
+## Previous Scan: 2026-08-27
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
