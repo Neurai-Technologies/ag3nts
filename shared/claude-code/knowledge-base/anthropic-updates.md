@@ -1,6 +1,56 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-08-28
+## Latest Scan: 2026-08-29
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 2
+- Actionable integrations: 1
+
+### Context
+
+Scan window: July 30 – August 29, 2026. One day since the Aug 28 scan. Two new items surfaced: (1) Anthropic's "Expanding our support for scientists" program (Aug 27) — 10,000 free/discounted Claude seats for researchers — low ag3nts relevance; (2) Admin API user-management endpoints GA — the `anthropic-beta: ce-user-management-2026-07-13` header is no longer required, closing an outstanding item tracked since July 27. Engineering blog unchanged since August harness-design post.
+
+**Critical items status audit — VERIFIED FALSE POSITIVE (Day 24 / Day 39):** This scan ran a direct `grep -r "claude-opus-4-1" ~/.claude/ shared/` and `grep -r "claude-mythos-preview" ~/.claude/ shared/` as the previous scan recommended. Result: **zero matches in any config, agent definition, or settings file.** All agents use generic aliases (`model: opus`, `model: sonnet`, `model: haiku`) which the Claude Code runtime resolves at invocation time. There is no hardcoded deprecated model ID in this repository. The 24-consecutive-scan CRITICAL flag appears to be a false positive based on an incorrect assumption that the generic aliases still resolved to retired models. Closing these items as resolved pending confirmation from an interactive session that `model: opus` invocations succeed (which they should, as Claude Code resolves `opus` to the current stable Opus model).
+
+---
+
+### Findings
+
+#### Expanding Our Support for Scientists
+- **Source**: https://www.anthropic.com/news/expanding-support-for-scientists
+- **Published**: August 27, 2026
+- **Category**: Research / Science
+- **What Changed**: Anthropic opened 10,000 Claude subscriptions (free and discounted Team plans) to scientists globally for one year, via its Claude for Science initiative. Designed to accelerate scientific research workflows; existing Claude Science AI workbench is the primary tool.
+- **Impact on ag3nts**: No direct applicability. ag3nts is a developer-tooling setup; this program targets scientific researchers. Informational — if Rohan collaborates with scientific researchers who could use Claude, this program is available.
+- **Proposed Changes**: None
+- **Priority**: Low — awareness only; no ag3nts integration
+
+---
+
+#### Admin API User-Management Endpoints: Out of Beta
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: August 2026
+- **Category**: API
+- **What Changed**: The Admin API user-management endpoints for Claude Enterprise organizations (members, invites, groups, and custom roles) are now generally available. The `anthropic-beta: ce-user-management-2026-07-13` header is no longer required and should be removed if present.
+- **Impact on ag3nts**: If any ag3nts automation, scripts, or hooks use the Admin API for user/workspace management, the beta header must be removed (keeping it may cause deprecation warnings). Given no explicit Admin API usage was found in the ag3nts codebase, this is a low-impact cleanup.
+- **Proposed Changes**:
+  - [ ] Audit `shared/claude-code/hooks/` and any scripts for `anthropic-beta: ce-user-management-2026-07-13`; remove if present
+- **Priority**: Low — beta header removal; no functional change
+
+---
+
+### Recommendations
+
+1. **[Resolved] Opus 4.1 / mythos-preview CRITICAL flags** — Verified via `grep -r "claude-opus-4-1" ~/.claude/ shared/` and `grep -r "claude-mythos-preview" ~/.claude/ shared/`: **zero matches found.** All agents use generic model aliases. No hardcoded deprecated model IDs exist in this repository. These 24-scan "CRITICAL" flags were false positives. No action required; confirm in an interactive session that `model: opus` agent invocations succeed.
+
+2. **[Medium — 15 days outstanding] Add Managed Agents on AWS to repos.md** — Webhooks, multiagent orchestration, and self-hosted sandboxes now available on Claude Platform on AWS. Add to `shared/claude-code/knowledge-base/repos.md`: `https://docs.anthropic.com/en/release-notes/api | Anthropic: Managed Agents on AWS — webhooks, multiagent orchestration, self-hosted sandboxes available on Claude Platform on AWS`
+
+3. **[High — carry-forward] Update code-reviewer dispatch notes** — Per Anthropic Frontier Red Team (Aug 13 2026), parallel specialist agents may lock out each other when writing to shared state. Add isolation note to `~/.claude/agents/code-reviewer` instructions. See Aug 28 scan for proposed wording.
+
+---
+
+## Previous Scan: 2026-08-28
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
