@@ -1,6 +1,82 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-08-29
+## Latest Scan: 2026-08-30
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 4
+- Actionable integrations: 2
+
+### Context
+
+Scan window: July 31 – August 30, 2026. One day since the Aug 29 scan. Four new items surfaced: (1) Claude Sonnet 5 pricing confirmed permanent — the introductory $2/$10 per million tokens is now the standard price, relevant to ag3nts agents using `model: sonnet`; (2) Automated Researchers Can Reliably Mitigate Alignment Failures (Aug 28) — new Anthropic alignment research; (3) Session Budgets for Managed Agents — hard spend cap via budget_reached stop reason, relevant for ag3nts CI/CD automation; (4) Anthropic Risk Report August 2026 — new risk report PDF, reference for security-engineer agent.
+
+**Critical items status:** Aug 29 scan verified via grep that no hardcoded deprecated model IDs exist; all agents use generic aliases. `model: sonnet` now resolves to Claude Sonnet 5 (released June 30, 2026). Carry-forward: code-reviewer dispatch isolation note and Managed Agents on AWS repos.md entry still outstanding.
+
+---
+
+### Findings
+
+#### Claude Sonnet 5 Pricing Now Permanent
+- **Source**: https://www.anthropic.com/news/claude-sonnet-5
+- **Published**: August 2026 (pricing update; model released June 30, 2026)
+- **Category**: Model
+- **What Changed**: Claude Sonnet 5's introductory pricing of $2 per million input / $10 per million output tokens is now permanent — the previously announced increase to $3/$15 will not occur. Sonnet 5 is a hybrid reasoning model with a 1M context window, improved tool use, coding, agentic performance, and lower hallucination/sycophancy rates vs Sonnet 4.6. It is the current default model for Free and Pro plans.
+- **Impact on ag3nts**: All six agents configured with `model: sonnet` (code-reviewer, accessibility-auditor, reality-checker, ux-architect, anthropic, and any future sonnet-class agents) are now resolved to Sonnet 5. Key upgrade implications: (a) 1M token context window (vs previous limits) makes long REPAIR pipeline runs safer; (b) better prompt injection resistance benefits the security-engineer and code-reviewer agents; (c) pricing is confirmed stable at $2/$10 per million tokens.
+- **Proposed Changes**:
+  - [ ] `shared/ag3nts.md` — update Agent table note to reflect `model: sonnet` → Sonnet 5 for awareness; no code change required
+  - [ ] Verify in interactive session: invoke a `model: sonnet` agent and confirm `claude-sonnet-5` is active (check response header or session info)
+- **Priority**: High — confirms model upgrade affecting all sonnet-class agents; pricing now stable; 1M context and improved safety relevant to agent workflows
+
+---
+
+#### Automated Researchers Can Reliably Mitigate Alignment Failures
+- **Source**: https://www.anthropic.com/research (Aug 28, 2026 listing)
+- **Published**: August 28, 2026
+- **Category**: Safety / Alignment
+- **What Changed**: Anthropic research paper demonstrating that automated AI researchers can reliably detect and mitigate alignment failures — failures where a model behaves in unintended or unsafe ways — without continuous human oversight. Establishes a framework for AI-assisted alignment monitoring.
+- **Impact on ag3nts**: Directly relevant to the design philosophy of the `security-engineer` and `reality-checker` agents, both of which act as alignment/safety gates in the pre-commit and REPAIR pipelines. The research validates the pattern of using a dedicated evaluator agent to catch behavioral failures. If Anthropic releases tooling from this research (e.g., an alignment-monitoring API), it could be integrated as an additional gate.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add entry: `https://www.anthropic.com/research | Automated researchers can reliably mitigate alignment failures (Aug 28 2026) — AI-assisted alignment monitoring framework; validates reality-checker / security-engineer gate design`
+- **Priority**: Medium — foundational alignment research; validates existing ag3nts safety gate design; watch for derived tooling/API
+
+---
+
+#### Session Budgets for Claude Managed Agents
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: August 2026
+- **Category**: API / Agent
+- **What Changed**: Claude Managed Agents sessions now support a spend budget as a hard cap. When the session reaches the budget limit, it pauses with stop_reason: "budget_reached". Configurable per-session via the API.
+- **Impact on ag3nts**: Directly relevant if ag3nts automation (CI/CD scripts, scheduled tasks) ever invokes Managed Agents sessions directly via API rather than through the Claude Code CLI. Provides a cost-safety mechanism for autonomous long-running agent runs. The `--bare` mode and hook-enforced pipeline runs go through the CLI, not the Managed Agents API, so impact is limited to future API-direct integrations.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — update the existing Managed Agents API entry to include session budget feature: add note "session budgets (budget_reached stop reason) available for spend cap on autonomous runs"
+- **Priority**: Medium — cost safety mechanism for Managed Agents; low immediate impact (ag3nts uses CLI not API directly), but useful to document before any CI/CD API integration
+
+---
+
+#### Anthropic Risk Report: August 2026
+- **Source**: https://www-cdn.anthropic.com/f61d49fa5596956a5dec75fea0e973bf6a6a8378/Redacted%20Risk%20Report%20August%202026%20.pdf
+- **Published**: August 2026
+- **Category**: Safety / Alignment
+- **What Changed**: Anthropic published its August 2026 Risk Report, a periodic document assessing frontier model risks across threat categories. Covers risk posture, mitigations, and emerging threat patterns for current Claude models.
+- **Impact on ag3nts**: Reference document for the `security-engineer` agent's threat modeling work. The LLM ATT&CK Navigator (already in repos.md) covers operational threats; the Risk Report covers Anthropic's own frontier risk posture. Useful context for REPAIR Stage 4 threat modeling.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add entry: `https://www-cdn.anthropic.com/f61d49fa5596956a5dec75fea0e973bf6a6a8378/Redacted%20Risk%20Report%20August%202026%20.pdf | Anthropic Risk Report August 2026 — frontier model risk posture, threat categories, mitigations; reference for security-engineer threat modeling`
+- **Priority**: Low — reference document; no immediate code changes; useful background for security-engineer agent
+
+---
+
+### Recommendations
+
+1. **[High — New] Verify Sonnet 5 model resolution** — In an interactive session, invoke a `model: sonnet` agent (e.g. `code-reviewer`) and confirm it runs as `claude-sonnet-5`. If resolved correctly, add a brief note to `shared/ag3nts.md` Agent table confirming the alias. Sonnet 5 has 1M context and improved safety — no config change needed but worth confirming.
+
+2. **[High — carry-forward] Update code-reviewer dispatch notes for lock-out risk** — Per Anthropic Frontier Red Team (Aug 13 2026, `https://www.anthropic.com/research/multiagent-systems`): add isolation note to `~/.claude/agents/code-reviewer` — parallel specialists must not write to shared mutable state. Add URL to `repos.md`. See Aug 28 scan for proposed wording.
+
+3. **[Medium — carry-forward] Add Managed Agents on AWS + session budgets to repos.md** — `shared/claude-code/knowledge-base/repos.md`: update Managed Agents API entry with session budgets feature; add Managed Agents on AWS note. See Aug 29 scan recommendation 2.
+
+---
+
+## Previous Scan: 2026-08-29
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
