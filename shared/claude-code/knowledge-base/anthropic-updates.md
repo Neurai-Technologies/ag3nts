@@ -1,6 +1,102 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-08-30
+## Latest Scan: 2026-08-31
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 5
+- Actionable integrations: 3
+
+### Context
+
+Scan window: August 1 – August 31, 2026. One day since the Aug 30 scan. Five new items surfaced:
+
+1. **CRITICAL — Sonnet 5 pricing alert**: The Aug 30 scan logged that Claude Sonnet 5 pricing was "now permanent" at $2/$10 per million tokens. Today's scan contradicts this — the API release notes show pricing was introductory through August 31, 2026, with a planned increase to $3/$15 per million tokens after that date. Today IS August 31. The "permanent pricing" claim in the Aug 30 scan appears to have been incorrect. No config change required (ag3nts uses generic `model: sonnet` alias), but the cost estimate should be updated.
+
+2. **Advanced Tool Use** (Tool Search Tool + Programmatic Tool Calling) — new engineering post on the Claude Developer Platform; highly relevant to multi-agent dispatch and context window management in code-reviewer and security-engineer pipelines.
+
+3. **Model Hardware Standard** (Research Preview, Aug 27) — Anthropic's MCP-compatible open specification for AI agents controlling lab and manufacturing physical devices. Low direct ag3nts relevance (software-focused stack), but MCP-aligned architecture is worth tracking.
+
+4. **Off Switch for Dual Use Knowledge** (July 8, 2026) — Anthropic + AE Studio research on selective removal of harmful dual-use capabilities from model weights without full retraining. Reference for security-engineer agent threat modeling.
+
+5. **Advisor Tool max_tokens** — New API parameter on advisor tool definitions to cap per-call output, reducing latency and token cost on agent pipelines using advisor tools.
+
+---
+
+### Findings
+
+#### ALERT: Claude Sonnet 5 Pricing — Introductory Period Ending Today
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: August 2026 (release notes)
+- **Category**: Model
+- **What Changed**: API release notes confirm Claude Sonnet 5 introductory pricing of $2/$10 per million input/output tokens was valid "through August 31, 2026" — today — after which pricing increases to $3 per million input / $15 per million output tokens. The Aug 30 scan entry claiming "permanent $2/$10 pricing" appears to have been incorrect; it should be corrected.
+- **Impact on ag3nts**: No agent config changes needed — all agents use the `model: sonnet` generic alias. However: (a) any cost estimates for Sonnet-class agent runs should use $3/$15 as of September 1; (b) the Aug 30 scan entry for "Claude Sonnet 5 Pricing Now Permanent" contains incorrect information and should not be relied upon.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/anthropic-updates.md` — annotate the Aug 30 "Claude Sonnet 5 Pricing Now Permanent" finding as SUPERSEDED; pricing increases to $3/$15 effective September 1, 2026
+- **Priority**: High — the Aug 30 scan log contains a factual error about model pricing; correct for future cost estimates
+
+---
+
+#### Advanced Tool Use: Tool Search + Programmatic Tool Calling
+- **Source**: https://www.anthropic.com/engineering/advanced-tool-use
+- **Published**: August 2026
+- **Category**: API / Tooling
+- **What Changed**: Anthropic released three beta API features for advanced tool use on the Claude Developer Platform: (1) **Tool Search Tool** — allows Claude to dynamically search a large tool registry at inference time, accessing thousands of tools without pre-loading them into the context window; (2) **Programmatic Tool Calling** — Claude writes code to invoke multiple tools in a single code-execution step, processing outputs and controlling what enters context (98%+ context reduction reported); (3) **Tool Use Examples** — standard format for demonstrating correct tool invocation. These complement each other: search finds the right tool, programmatic calling executes efficiently, examples ensure correctness.
+- **Impact on ag3nts**: High relevance to the multi-agent dispatch architecture. The `code-reviewer` agent currently dispatches 4 parallel specialists in separate API round-trips; Programmatic Tool Calling could reduce this to a single code-execution step with dramatically lower context consumption. The Tool Search Tool is relevant if ag3nts ever exposes a large MCP tool registry. The "Code execution with MCP" pattern already in repos.md (98.7% token reduction) is validated by this release.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add entry: `https://www.anthropic.com/engineering/advanced-tool-use | Anthropic: Advanced Tool Use — Tool Search Tool (dynamic registry access), Programmatic Tool Calling (code-driven multi-tool execution, 98%+ context reduction), Tool Use Examples; relevant to code-reviewer dispatch optimization`
+  - [ ] Future: evaluate Programmatic Tool Calling beta for the code-reviewer 4-specialist dispatch loop to reduce per-review context overhead
+- **Priority**: High — directly addresses context window pressure in multi-agent dispatch; beta available now on the Claude Developer Platform
+
+---
+
+#### Model Hardware Standard (Research Preview)
+- **Source**: https://www.anthropic.com/news/model-hardware-standard-research-preview
+- **Published**: August 27, 2026
+- **Category**: API / Agent
+- **What Changed**: Anthropic opened a research preview of the Model Hardware Standard (MHS) — an MCP-compatible open specification allowing AI agents to operate physical lab and manufacturing devices (microscopes, liquid handlers, robotic arms, quantum instruments) in parallel. Works with any device with a programmable interface; reduces hardware integration from weeks to hours. Partners include AWS Strands Robots, Automata, Doosan Robotics, Tecan, and Universal Robots.
+- **Impact on ag3nts**: Low direct impact — ag3nts is a software-development agent stack, not a lab automation system. Architecturally interesting: MHS is built on MCP, validating the MCP-as-universal-agent-bus pattern already present in ag3nts. Worth tracking if ag3nts ever integrates with physical test or CI hardware.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add entry: `https://www.anthropic.com/news/model-hardware-standard-research-preview | Anthropic: Model Hardware Standard (Aug 27 2026 research preview) — MCP-compatible spec for AI agents controlling physical devices; validates MCP-as-universal-bus architecture; low direct ag3nts relevance`
+- **Priority**: Low — no immediate ag3nts code changes; architectural reference only
+
+---
+
+#### An Off Switch for Dual Use Knowledge in AI Models
+- **Source**: https://www.anthropic.com/research/off-switch-dual-use
+- **Published**: July 8, 2026 (Anthropic + AE Studio)
+- **Category**: Safety / Alignment
+- **What Changed**: Research on selectively removing dual-use knowledge (e.g., cyberattack vs. cybersecurity knowledge) from specific weight slices in a trained model, without retraining. Unlike filtering training data (which produces one fixed model), this approach allows a single model to have capabilities selectively enabled for trusted users — enabling the model for defenders while limiting access for potential attackers. Extends earlier Anthropic work on CBRN knowledge confinement.
+- **Impact on ag3nts**: Reference for `security-engineer` agent threat modeling and REPAIR Stage 4 threat model work. If Anthropic releases a dual-use toggle mechanism via the API, it could allow ag3nts to invoke the security-engineer with elevated threat-modeling permissions while keeping the capability gated for other contexts. The LLM ATT&CK Navigator entry already in repos.md covers threat observations; this paper covers the underlying capability-control mechanism.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add entry: `https://www.anthropic.com/research/off-switch-dual-use | Anthropic + AE Studio: Off switch for dual use knowledge (July 8 2026) — selective weight-slice removal of harmful capabilities without retraining; reference for security-engineer threat model; watch for derived API access-control feature`
+- **Priority**: Medium — safety research; validates security-engineer gate design; watch for API-level capability toggles
+
+---
+
+#### Advisor Tool max_tokens Parameter
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: August 2026
+- **Category**: API
+- **What Changed**: The advisor tool definition now accepts a `max_tokens` field to cap the advisor model's maximum output per call. Reduces both latency and output token cost on advisor-pattern agent pipelines. Set via `tools[].max_tokens` on the advisor tool definition.
+- **Impact on ag3nts**: Relevant if any ag3nts automation uses the advisor tool pattern directly via API. Current ag3nts pipeline runs through the Claude Code CLI (not direct API), so immediate impact is low. Worth noting for any future API-direct integrations or if the Claude Code harness exposes advisor tool config.
+- **Proposed Changes**:
+  - [ ] No immediate file changes; note in repos.md for future API integration reference
+- **Priority**: Low — API ergonomics improvement; no immediate ag3nts impact since CLI-based workflow
+
+---
+
+### Recommendations
+
+1. **[Critical — New] Correct the Aug 30 scan Sonnet 5 pricing entry** — The Aug 30 "Claude Sonnet 5 Pricing Now Permanent" entry contains incorrect information. Claude Sonnet 5 introductory pricing of $2/$10 expires August 31, 2026 (today); standard pricing is $3/$15 per million tokens starting September 1. No config changes needed (generic aliases unchanged), but any cost estimates referencing the Aug 30 entry should use the updated price.
+
+2. **[High — New] Add Advanced Tool Use entry to repos.md** — `shared/claude-code/knowledge-base/repos.md`: add the `https://www.anthropic.com/engineering/advanced-tool-use` entry. The Programmatic Tool Calling feature (code-driven multi-tool dispatch, 98%+ context reduction) is directly applicable to the code-reviewer 4-specialist dispatch loop — evaluate as a future optimization when the beta is generally available.
+
+3. **[High — carry-forward] Update code-reviewer dispatch notes for lock-out risk** — Per Anthropic Frontier Red Team (Aug 13 2026): parallel specialists must not write to shared mutable state. Add isolation note to `~/.claude/agents/code-reviewer` and URL to `repos.md`. See Aug 28 scan for proposed wording. Still outstanding.
+
+---
+
+## Previous Scan: 2026-08-30
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
