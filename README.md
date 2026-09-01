@@ -2,6 +2,10 @@
 
 A multi-agent AI orchestrator that coordinates Claude Code, Gemini CLI, Codex CLI, and a local Gemma 31B model from a single terminal interface. Ask a question, and ag3nts routes it to the right agent. Run a recipe, and ag3nts orchestrates a multi-stage pipeline across agents with live progress tracking.
 
+## Status
+
+Internal Neurai Technologies project. Not under active development since May 2026 — the codebase works as documented below, but there are no support or compatibility guarantees and no roadmap.
+
 ## What this does
 
 - **Gemma 4 31B** runs locally via Ollama as the coordinator — routes requests, manages memory, breaks down complex tasks
@@ -121,4 +125,6 @@ ag3nts can live entirely on an external drive. The project directory contains ev
 
 ## License
 
-Private repository. All rights reserved.
+Copyright © 2025–2026 Neurai Technologies Private Limited.
+
+Licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE.md): use, copying, modification, and distribution are permitted for noncommercial purposes only. Any commercial use requires a separate license from Neurai Technologies.
