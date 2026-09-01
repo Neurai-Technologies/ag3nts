@@ -21,10 +21,10 @@ func readSingleChar() string {
 	if err != nil {
 		// Fallback: readline-style input requiring Enter.
 		var s string
-		fmt.Scanln(&s)
+		_, _ = fmt.Scanln(&s)
 		return strings.TrimSpace(s)
 	}
-	defer term.Restore(fd, oldState)
+	defer func() { _ = term.Restore(fd, oldState) }()
 
 	var buf [1]byte
 	_, _ = os.Stdin.Read(buf[:])

@@ -149,7 +149,7 @@ func TestREPAIR_HappyPath(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	_ = orch.Start(ctx)
-	defer orch.Stop()
+	defer func() { _ = orch.Stop() }()
 
 	// Dispatch the recipe.
 	r := makeRepairReplayRecipe()
@@ -300,7 +300,7 @@ func TestREPAIR_EvaluatorLoop(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	_ = orch.Start(ctx)
-	defer orch.Stop()
+	defer func() { _ = orch.Stop() }()
 
 	r := makeRepairReplayRecipe()
 	runID, err := orch.RunRecipe(r, map[string]string{"objective": "build feature"})
@@ -424,7 +424,7 @@ func TestREPAIR_ContextFlowDownstream(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	_ = orch.Start(ctx)
-	defer orch.Stop()
+	defer func() { _ = orch.Stop() }()
 
 	r := makeRepairReplayRecipe()
 	runID, err := orch.RunRecipe(r, map[string]string{"objective": "MCP protocol integration"})

@@ -349,7 +349,7 @@ func TestMCPClient_ServerCrash(t *testing.T) {
 				time.Sleep(50 * time.Millisecond)
 				serverOutW.Close()
 				// Drain remaining writes so the pipe doesn't block.
-				go io.Copy(io.Discard, serverInR)
+				go func() { _, _ = io.Copy(io.Discard, serverInR) }()
 				return
 			}
 		}
@@ -783,7 +783,7 @@ func TestMCPClient_SamplingRequest(t *testing.T) {
 				responseMu.Unlock()
 				// Close after receiving response.
 				serverOutW.Close()
-				go io.Copy(io.Discard, serverInR)
+				go func() { _, _ = io.Copy(io.Discard, serverInR) }()
 				return
 			}
 		}
@@ -896,7 +896,7 @@ func TestMCPClient_SamplingNoHandler(t *testing.T) {
 				gotError = true
 				responseMu.Unlock()
 				serverOutW.Close()
-				go io.Copy(io.Discard, serverInR)
+				go func() { _, _ = io.Copy(io.Discard, serverInR) }()
 				return
 			}
 			// Also check for error in full parse
@@ -910,7 +910,7 @@ func TestMCPClient_SamplingNoHandler(t *testing.T) {
 					gotError = true
 					responseMu.Unlock()
 					serverOutW.Close()
-					go io.Copy(io.Discard, serverInR)
+					go func() { _, _ = io.Copy(io.Discard, serverInR) }()
 					return
 				}
 			}
@@ -981,7 +981,7 @@ func TestMCPClient_ResourcesChangedNotification(t *testing.T) {
 				fmt.Fprintf(serverOutW, "%s\n", data)
 				time.Sleep(100 * time.Millisecond)
 				serverOutW.Close()
-				go io.Copy(io.Discard, serverInR)
+				go func() { _, _ = io.Copy(io.Discard, serverInR) }()
 				return
 			}
 		}
@@ -1040,7 +1040,7 @@ func TestMCPClient_PromptsChangedNotification(t *testing.T) {
 				fmt.Fprintf(serverOutW, "%s\n", data)
 				time.Sleep(100 * time.Millisecond)
 				serverOutW.Close()
-				go io.Copy(io.Discard, serverInR)
+				go func() { _, _ = io.Copy(io.Discard, serverInR) }()
 				return
 			}
 		}

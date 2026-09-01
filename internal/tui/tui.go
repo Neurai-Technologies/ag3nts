@@ -816,7 +816,7 @@ func (a *App) printDiff(rawDiff string) {
 				} else if spaceIdx := strings.Index(numStr, " "); spaceIdx > 0 {
 					numStr = numStr[:spaceIdx]
 				}
-				fmt.Sscanf(numStr, "%d", &lineNum)
+				_, _ = fmt.Sscanf(numStr, "%d", &lineNum)
 			}
 		case strings.HasPrefix(line, "+"):
 			added++
@@ -1553,12 +1553,6 @@ func (a *App) handleM3m0ry(args string) {
 		if db == nil {
 			a.printLine("ag3nts", "SQLite not available")
 			return
-		}
-		// Use the orchestrator's session ID indirectly via recent rows.
-		stats, _ := rs.Stats()
-		startSeq := stats.MaxSeq - int64(n)
-		if startSeq < 0 {
-			startSeq = 0
 		}
 		// We don't have a direct API to list by session from here —
 		// use the Retrieve with empty query (recency-only) to get recent items.
@@ -2701,32 +2695,6 @@ func (a *App) flushStream(agentName string) {
 	if rendered != "" {
 		a.println(rendered)
 	}
-}
-
-func (a *App) flushAgent(agentName string) {
-	text := a.stream.Flush(agentName)
-	// Erase any in-place streaming region first so raw partial-line
-	// text doesn't bleed into the formatted output below.
-	a.commitStreamRegion()
-	if text == "" {
-		return
-	}
-
-	a.stopSpinner()
-
-	rendered := renderMarkdown(text)
-	if rendered == "" {
-		return
-	}
-
-	ts := dimStyle.Render(time.Now().Format("15:04:05"))
-	label := lipgloss.NewStyle().Foreground(agentColor(agentName)).Bold(true).Render(agentName)
-	a.println("")
-	a.println(ts + " " + label)
-	for _, line := range strings.Split(rendered, "\n") {
-		a.println(line)
-	}
-	a.println("")
 }
 
 // --- Routing keywords ---

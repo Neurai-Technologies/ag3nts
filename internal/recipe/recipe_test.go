@@ -165,7 +165,9 @@ func TestRenderSubTaskInline(t *testing.T) {
 func TestRenderSubTaskFile(t *testing.T) {
 	dir := t.TempDir()
 	promptFile := filepath.Join(dir, "prompt.md")
-	os.WriteFile(promptFile, []byte("Research {{topic}} thoroughly."), 0644)
+	if err := os.WriteFile(promptFile, []byte("Research {{topic}} thoroughly."), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	r := &Recipe{
 		Name: "test",
@@ -188,7 +190,9 @@ func TestRenderSubTaskFile(t *testing.T) {
 func TestRenderSubTaskInclude(t *testing.T) {
 	dir := t.TempDir()
 	prefix := filepath.Join(dir, "prefix.md")
-	os.WriteFile(prefix, []byte("=== PREFIX ===\n"), 0644)
+	if err := os.WriteFile(prefix, []byte("=== PREFIX ===\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	r := &Recipe{
 		Name: "test",

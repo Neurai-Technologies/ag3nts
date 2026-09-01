@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/rohanrgit/ag3nts/internal/agent"
 	"github.com/rohanrgit/ag3nts/internal/logging"
 )
 
@@ -203,14 +202,3 @@ func estimateTokens(text string) int {
 	return len(text) / 4
 }
 
-// drainEventsForCompaction is used by the orchestrator to pass events through
-// compaction-aware filtering. Events that should be excluded from context
-// based on kind are filtered.
-func shouldExcludeFromContext(event agent.AgentEvent) bool {
-	switch event.Kind {
-	case agent.EventProgress, agent.EventInit:
-		return true
-	default:
-		return false
-	}
-}

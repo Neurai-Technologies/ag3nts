@@ -79,7 +79,7 @@ func TestRollingStoreTotalTokens(t *testing.T) {
 
 	content := "chunk content with some words for token estimation"
 	for i := 0; i < 5; i++ {
-		rs.Append(&Chunk{Kind: "event", Content: content})
+		_ = rs.Append(&Chunk{Kind: "event", Content: content})
 	}
 
 	total := rs.TotalTokens()
@@ -93,7 +93,7 @@ func TestRollingStoreJSONL(t *testing.T) {
 
 	// Append 5 chunks.
 	for i := 0; i < 5; i++ {
-		rs.Append(&Chunk{
+		_ = rs.Append(&Chunk{
 			Kind:    "event",
 			Content: fmt.Sprintf("chunk %d content", i),
 		})
@@ -149,9 +149,9 @@ func TestRollingStoreEviction(t *testing.T) {
 func TestRollingStoreRetrieveByKeyword(t *testing.T) {
 	rs, _ := openTestStore(t)
 
-	rs.Append(&Chunk{Kind: "task_result", Content: "analyzed the authentication flow"})
-	rs.Append(&Chunk{Kind: "task_result", Content: "implemented the login endpoint"})
-	rs.Append(&Chunk{Kind: "task_result", Content: "reviewed the security policies"})
+	_ = rs.Append(&Chunk{Kind: "task_result", Content: "analyzed the authentication flow"})
+	_ = rs.Append(&Chunk{Kind: "task_result", Content: "implemented the login endpoint"})
+	_ = rs.Append(&Chunk{Kind: "task_result", Content: "reviewed the security policies"})
 
 	// Query for "authentication".
 	chunks, err := rs.Retrieve("authentication", time.Now())
@@ -173,7 +173,7 @@ func TestRollingStoreRetrieveRecency(t *testing.T) {
 	// Append 5 chunks with increasing timestamps.
 	base := time.Now().Add(-5 * time.Hour)
 	for i := 0; i < 5; i++ {
-		rs.Append(&Chunk{
+		_ = rs.Append(&Chunk{
 			Kind:      "event",
 			Content:   fmt.Sprintf("generic content %d", i),
 			CreatedAt: base.Add(time.Duration(i) * time.Hour),
@@ -216,7 +216,7 @@ func TestRollingStoreRetrieveBudget(t *testing.T) {
 		content[i] = 'x'
 	}
 	for i := 0; i < 10; i++ {
-		rs.Append(&Chunk{Kind: "event", Content: string(content)})
+		_ = rs.Append(&Chunk{Kind: "event", Content: string(content)})
 	}
 
 	// Budget = 100 tokens. Should get at most 2 chunks (2 * 50 = 100).
@@ -237,7 +237,7 @@ func TestRollingStoreRenderRelevant(t *testing.T) {
 		t.Errorf("empty render = %q, want empty", s)
 	}
 
-	rs.Append(&Chunk{
+	_ = rs.Append(&Chunk{
 		TaskID:  "t-1",
 		Agent:   "claude",
 		Kind:    "task_result",
@@ -263,8 +263,8 @@ func TestRollingStoreRenderRelevant(t *testing.T) {
 func TestRollingStoreStats(t *testing.T) {
 	rs, _ := openTestStore(t)
 
-	rs.Append(&Chunk{Kind: "event", Content: "first chunk"})
-	rs.Append(&Chunk{Kind: "event", Content: "second chunk"})
+	_ = rs.Append(&Chunk{Kind: "event", Content: "first chunk"})
+	_ = rs.Append(&Chunk{Kind: "event", Content: "second chunk"})
 
 	stats, err := rs.Stats()
 	if err != nil {
@@ -293,7 +293,7 @@ func TestRollingStoreConcurrentAppend(t *testing.T) {
 		go func(g int) {
 			defer wg.Done()
 			for i := 0; i < 5; i++ {
-				rs.Append(&Chunk{
+				_ = rs.Append(&Chunk{
 					Kind:    "event",
 					Content: fmt.Sprintf("g=%d i=%d", g, i),
 				})
@@ -313,7 +313,7 @@ func TestRollingStoreClampLargeContent(t *testing.T) {
 	rs.cfg.MaxChunkTokens = 10 // tiny
 
 	// Append 100-byte chunk (25 tokens) — should be clamped.
-	rs.Append(&Chunk{Kind: "event", Content: "This is a reasonably long content that exceeds the tiny max chunk"})
+	_ = rs.Append(&Chunk{Kind: "event", Content: "This is a reasonably long content that exceeds the tiny max chunk"})
 
 	// Verify by reading back.
 	chunks, _ := rs.Retrieve("", time.Now())

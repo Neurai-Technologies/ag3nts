@@ -143,7 +143,9 @@ func (s *Session) Emit(e AgentEvent) {
 
 // Close closes the event channel and updates the session status.
 func (s *Session) Close(status AgentStatus) {
+	s.mu.Lock()
 	s.Status = status
+	s.mu.Unlock()
 	close(s.events)
 }
 

@@ -76,7 +76,7 @@ func TestIntegration_SingleTask(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = orch.Start(ctx)
-	defer orch.Stop()
+	defer func() { _ = orch.Stop() }()
 
 	// Create and dispatch a task.
 	_ = orch.CreateTask(&task.Task{
@@ -120,7 +120,7 @@ func TestIntegration_DAGExecution(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = orch.Start(ctx)
-	defer orch.Stop()
+	defer func() { _ = orch.Stop() }()
 
 	// T1 (research) → T2 (review, depends on T1).
 	_ = orch.CreateTask(&task.Task{
@@ -158,7 +158,7 @@ func TestIntegration_SecurityBlock(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = orch.Start(ctx)
-	defer orch.Stop()
+	defer func() { _ = orch.Stop() }()
 
 	// Submit a malicious task.
 	_ = orch.CreateTask(&task.Task{
@@ -185,7 +185,7 @@ func TestIntegration_EventBusReplay(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = orch.Start(ctx)
-	defer orch.Stop()
+	defer func() { _ = orch.Stop() }()
 
 	// Subscribe BEFORE creating tasks to capture events.
 	eventCh := orch.bus.Subscribe(100, "*")
@@ -235,7 +235,7 @@ func TestIntegration_TokenTracking(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = orch.Start(ctx)
-	defer orch.Stop()
+	defer func() { _ = orch.Stop() }()
 
 	_ = orch.CreateTask(&task.Task{
 		ID: "t-tok1", Description: "research", Type: "research", Status: task.StatusPending,
