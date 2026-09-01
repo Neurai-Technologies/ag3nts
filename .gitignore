@@ -113,8 +113,8 @@ config/ag3nts.toml
 config/auth.toml
 config/workflows/
 config/claude/
-config/codex/
-config/gemini/
+config/codex
+config/gemini
 # User-defined custom tools live at config/tools/*.yaml. They're
 # per-project configuration and should not be tracked. Example
 # templates use the .yaml.disabled suffix so they sit alongside
