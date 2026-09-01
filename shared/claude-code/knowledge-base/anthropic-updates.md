@@ -1,6 +1,102 @@
 # Anthropic Research Scan Log
 
-## Latest Scan: 2026-08-31
+## Latest Scan: 2026-09-01
+
+### Summary
+- Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
+- New findings: 5
+- Actionable integrations: 3
+
+### Context
+
+Scan window: September 1, 2026. One day since the Aug 31 scan. Five new items surfaced:
+
+1. **CRITICAL CORRECTION — Sonnet 5 pricing stays at $2/$10**: The Aug 31 scan issued a CRITICAL alert that Sonnet 5 pricing would increase to $3/$15 today (Sept 1). API release notes now confirm this increase will NOT occur — $2/$10 per million input/output tokens is the permanent standard price. The Aug 31 alert is superseded.
+
+2. **Claude Code Sandboxing** (engineering post) — OS-level sandbox (Linux bubblewrap + macOS seatbelt) that enforces filesystem and network isolation; reduces permission prompts by 84% in internal use; open sourced. Directly affects ag3nts auto-mode operation.
+
+3. **Mid-Conversation Tool Changes (beta)** — Add/remove tools between turns without invalidating the prompt cache. Available on Fable 5, Mythos 5, and Opus 4.8. Relevant to code-reviewer multi-specialist dispatch.
+
+4. **Measuring AI Agent Autonomy in Practice** (research) — Empirical Claude Code session study; 99.9th percentile turn duration nearly doubled (25 min → 45 min) between Oct 2025 and Jan 2026, validating long-running agent harness design.
+
+5. **Managed Agents web_search domain filtering** (API) — allowed_domains / blocked_domains on web_search and web_fetch tools in Managed Agents sessions. Relevant to web-capable agents (anthropic, accessibility-auditor).
+
+---
+
+### Findings
+
+#### CORRECTION: Claude Sonnet 5 Pricing — $2/$10 Confirmed Permanent
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: September 1, 2026 (API release notes)
+- **Category**: Model
+- **What Changed**: API release notes confirm that the previously scheduled increase in Claude Sonnet 5 pricing from $2/$10 to $3/$15 per million input/output tokens on September 1, 2026 will NOT occur. The introductory pricing of $2 input / $10 output per million tokens is now the standard permanent price.
+- **Impact on ag3nts**: Supersedes the Aug 31 CRITICAL alert about the price increase. No config changes needed (all agents use generic `model: sonnet` alias). Cost estimates for Sonnet-class agent runs should use $2/$10 per million tokens permanently. Both the Aug 30 "permanent pricing" claim and the Aug 31 "increasing to $3/$15" claim are now reconciled: $2/$10 is permanent.
+- **Proposed Changes**:
+  - [ ] No file changes needed; this entry serves as the correction record
+- **Priority**: Critical — corrects a CRITICAL factual error in the Aug 31 scan log
+
+---
+
+#### Claude Code Sandboxing
+- **Source**: https://www.anthropic.com/engineering/claude-code-sandboxing
+- **Published**: 2026 (engineering post)
+- **Category**: Tooling / Security
+- **What Changed**: Anthropic open-sourced a sandboxing layer for Claude Code built on Linux bubblewrap and macOS seatbelt OS primitives. The sandbox enforces: (1) filesystem isolation — read/write only within the current working directory, all modifications outside blocked; (2) network isolation — all outbound traffic routed through a unix domain socket proxy outside the sandbox. In internal Anthropic usage, sandboxing safely reduces permission prompts by 84%. Any access attempt outside sandbox boundaries surfaces immediately for user approval. Claude Code on the web already runs in a cloud-isolated sandbox.
+- **Impact on ag3nts**: High direct relevance. ag3nts currently relies on the two-layer Sonnet 4.6 classifier (auto-mode) for permission decisions. Sandboxing is a complementary OS-level enforcement layer that operates independently of the classifier — it can block filesystem and network violations even if the classifier approves a tool call. The 84% prompt reduction in internal use suggests sandboxing + auto-mode together would near-eliminate permission fatigue. Open-source release means it can be adopted in local ag3nts deployments.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add entry: `https://www.anthropic.com/engineering/claude-code-sandboxing | Anthropic: Claude Code Sandboxing — OS-level isolation via Linux bubblewrap + macOS seatbelt; filesystem + network isolation; 84% reduction in permission prompts; open sourced; complements auto-mode classifier`
+  - [ ] `shared/ag3nts.md` (Permission Mode section) — consider noting sandboxing as an available OS-level complement to the Sonnet 4.6 classifier; add documentation pointer for enabling on local installs
+- **Priority**: High — directly improves security and autonomy of ag3nts Claude Code sessions; open source and available now
+
+---
+
+#### Mid-Conversation Tool Changes (Beta)
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: 2026 (API release notes)
+- **Category**: API / Agent
+- **What Changed**: The Claude API now supports changing which tools Claude has access to mid-conversation (between turns) without invalidating the prompt cache. Available on Claude Fable 5, Mythos 5, and Opus 4.8 via API, Amazon Bedrock, and Google Cloud. No beta header required.
+- **Impact on ag3nts**: Directly relevant to the `code-reviewer` agent's 4-specialist dispatch pattern. Currently each specialist is invoked in a separate API call; mid-conversation tool changes would allow a single session to progressively load specialist tools (correctness tools → security tools → convention tools → history tools) while preserving cache hits. Also relevant if `security-engineer` or `software-architect` need to swap between planning and audit toolsets within a session.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add entry: `https://docs.anthropic.com/en/release-notes/api | Anthropic API: Mid-conversation tool changes (beta) — add/remove tools between turns without cache invalidation; available on Fable 5, Mythos 5, Opus 4.8; relevant to code-reviewer specialist dispatch optimization`
+- **Priority**: Medium — API feature available now; evaluate for code-reviewer dispatch refactor
+
+---
+
+#### Measuring AI Agent Autonomy in Practice
+- **Source**: https://www.anthropic.com/research/measuring-agent-autonomy
+- **Published**: 2026 (research paper)
+- **Category**: Agent
+- **What Changed**: Anthropic published empirical research on AI agent autonomy using Claude Code session data. Key findings: (1) median turn duration is ~45 seconds and relatively stable; (2) the 99.9th percentile turn duration nearly doubled from under 25 minutes to over 45 minutes between October 2025 and January 2026; (3) growth is smooth across model releases, suggesting trust-building and increasingly ambitious task selection by power users drives autonomy extension more than model capability jumps alone.
+- **Impact on ag3nts**: Validates the ag3nts long-running agent harness design (effective-harnesses post already in repos.md) with empirical data. The smooth cross-release growth pattern supports investing in harness infrastructure (RepairBoss pipeline, hook-enforced gates) over relying solely on model upgrades. The near-doubling of longest sessions also supports the budget_reached / session-budget features in Managed Agents for cost control.
+- **Proposed Changes**:
+  - [ ] `shared/claude-code/knowledge-base/repos.md` — add entry: `https://www.anthropic.com/research/measuring-agent-autonomy | Anthropic: Measuring AI agent autonomy in practice — Claude Code session empirical study; 99.9th percentile turn duration doubled Oct 2025→Jan 2026 (25 min→45 min); validates harness infrastructure investment over model-only upgrades`
+- **Priority**: Medium — research validation; no immediate code changes; good reference for architecture decisions
+
+---
+
+#### Managed Agents web_search Domain Filtering
+- **Source**: https://docs.anthropic.com/en/release-notes/api
+- **Published**: 2026 (API release notes)
+- **Category**: API
+- **What Changed**: Managed Agents sessions can now restrict which sites the agent's web_search and web_fetch tools can reach using `allowed_domains` or `blocked_domains` parameters on the tool definition. Enables precise control over agent web access scope without separate proxy configuration.
+- **Impact on ag3nts**: Relevant to the `anthropic` agent (Heavy web) and `accessibility-auditor` agent (WCAG refs) if these are deployed via Managed Agents API rather than the CLI. Current ag3nts runs through Claude Code CLI, so direct API impact is low. If future ag3nts automation uses the Managed Agents API, domain filtering provides a clean security boundary for web-capable agents.
+- **Proposed Changes**:
+  - [ ] No immediate changes; note for future Managed Agents API integration
+- **Priority**: Low — useful API hygiene feature; no immediate ag3nts impact (CLI-based workflow)
+
+---
+
+### Recommendations
+
+1. **[Critical — Correction] Sonnet 5 pricing is $2/$10 permanently** — The Aug 31 CRITICAL alert about a price increase to $3/$15 on September 1 is superseded: the increase will not occur. No config changes needed; use $2/$10 in all future cost estimates for Sonnet-class agent runs.
+
+2. **[High — New] Add Claude Code Sandboxing to repos.md** — `shared/claude-code/knowledge-base/repos.md`: add the `https://www.anthropic.com/engineering/claude-code-sandboxing` entry. Also document sandboxing as a complement to the auto-mode classifier in `shared/ag3nts.md`'s Permission Mode section — OS-level enforcement that operates independently of the classifier.
+
+3. **[High — carry-forward] Update code-reviewer dispatch notes for lock-out risk** — Per Anthropic Frontier Red Team (Aug 13 2026): parallel specialists must not write to shared mutable state. Add isolation note to `~/.claude/agents/code-reviewer` and URL to `repos.md`. See Aug 28 scan for proposed wording. Still outstanding.
+
+---
+
+## Previous Scan: 2026-08-31
 
 ### Summary
 - Sources scanned: 4 (anthropic.com/research, /news, /engineering, docs.anthropic.com)
